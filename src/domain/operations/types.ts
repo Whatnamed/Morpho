@@ -255,7 +255,7 @@ export type VisualReferenceResolution = {
     crossDirection?: boolean;
     retentionReason?: string;
     included: boolean;
-    omissionReason?: "providerLimit" | "duplicate" | "unavailable" | "directionMismatch" | "defaultExcluded";
+    omissionReason?: "providerLimit" | "duplicate" | "unavailable" | "directionMismatch" | "defaultExcluded" | "taskScopeExcluded";
   }>;
   providerLimit: number;
   defaultReferenceExcluded: boolean;

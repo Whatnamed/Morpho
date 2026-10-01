@@ -80,6 +80,8 @@ export type APlusToolCall = Readonly<{
  * hash, but does not treat local Tool Results as authenticated server facts.
  */
 export type APlusAgentProviderRequest = Readonly<{
+  /** Frozen local task/grants contract, preserved verbatim through continuation/recovery. */
+  taskContract?: import("./turnTaskContract").TurnTaskContract;
   input: readonly APlusAgentProviderMessage[];
   continuationItems?: readonly APlusAgentContinuationItem[];
   promptContractVersion: string;

@@ -34,6 +34,9 @@ import {
   resolveWorkIntentSource,
   type ExecutionModeSource
 } from "./aiTaskRouting";
+import { resolveTurnTaskContract } from "./turnTaskResolver";
+import { buildTurnTaskContexts } from "./taskContext";
+import type { TurnTaskContract } from "@/shared/turnTaskContract";
 import { resolveDesignMethodPackIds } from "@/shared/designMethodPack";
 import { appendAgentTurnMessages, createAgentTurnWorkLedger } from "./agentTurnMessages";
 import { createAgentTrace } from "./agentMessageTrace";
@@ -45,7 +48,6 @@ import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
   createRequiredAgentReadState,
   resolveAgentTaskStrategy,
-  resolveRequiredAgentReadRequirements
 } from "./agentTaskStrategy";
 import type { AgentToolExecutorInput } from "./agentToolExecutors";
 import { resolveAgentToolAuthority, type AgentToolAuthorityProfile } from "./agentToolAuthority";
@@ -91,6 +93,8 @@ export type RunMorphoAgentTurnAPlusInput = {
 
 export type PreparedAgentTurnAPlus = Readonly<{
   providerRequest: APlusAgentProviderRequest;
+  taskContract: TurnTaskContract;
+  activityContexts: Readonly<Record<string, TaskContextResult>>;
   localAgentTurnId: string;
   userMessageId: string;
   assistantMessageId: string;
@@ -219,19 +223,21 @@ export async function prepareAgentTurnProductAPlus(
         currentWorkIntent: input.workIntent,
         recommendedWorkIntent: input.recommendedWorkIntent
       });
-  const strategy = resolveAgentTaskStrategy({
-    draft: input.draft,
-    taskMode: executionTaskMode,
-    workIntent: executionWorkIntent,
-    selectedObjects: input.selectedObjects,
-    workspace,
-    hasDeliveryDraftTarget: Boolean(input.pendingDeliveryDraftTarget)
+  const requiredMemoryUpdates = resolveRequiredAgentMemoryUpdates(input.draft);
+  const allowStructuredComparison = isExplicitComparisonRequest(input.draft);
+  const selectedObjects = input.selectedObjectIds.map((id) => workspace.objects[id]).filter((object): object is MorphoObject => Boolean(object));
+  const taskContract = resolveTurnTaskContract({
+    workspace, draft: input.draft, executionTaskMode, executionTaskModeSource, directionPreviewCount: input.directionPreviewCount,
+    executionWorkIntent, executionWorkIntentSource, selectedObjects: input.pendingDeliveryDraftTarget ? [] : selectedObjects,
+    hasDeliveryDraftTarget: Boolean(input.pendingDeliveryDraftTarget),
+    hasDocumentExtracts: selectedObjects.some((object) => object.type === "file"),
+    hasDocumentFragments: selectedObjects.some((object) => object.type === "documentFragment"),
+    hasRequiredMemoryUpdates: requiredMemoryUpdates.length > 0, allowStructuredComparison
   });
-  const context = buildTaskContext(workspace, {
-    kind: strategy.contextKind,
-    draft: input.draft,
-    selectedObjectIds: input.pendingDeliveryDraftTarget ? [] : input.selectedObjectIds
-  });
+  const authorityProfile = resolveAgentToolAuthority({ taskContract });
+  const strategy = resolveAgentTaskStrategy({ taskContract, draft: input.draft, taskMode: executionTaskMode,
+    workIntent: executionWorkIntent, selectedObjects, workspace });
+  const { context, activityContexts } = buildTurnTaskContexts(workspace, taskContract);
   const providerTaskContext = context.kind === "comparison"
     ? buildProviderComparisonTaskContext(context)
     : buildProviderTaskContext(context);
@@ -283,6 +289,7 @@ export async function prepareAgentTurnProductAPlus(
     context,
     providerTaskContext
   });
+  if (taskContract.activities.length > 1) userInput.content.push({ type: "input_text", text: `<untrusted_activity_contexts>\n${JSON.stringify(Object.entries(activityContexts).map(([activityId, context]) => ({ activityId, context: context.kind === "comparison" ? buildProviderComparisonTaskContext(context) : buildProviderTaskContext(context) })))}\n</untrusted_activity_contexts>` });
   const providerInputTextParts: ProviderInputSnapshotTextPart[] = userInput.content
     .filter((part): part is { type: "input_text"; text: string } => part.type === "input_text")
     .map((part) => ({ kind: "userDraft" as const, text: part.text }));
@@ -354,7 +361,7 @@ export async function prepareAgentTurnProductAPlus(
   });
   const [defaultMemoryContext, stableMemoryContext] = buildAgentDefaultMemoryContexts(
     workspaceWithMessages,
-    [strategy.kind, "historyAndMemory"],
+    [...taskContract.activities.map((activity) => activity.kind === "critique" ? "discussion" as const : activity.kind), "historyAndMemory"],
     { directObjectIds: context.objectIds, directRevisionIds: context.directionRevisions.map((revision) => revision.id),
       directBranchIds: context.visualBranches.map((branch) => branch.id), targetDirectionIds: context.targetDirectionIds ?? [] }
   );
@@ -408,7 +415,6 @@ export async function prepareAgentTurnProductAPlus(
     ].filter(Boolean).join(" ") || undefined
   );
 
-  const requiredMemoryUpdates = resolveRequiredAgentMemoryUpdates(input.draft);
   // Deterministic memory final check: when the current user message produced
   // legal long-term memory candidates, the Provider input carries ONE transient
   // runtime-control reminder (never persisted to workspace messages) telling
@@ -427,20 +433,6 @@ export async function prepareAgentTurnProductAPlus(
       }]
     });
   }
-  const allowStructuredComparison = isExplicitComparisonRequest(input.draft);
-  const authorityProfile = resolveAgentToolAuthority({
-    draft: input.draft,
-    executionTaskMode,
-    executionTaskModeSource,
-    executionWorkIntent,
-    executionWorkIntentSource,
-    selectedObjects: input.selectedObjects,
-    hasDeliveryDraftTarget: Boolean(input.pendingDeliveryDraftTarget),
-    hasDocumentExtracts: documentResult.extracts.length > 0,
-    hasDocumentFragments: context.documentFragmentExtracts.length > 0,
-    hasRequiredMemoryUpdates: requiredMemoryUpdates.length > 0,
-    allowStructuredComparison
-  });
   const runtimeState = createAgentTurnRuntimeState({
     conversationContext: {
       ...(conversation.summaryRevision ? { summaryRevision: conversation.summaryRevision } : {}),
@@ -452,9 +444,7 @@ export async function prepareAgentTurnProductAPlus(
     },
     conversationInput: providerMessages,
     requiredReadState: createRequiredAgentReadState(
-      resolveRequiredAgentReadRequirements(input.draft, {
-        hasSelectedObject: input.selectedObjectIds.length > 0
-      })
+      taskContract.requiredReads
     ),
     contextBudgetState: createAgentContextBudgetState(conversation.estimatedInputTokens),
     agentWorkLedger: createAgentTurnWorkLedger()
@@ -486,8 +476,10 @@ export async function prepareAgentTurnProductAPlus(
       },
       strategy: strategy.kind,
       strategyAnchorMessageId: userMessageId,
-      methodPacks: resolveDesignMethodPackIds({ strategy: strategy.kind, draft: input.draft })
+      taskContract,
+      methodPacks: resolveDesignMethodPackIds({ taskContract, draft: input.draft })
     },
+    taskContract, activityContexts,
     localAgentTurnId,
     userMessageId,
     assistantMessageId,
@@ -545,22 +537,29 @@ export function restorePreparedAgentTurnProductAPlus(
     imageGenerationModelId: runtime.input.imageGenerationModelId,
     readConversationTokenLimits: () => runtime.input.conversationTokenLimits
   };
-  const strategy = resolveAgentTaskStrategy({
-    draft: turnInput.draft,
-    taskMode: runtime.executionTaskMode,
-    workIntent: runtime.executionWorkIntent,
-    selectedObjects,
-    workspace,
-    hasDeliveryDraftTarget: Boolean(turnInput.pendingDeliveryDraftTarget)
+  const restoredContract = runtime.providerBaseRequest.taskContract ?? resolveTurnTaskContract({
+    workspace, draft: turnInput.draft, executionTaskMode: runtime.executionTaskMode, directionPreviewCount: turnInput.directionPreviewCount,
+    executionTaskModeSource: runtime.executionTaskModeSource, executionWorkIntent: runtime.executionWorkIntent,
+    executionWorkIntentSource: runtime.executionWorkIntentSource, selectedObjects,
+    hasDeliveryDraftTarget: Boolean(turnInput.pendingDeliveryDraftTarget),
+    hasDocumentExtracts: runtime.documentExtractObjectIds.length > 0, hasDocumentFragments: false,
+    hasRequiredMemoryUpdates: resolveRequiredAgentMemoryUpdates(turnInput.draft).length > 0,
+    allowStructuredComparison: runtime.allowStructuredComparison
   });
-  const context = buildTaskContext(workspace, {
-    kind: strategy.contextKind,
-    draft: turnInput.draft,
-    selectedObjectIds: turnInput.pendingDeliveryDraftTarget
-      ? []
-      : turnInput.selectedObjectIds
-  });
+  // Legacy recovery has no frozen effect scopes. Preserve its exact request,
+  // but align with the Server's read-only compatibility tool set; never mint
+  // new write/paid authority from today's Workspace while restoring it.
+  const taskContract = runtime.providerBaseRequest.taskContract ? restoredContract : {
+    ...restoredContract, activities: restoredContract.activities.map((activity) => ({ ...activity, effectGrants: [] }))
+  };
+  const { context, activityContexts } = buildTurnTaskContexts(workspace, taskContract);
   context.sourceSnapshots = runtime.sourceSnapshots?.map((snapshot) => ({ ...snapshot })) ?? context.objectIds.map((objectId) => ({ objectId, objectType: "unknown", visibility: "unknown", semanticFingerprint: "unknown" }));
+  for (const activityContext of Object.values(activityContexts)) {
+    activityContext.sourceSnapshots = activityContext.objectIds.map((objectId) =>
+      runtime.sourceSnapshots?.find((snapshot) => snapshot.objectId === objectId) ??
+      { objectId, objectType: "unknown", visibility: "unknown", semanticFingerprint: "unknown" }
+    );
+  }
   const providerTaskContext = context.kind === "comparison"
     ? buildProviderComparisonTaskContext(context)
     : buildProviderTaskContext(context);
@@ -580,9 +579,7 @@ export function restorePreparedAgentTurnProductAPlus(
     },
     conversationInput: [...runtime.providerBaseRequest.input],
     requiredReadState: createRequiredAgentReadState(
-      resolveRequiredAgentReadRequirements(turnInput.draft, {
-        hasSelectedObject: turnInput.selectedObjectIds.length > 0
-      })
+      taskContract.requiredReads
     ),
     contextBudgetState: createAgentContextBudgetState(conversation.estimatedInputTokens),
     agentWorkLedger: createAgentTurnWorkLedger()
@@ -604,6 +601,7 @@ export function restorePreparedAgentTurnProductAPlus(
   host.ui.openConversation();
   const prepared: PreparedAgentTurnAPlus = {
     providerRequest: runtime.providerBaseRequest,
+    taskContract, activityContexts,
     localAgentTurnId: runtime.localAgentTurnId,
     userMessageId,
     assistantMessageId,
@@ -620,19 +618,7 @@ export function restorePreparedAgentTurnProductAPlus(
     imageAttachmentObjectIds: [...runtime.imageAttachmentObjectIds],
     documentExtractObjectIds: [...runtime.documentExtractObjectIds],
     allowStructuredComparison: runtime.allowStructuredComparison,
-    authorityProfile: resolveAgentToolAuthority({
-      draft: turnInput.draft,
-      executionTaskMode: runtime.executionTaskMode,
-      executionTaskModeSource: runtime.executionTaskModeSource,
-      executionWorkIntent: runtime.executionWorkIntent,
-      executionWorkIntentSource: runtime.executionWorkIntentSource,
-      selectedObjects,
-      hasDeliveryDraftTarget: Boolean(turnInput.pendingDeliveryDraftTarget),
-      hasDocumentExtracts: runtime.documentExtractObjectIds.length > 0,
-      hasDocumentFragments: context.documentFragmentExtracts.length > 0,
-      hasRequiredMemoryUpdates: resolveRequiredAgentMemoryUpdates(turnInput.draft).length > 0,
-      allowStructuredComparison: runtime.allowStructuredComparison
-    }),
+    authorityProfile: resolveAgentToolAuthority({ taskContract }),
     controller
   };
   return { input: turnInput, prepared };

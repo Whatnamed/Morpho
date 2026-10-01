@@ -101,6 +101,7 @@ export function compileVisualGenerationPlan(input: {
   modelId: string;
   currentUserInput: string;
   providerReferenceLimit?: number;
+  allowedReferenceObjectIds?: readonly string[];
 }): VisualGenerationPlan {
   return {
     kind: input.kind,
@@ -110,7 +111,8 @@ export function compileVisualGenerationPlan(input: {
         intent,
         selectedSourceObjectIds: input.selectedSourceObjectIds,
         projectReferenceObjectIds: input.projectReferenceObjectIds,
-        providerLimit: input.providerReferenceLimit
+        providerLimit: input.providerReferenceLimit,
+        allowedReferenceObjectIds: input.allowedReferenceObjectIds
       });
       const compiled = compileImagePrompt({
         workspace: input.workspace,

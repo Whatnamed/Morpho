@@ -1,3 +1,4 @@
+import { isTurnTaskContract } from "@/shared/turnTaskContract";
 import {
   isAgentTurnJournalSnapshot,
   type APlusAgentProviderRequest,
@@ -879,6 +880,7 @@ function classifyHandshakeFailure(
 
 function copyProviderRequest(request: APlusAgentProviderRequest): APlusAgentProviderRequest {
   return {
+    ...(request.taskContract ? { taskContract: structuredClone(request.taskContract) } : {}),
     input: request.input.map((message) => ({
       role: message.role,
       content: message.content.map((part) => ({ ...part }))
@@ -1069,6 +1071,7 @@ function isProviderRequestShape(value: unknown): value is APlusAgentProviderRequ
     return false;
   }
   return Array.isArray(value.input) &&
+    (value.taskContract === undefined || isTurnTaskContract(value.taskContract)) &&
     value.input.length >= 1 &&
     value.input.every((message) =>
       isRecord(message) &&

@@ -1,4 +1,9 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { executeWorkspaceVisualGenerationPlan } from "./workspaceVisualGenerationExecution";
+import { resolveGenerationSettings } from "./imageGenerationSettings";
+import { getTurnAllowedTools } from "@/shared/turnTaskContract";
+import { buildAPlusAgentProviderContract, parseAPlusAgentProviderRequest } from "@/server/ai/agentTurnProviderRequest";
+import type { ImageObject } from "@/domain/morpho/types";
 
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import type {
@@ -36,10 +41,139 @@ const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const LOCAL_PROJECT_ID = createTestWorkspace().project.id;
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
 });
 
 describe("A+ Agent turn runner", () => {
+  it.each(["referenceB", "compareWrite", "primaryWrite", "autoPaid"] as const)("rejects %s in a scoped mixed turn before any new effect", async (attack) => {
+    const fixture = createFixture([]);
+    const images = Object.values(fixture.fake.getWorkspace().objects).filter((object) => object.type === "image" && object.visibility === "active").slice(0, 2);
+    images.forEach((image, index) => { image.title = index === 0 ? "A" : "B"; });
+    let call = visualToolCall("hostile-effect");
+    if (attack === "referenceB") {
+      const args = JSON.parse(call.argumentsText) as { items: Array<{ requestedReferenceObjectIds: string[] }> };
+      args.items.forEach((item) => { item.requestedReferenceObjectIds = [images[1]!.id]; });
+      call = { ...call, argumentsText: JSON.stringify(args) };
+    }
+    if (attack === "compareWrite") {
+      call = { ...call, name: "create_comparison_analysis",
+        argumentsText: JSON.stringify({ comparisonGoal: "A/B", conclusionSummary: "save without grant", objectComparisons: [], recommendedQuestions: [], evidenceLimits: [] }) };
+    }
+    if (attack === "primaryWrite") {
+      call = { ...call, name: "request_confirmation",
+        argumentsText: JSON.stringify({ action: "setDirectionPrimary", targetObjectId: images[1]!.id, reason: "model chooses", impact: "state change" }) };
+    }
+    fixture.coordinatorHost.appendScripts([{ status: "awaitingNextRequest", toolCalls: [call] }, { status: "externallyCompleted", outputText: "已停止越权动作。" }]);
+    fixture.input.draft = "比较 A/B；只继续 A，生成两张 CMF 图；不要保存比较记录，不要修改主方向。";
+    fixture.input.taskMode = attack === "autoPaid" ? "chatAnalysis" : "imageGeneration";
+    fixture.input.recommendedTaskMode = "imageGeneration";
+    fixture.input.selectedObjects = images; fixture.input.selectedObjectIds = images.map((image) => image.id);
+    const before = fixture.fake.getWorkspace();
+    const generate = vi.spyOn(fixture.host, "executeVisualGenerationPlan");
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(generate).not.toHaveBeenCalled();
+    const after = fixture.fake.getWorkspace();
+    expect(after.objects).toEqual(before.objects);
+    expect(after.ai.comparisonAnalyses).toEqual(before.ai.comparisonAnalyses);
+    expect(after.workingState.primaryDirectionId).toEqual(before.workingState.primaryDirectionId);
+    expect(fixture.fake.getEvents().some((event) => event.name === "confirmation")).toBe(false);
+    const first = fixture.coordinatorHost.executions[0]!.providerRequest.taskContract!;
+    if (attack !== "referenceB") expect(getTurnAllowedTools(first)).not.toContain(call.name);
+  });
+
+  it("keeps a mixed-turn pending generation confirmation scoped to A", async () => {
+    const fixture = createFixture([{ status: "awaitingNextRequest", toolCalls: [visualToolCall("confirm-a")] }]);
+    const images = Object.values(fixture.fake.getWorkspace().objects).filter((object) => object.type === "image" && object.visibility === "active").slice(0, 2);
+    images.forEach((image, index) => { image.title = index === 0 ? "A" : "B"; });
+    fixture.input.draft = "比较 A/B；只继续 A，生成两张 CMF 图。";
+    fixture.input.taskMode = fixture.input.recommendedTaskMode = "imageGeneration";
+    fixture.input.agentTurnMode = "confirm";
+    fixture.input.selectedObjects = images; fixture.input.selectedObjectIds = images.map((image) => image.id);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const pending = fixture.store.record?.metadata.pendingConfirmation?.value;
+    expect(pending).toMatchObject({ kind: "agentGenerateVisuals", selectedImageIds: [images[0]!.id] });
+    expect(pending && "sourceObjectIds" in pending && pending.sourceObjectIds).not.toContain(images[1]!.id);
+  });
+
+  it("executes compare A+B then generates two persisted CMF images only from A through the real visual core", async () => {
+    vi.stubGlobal("FileReader", class {
+      result: string | null = null;
+      onload?: () => void;
+      readAsDataURL() { this.result = "data:image/png;base64,AAAA"; this.onload?.(); }
+    });
+    const fixture = createFixture([
+      { status: "awaitingNextRequest", outputText: "A 与 B 的比较：A 更适合继续探索 CMF。", toolCalls: [
+        { callId: "read-ab", name: "read_selected_context", argumentsText: "{}" }, visualToolCall("generate-a")
+      ] },
+      { status: "externallyCompleted", outputText: "已比较 A/B，并只继续 A 生成两张 CMF；未保存比较或更改主方向。" }
+    ]);
+    const workspace = fixture.fake.getWorkspace();
+    const images = Object.values(workspace.objects).filter((object): object is ImageObject => object.type === "image" && object.visibility === "active").slice(0, 2);
+    if (images.length !== 2) throw new Error("Need A/B images");
+    images.forEach((image, index) => {
+      image.title = index === 0 ? "A" : "B";
+      image.assetId = `asset-${image.title}`;
+      workspace.assets[image.assetId] = { id: image.assetId, fileName: `${image.title}.png`, mimeType: "image/png", size: 3,
+        createdAt: "2026-10-01T00:00:00Z", storageKey: `blob:${image.title}`, sourceType: "originalImage", width: 1, height: 1 };
+    });
+    const [a, b] = images;
+    workspace.workingState.currentDefaultReferenceId = b!.id;
+    const beforeIds = new Set(Object.keys(workspace.objects));
+    const beforePrimary = workspace.workingState.primaryDirectionId;
+    const beforeComparisons = structuredClone(workspace.ai.comparisonAnalyses);
+    const imageRequests: Array<{ input: { referenceObjectIds: string[]; images: string[] } }> = [];
+    const reads: string[] = [];
+    const session = { projectId: workspace.project.id, workspaceReady: true, generation: Symbol("mixed-intent") };
+    let saved = 0;
+    const host: AgentTurnHost = { ...fixture.host, executeVisualGenerationPlan: (input) => executeWorkspaceVisualGenerationPlan(input,
+      resolveGenerationSettings({ modelId: "gpt-image-2", aspectRatio: "1:1" }), {
+        fetch: async (_url, init) => {
+          imageRequests.push(JSON.parse(String(init?.body)));
+          return new Response(new Blob(["new-result"], { type: "image/png" }), { headers: { "content-type": "image/png" } });
+        },
+        getCurrentSession: () => session, assertCurrentSession: () => {},
+        commitWorkspace: (_session, transform) => fixture.fake.commitWorkspace(transform),
+        updatePendingImageGenerationSlots: () => {}, setImageTaskStatus: () => {},
+        readReferenceAsset: async (key) => { reads.push(key); return new Blob(["A pixels"], { type: "image/png" }); },
+        saveGeneratedAsset: async () => ({ status: "ok", asset: { id: `cmf-asset-${++saved}`, fileName: `cmf-${saved}.png`,
+          mimeType: "image/png", size: 10, createdAt: "2026-10-01T00:00:00Z", storageKey: `blob:cmf-${saved}`,
+          sourceType: "aiGeneratedImage", width: 1, height: 1 } }),
+        deleteAsset: async () => {}, selectObjects: () => {}, focusObject: () => {}, now: fixture.fake.now, randomSuffix: fixture.fake.randomSuffix
+      }) };
+    fixture.input.draft = "比较 A/B，给出取舍；不要保存 Compare；然后只继续 A，生成两张 CMF 图；不要修改主方向。";
+    fixture.input.taskMode = fixture.input.recommendedTaskMode = "imageGeneration";
+    fixture.input.workIntent = "discussion";
+    fixture.input.recommendedWorkIntent = "comparison";
+    fixture.input.selectedObjects = images;
+    fixture.input.selectedObjectIds = images.map((image) => image.id);
+
+    await runMorphoAgentTurn(fixture.input, host, fixture.dependencies);
+
+    const result = fixture.fake.getWorkspace();
+    const created = Object.values(result.objects).filter((object) => !beforeIds.has(object.id) && object.type === "image");
+    expect(created).toHaveLength(2);
+    expect(created.every((object) => object.type === "image" && object.generation?.referenceObjectIds.join() === a!.id)).toBe(true);
+    expect(imageRequests).toHaveLength(2);
+    expect(imageRequests.every((request) => request.input.referenceObjectIds.join() === a!.id && request.input.images.length === 1)).toBe(true);
+    expect(reads).toEqual(["blob:A", "blob:A"]);
+    expect(result.ai.comparisonAnalyses).toEqual(beforeComparisons);
+    expect(result.workingState.primaryDirectionId).toBe(beforePrimary);
+    expect(latestAssistant(result)?.agentTurnOutcome).toBe("success");
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    const first = fixture.coordinatorHost.executions[0]!.providerRequest;
+    expect(first.taskContract?.activities.find((activity) => activity.kind === "comparison")?.sourceObjectIds).toEqual([a!.id, b!.id]);
+    expect(first.methodPacks).toEqual(expect.arrayContaining(["comparisonDecision", "cmfExploration"]));
+    expect(fixture.coordinatorHost.executions[1]!.providerRequest.taskContract).toEqual(first.taskContract);
+    const continuation = fixture.coordinatorHost.executions[1]!.providerRequest.continuationItems;
+    expect(continuation?.find((item) => item.type === "function_call_output" && item.callId === "read-ab")).toMatchObject({ output: expect.stringContaining(b!.id) });
+    for (const execution of fixture.coordinatorHost.executions) {
+      const parsed = parseAPlusAgentProviderRequest(execution.providerRequest);
+      if (parsed.status !== "ok") throw new Error(parsed.reason);
+      const provider = buildAPlusAgentProviderContract({ localProjectId: workspace.project.id, request: parsed.value, webSearchEnabled: false });
+      expect(provider.request.tools?.map((tool) => tool.type === "function" ? tool.name : "").sort()).toEqual(getTurnAllowedTools(first.taskContract!).sort());
+    }
+  });
   it("runs the Workspace entry through Coordinator, display, persistence and reducer outcome", async () => {
     const fixture = createFixture([
       { status: "externallyCompleted", outputText: "A+ 已完成当前讨论。" }

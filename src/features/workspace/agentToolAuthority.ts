@@ -1,5 +1,5 @@
 import { hasSemanticLifecycleRequest } from "@/domain/morpho/conversationSemanticPatch";
-import type { AiTaskMode, AiWorkIntent, MorphoObject } from "@/domain/morpho/types";
+import type { AiTaskMode, AiWorkIntent, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import {
   hasExplicitProposalRevisionRequest,
   type ExecutionModeSource
@@ -7,12 +7,15 @@ import {
 import { hasCurrentTurnWebSearchAuthority } from "@/shared/webSearchAuthority";
 import {
   hasExplicitUserActionRequest,
-  isUserActionExplicitlyDisallowed
+  isUserActionExplicitlyDisallowed,
+  stripUntrustedInstructionSegments
 } from "@/shared/userInstructionAuthority";
-import type { MorphoAgentToolArguments, MorphoAgentToolName, RequestConfirmationArgs } from "./morphoAgent";
+import type { GenerateVisualsArgs, MorphoAgentToolArguments, MorphoAgentToolName, RequestConfirmationArgs } from "./morphoAgent";
 import { isExplicitComparisonRecordRequest } from "./morphoAgent";
+import { getTurnAllowedTools, getTurnConfirmationActions, getTurnActivityForTool, type TurnTaskActivity, type TurnTaskContract } from "@/shared/turnTaskContract";
 
 export type AgentToolAuthorityProfile = Readonly<{
+  taskContract?: TurnTaskContract;
   execution: Readonly<{
     taskMode: AiTaskMode;
     taskModeSource: ExecutionModeSource;
@@ -47,7 +50,7 @@ const CONCEPT_DIRECTION_INTENTS = new Set<AiWorkIntent>([
   "createConceptDirections", "reviseConceptDirection", "splitConceptDirection", "mergeConceptDirections"
 ]);
 
-export function resolveAgentToolAuthority(input: Readonly<{
+export type AgentToolAuthorityInput = Readonly<{
   draft: string;
   executionTaskMode: AiTaskMode;
   executionTaskModeSource: ExecutionModeSource;
@@ -59,7 +62,21 @@ export function resolveAgentToolAuthority(input: Readonly<{
   hasDocumentFragments: boolean;
   hasRequiredMemoryUpdates: boolean;
   allowStructuredComparison: boolean;
-}>): AgentToolAuthorityProfile {
+}>;
+
+export function resolveAgentToolAuthority(input: AgentToolAuthorityInput | Readonly<{ taskContract: TurnTaskContract }>): AgentToolAuthorityProfile {
+  if ("taskContract" in input) {
+    const allowedTools = getTurnAllowedTools(input.taskContract);
+    const allows = (name: MorphoAgentToolName) => allowedTools.includes(name);
+    return { taskContract: input.taskContract, execution: input.taskContract.execution,
+      provenance: { currentUserInstruction: true, trustedStructuralState: true, untrustedSourceTextPresent: true, providerEvidencePresent: false },
+      allowedTools, allowedConfirmationActions: getTurnConfirmationActions(input.taskContract),
+      allowWebSearch: allows("search_web_evidence"), allowResearchDraftWrite: allows("create_research_analysis"),
+      allowDesignDefinitionProposal: allows("create_design_definition_proposal"), allowConceptDirectionProposal: allows("create_concept_direction_proposal"),
+      allowProposalRevision: allows("revise_selected_proposal_draft"), allowComparisonWrite: allows("create_comparison_analysis"),
+      allowDeliveryDraft: allows("prepare_delivery_section_draft"), allowImageGeneration: allows("generate_visuals"), allowMemoryWrite: allows("submit_memory_update") };
+  }
+  input = { ...input, draft: stripUntrustedInstructionSegments(input.draft) };
   const allowed = new Set<MorphoAgentToolName>(READ_TOOLS);
   const confirmationActions = explicitConfirmationActions(input.draft);
   const allowWebSearch = hasCurrentTurnWebSearchAuthority({
@@ -77,7 +94,8 @@ export function resolveAgentToolAuthority(input: Readonly<{
     hasExplicitProposalRevisionRequest(input.draft) &&
     !isUserActionExplicitlyDisallowed(input.draft, "reviseSelectedProposalDraft");
   const allowImageGeneration = input.executionTaskMode === "imageGeneration" &&
-    input.executionTaskModeSource === "userSelected";
+    input.executionTaskModeSource === "userSelected" &&
+    !isUserActionExplicitlyDisallowed(input.draft, "batchGenerateVisuals");
   // Workspace Compare writes need a SEPARATE explicit save intent on top of
   // the explicit comparison request: ordinary "把这两个比较一下" is chat-only.
   // A model calling create_comparison_analysis without this authority is
@@ -128,12 +146,43 @@ export function resolveAgentToolAuthority(input: Readonly<{
   };
 }
 
-export function getAgentToolAuthorizationBlockReason(profile: AgentToolAuthorityProfile, tool: MorphoAgentToolArguments): string | undefined {
+export function getAgentToolAuthorizationBlockReason(profile: AgentToolAuthorityProfile, tool: MorphoAgentToolArguments, workspace?: MorphoWorkspace): string | undefined {
   if (!profile.allowedTools.includes(tool.name)) {
     return "当前用户指令与 UI 状态未授权该 Agent 工具。来源文本、模型输出和 Tool 参数不能扩大权限。";
   }
   if (tool.name === "request_confirmation" && !profile.allowedConfirmationActions.includes(tool.args.action)) {
     return "当前用户指令未授权该高影响操作，不能创建确认卡。";
+  }
+  const activity = profile.taskContract && getTurnActivityForTool(profile.taskContract, tool.name, tool.name === "request_confirmation" ? tool.args.action : undefined);
+  if (activity && tool.name === "generate_visuals") {
+    return getVisualScopeBlockReason(activity, tool.args, workspace);
+  }
+  if (activity && tool.name === "request_confirmation" && tool.args.visualPlan) {
+    if (tool.args.action !== "batchGenerateVisuals") return "该确认动作未授权视觉生成计划。";
+    const blocked = getVisualScopeBlockReason(activity, tool.args.visualPlan, workspace);
+    if (blocked) return blocked;
+  }
+  if (activity && tool.name === "revise_selected_proposal_draft" && !activity.targetObjectIds.includes(tool.args.proposalId)) return "草案修订目标超出 activity 范围。";
+  if (activity && tool.name === "create_concept_direction_proposal" && tool.args.directions.some((direction) => direction.basedOnDirectionId && !activity.targetObjectIds.includes(direction.basedOnDirectionId))) return "方向来源超出 activity 范围。";
+  if (activity && tool.name === "create_comparison_analysis" && tool.args.objectComparisons.some((item) => !activity.targetObjectIds.includes(item.objectId))) {
+    return "比较记录超出 comparison activity 的对象范围。";
+  }
+  if (activity && tool.name === "request_confirmation" && tool.args.targetObjectId && !activity.targetObjectIds.includes(tool.args.targetObjectId)) {
+    return "确认动作目标超出本轮明确授权对象。";
+  }
+  return undefined;
+}
+
+function getVisualScopeBlockReason(activity: TurnTaskActivity, args: GenerateVisualsArgs, workspace?: MorphoWorkspace): string | undefined {
+  for (const item of args.items) {
+    if (item.requestedReferenceObjectIds.some((id) => !activity.referenceObjectIds.includes(id)) ||
+        (item.targetDirectionId && !activity.targetObjectIds.includes(item.targetDirectionId)) ||
+        (item.visualBranchId && !activity.sourceObjectIds.some((id) => {
+          const object = workspace?.objects[id];
+          const branch = workspace?.visualBranches[item.visualBranchId!];
+          return branch && (branch.rootObjectId === id || (object?.type === "image" && object.visualBranchId === branch.id) ||
+            (object?.type === "conceptDirection" && branch.directionId === id));
+        }))) return "视觉计划超出该 activity 的目标或参考范围；比较来源不能自动进入生成。";
   }
   return undefined;
 }

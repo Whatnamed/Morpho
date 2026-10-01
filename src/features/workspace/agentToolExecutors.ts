@@ -67,6 +67,7 @@ import {
   type RequestConfirmationArgs
 } from "./morphoAgent";
 import { getAgentToolAuthorizationBlockReason, type AgentToolAuthorityProfile } from "./agentToolAuthority";
+import { getTurnActivityForTool } from "@/shared/turnTaskContract";
 
 export type AgentVisualGenerationExecution = {
   workspace: MorphoWorkspace;
@@ -183,7 +184,11 @@ export const AGENT_TOOL_EXECUTORS: AgentToolExecutorRegistry = {
 export async function executeAgentTool(
   input: AgentToolExecutorInput & { parsed: MorphoAgentToolArguments }
 ): Promise<unknown> {
-  const blockReason = getAgentToolAuthorizationBlockReason(input.authorityProfile, input.parsed);
+  const needsBranchCheck = input.authorityProfile.taskContract && input.authorityProfile.allowedTools.includes(input.parsed.name) && (
+    input.parsed.name === "generate_visuals" ? input.parsed.args.items.some((item) => Boolean(item.visualBranchId)) :
+    input.parsed.name === "request_confirmation" && input.parsed.args.visualPlan?.items.some((item) => Boolean(item.visualBranchId))
+  );
+  const blockReason = getAgentToolAuthorizationBlockReason(input.authorityProfile, input.parsed, needsBranchCheck ? input.readWorkspace() : undefined);
   if (blockReason) {
     const error = new Error(blockReason) as Error & { code: string };
     error.code = "agent_tool_not_authorized";
@@ -869,14 +874,16 @@ function executeRequestConfirmation(
   }
 ) {
   const args = input.parsed.args;
+  const visualActivity = input.authorityProfile.taskContract && getTurnActivityForTool(input.authorityProfile.taskContract, "request_confirmation", args.action);
   const compiledVisualPlan = args.visualPlan
     ? compileVisualGenerationPlan({
         workspace: input.readWorkspace(),
         kind: args.visualPlan.kind,
         intents: args.visualPlan.items,
         selectedSourceObjectIds: input.context.objectIds,
+        allowedReferenceObjectIds: visualActivity?.referenceObjectIds,
         modelId: input.imageGenerationModelId,
-        currentUserInput: input.draft
+        currentUserInput: visualActivity?.instruction ?? input.draft
       })
     : undefined;
   input.ui.requestConfirmation(args, compiledVisualPlan);

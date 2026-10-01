@@ -8,7 +8,8 @@ export type ResolveTaskModeInput = {
   recommendedTaskMode: AiTaskMode;
 };
 
-export type ExecutionModeSource = "userSelected" | "autoRecommended";
+export type { ExecutionModeSource } from "@/shared/turnTaskContract";
+import type { ExecutionModeSource } from "@/shared/turnTaskContract";
 
 export type ResolveWorkIntentInput = {
   currentWorkIntent: AiWorkIntent;

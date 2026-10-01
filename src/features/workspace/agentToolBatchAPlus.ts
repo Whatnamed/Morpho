@@ -26,6 +26,8 @@ import {
   type MorphoAgentToolArguments
 } from "./morphoAgent";
 import { getAgentToolAuthorizationBlockReason } from "./agentToolAuthority";
+import { getTurnActivityForTool } from "@/shared/turnTaskContract";
+import { buildProviderComparisonTaskContext, buildProviderTaskContext } from "./taskContext";
 
 export type APlusExternalRequestIdentity = Readonly<{
   serverTurnId: string;
@@ -117,7 +119,10 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
       "A+ External Action 的持久化请求 Body 没有对应的 Tool Call，不能猜测新的请求。"
     );
   }
-  const selectedDirectionCount = input.turnInput.selectedObjects
+  const visualActivity = getTurnActivityForTool(input.prepared.taskContract, "generate_visuals");
+  const visualContext = visualActivity ? input.prepared.activityContexts[visualActivity.id]! : input.prepared.context;
+  const visualSelectedObjects = visualActivity ? visualActivity.sourceObjectIds.map((id) => input.host.readWorkspace().objects[id]).filter((object) => Boolean(object)) : input.turnInput.selectedObjects;
+  const selectedDirectionCount = visualSelectedObjects
     .filter((object) => object.type === "conceptDirection").length;
   const validVisualCalls = parsedCalls.flatMap((entry) =>
     entry.status === "valid" && entry.parsed.name === "generate_visuals"
@@ -127,12 +132,13 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
             workspace: input.host.readWorkspace(),
             kind: entry.parsed.args.kind,
             intents: entry.parsed.args.items,
-            selectedSourceObjectIds: input.prepared.context.objectIds,
+            selectedSourceObjectIds: visualContext.objectIds,
+            allowedReferenceObjectIds: visualActivity?.referenceObjectIds,
             projectReferenceObjectIds: Object.values(input.host.readWorkspace().objects)
               .filter((object) => object.type === "image" && object.role === "reference")
               .map((object) => object.id),
             modelId: input.turnInput.imageGenerationModelId,
-            currentUserInput: input.turnInput.draft
+            currentUserInput: visualActivity?.instruction ?? input.turnInput.draft
           })
         }]
       : []
@@ -140,7 +146,9 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
   const visualBatch = validVisualCalls.length > 0
     ? buildAgentVisualGenerationBatch({
         calls: validVisualCalls,
-        expected: resolveExpectedVisualGenerationCount({
+        expected: visualActivity?.expectedVisualCount ? {
+          totalItems: visualActivity.expectedVisualCount, requestedPreviewCount: visualActivity.requestedPreviewCount, source: "explicitTotal"
+        } : resolveExpectedVisualGenerationCount({
           draft: input.turnInput.draft,
           kind: validVisualCalls[0]!.plan.kind,
           selectedDirectionCount,
@@ -212,7 +220,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
       };
       providerResult = { status: "failed", code: "invalid_tool_arguments", error: entry.error };
     } else {
-      const authorityBlockReason = getAgentToolAuthorizationBlockReason(input.prepared.authorityProfile, entry.parsed);
+      const authorityBlockReason = getAgentToolAuthorizationBlockReason(input.prepared.authorityProfile, entry.parsed, input.host.readWorkspace());
       if (authorityBlockReason) {
         terminal = {
           status: "failed",
@@ -269,6 +277,10 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
               input.prepared.authorityProfile.allowMemoryWrite
       });
       if (executionPolicy === "requireConfirmation") {
+        const activity = getTurnActivityForTool(input.prepared.taskContract, entry.parsed.name);
+        const context = activity ? input.prepared.activityContexts[activity.id]! : input.prepared.context;
+        const selectedObjectIds = activity ? [...activity.sourceObjectIds] : input.turnInput.selectedObjectIds;
+        const selectedObjects = selectedObjectIds.map((id) => input.host.readWorkspace().objects[id]).filter((object) => Boolean(object));
         const confirmationValue = buildPendingAgentActionConfirmation({
           parsed: entry.parsed,
           workspace: input.host.readWorkspace(),
@@ -277,16 +289,16 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
               ? visualBatch.plan
               : undefined,
           draft: input.turnInput.draft,
-          contextObjectIds: input.prepared.context.objectIds,
-          sourceSnapshots: input.prepared.context.sourceSnapshots,
+          contextObjectIds: context.objectIds,
+          sourceSnapshots: context.sourceSnapshots,
           citations: input.prepared.runtimeState.collectedCitations,
-          selectedObjects: input.turnInput.selectedObjects,
-          selectedObjectIds: input.turnInput.selectedObjectIds,
+          selectedObjects,
+          selectedObjectIds,
           userMessageId: input.prepared.userMessageId,
           assistantMessageId: input.prepared.assistantMessageId,
           imageAttachmentObjectIds: input.prepared.imageAttachmentObjectIds,
           documentExtractObjectIds: input.prepared.documentExtractObjectIds,
-          documentFragmentExtractObjectIds: input.prepared.context.documentFragmentExtracts.map((item) => item.objectId)
+          documentFragmentExtractObjectIds: context.documentFragmentExtracts.map((item) => item.objectId)
         });
         const confirmationId = `${input.externalRequest.serverTurnId}:${callId}`;
         const requested = input.host.ui.requestPendingConfirmation(confirmationValue);
@@ -560,11 +572,15 @@ function buildExecutorInput(input: Readonly<{
   restoredExternalAction?: Readonly<APlusExternalActionDescriptor & { callId?: string }>;
 }>): AgentToolExecutorInput {
   const { prepared, host, turnInput, externalRequest } = input.input;
+  const activity = getTurnActivityForTool(prepared.taskContract, input.parsed.name, input.parsed.name === "request_confirmation" ? input.parsed.args.action : undefined);
+  const context = activity ? prepared.activityContexts[activity.id]! : prepared.context;
+  const selectedObjectIds = activity ? [...activity.sourceObjectIds] : turnInput.selectedObjectIds;
+  const selectedObjects = selectedObjectIds.map((id) => host.readWorkspace().objects[id]).filter((object) => Boolean(object));
   return {
     callId: input.callId,
     stableOperationId: `a-plus-effect-${externalRequest.serverTurnId}-${input.callId}`,
-    context: prepared.context,
-    providerTaskContext: prepared.providerTaskContext,
+    context,
+    providerTaskContext: context.kind === "comparison" ? buildProviderComparisonTaskContext(context) : buildProviderTaskContext(context),
     runtimeState: prepared.runtimeState,
     authorityProfile: prepared.authorityProfile,
     batchState: input.batchState,
@@ -575,8 +591,8 @@ function buildExecutorInput(input: Readonly<{
     userMessageId: prepared.userMessageId,
     assistantMessageId: prepared.assistantMessageId,
     userMessageCreatedAt: prepared.createdAt,
-    selectedObjectIds: turnInput.selectedObjectIds,
-    selectedObjects: turnInput.selectedObjects,
+    selectedObjectIds,
+    selectedObjects,
     allowStructuredComparison: prepared.allowStructuredComparison,
     imageAttachmentObjectIds: prepared.imageAttachmentObjectIds,
     documentExtractObjectIds: prepared.documentExtractObjectIds,
@@ -648,8 +664,8 @@ function buildExecutorInput(input: Readonly<{
           compiledVisualPlan,
           workspace: host.readWorkspace(),
           draft: turnInput.draft,
-          contextObjectIds: prepared.context.objectIds,
-          selectedObjects: turnInput.selectedObjects
+          contextObjectIds: context.objectIds,
+          selectedObjects
         });
       }
     }

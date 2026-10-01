@@ -2,11 +2,10 @@ import { createHash } from "node:crypto";
 
 import { MORPHO_AGENT_CONTEXT_POLICY } from "@/domain/morpho/agentContextPolicy";
 import type { AgentTaskStrategyKind } from "@/domain/morpho/types";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION, buildMorphoAgentStableSystemPrompt } from "@/shared/agentPromptRegistry";
 import {
-  buildMorphoAgentStableSystemPrompt,
   buildMorphoAgentTools
-} from "@/features/workspace/morphoAgent";
+} from "@/shared/agentToolContract";
 import type {
   APlusAgentImagePart,
   APlusAgentContinuationItem,
@@ -32,6 +31,8 @@ import {
   type DesignMethodPackId
 } from "@/shared/designMethodPack";
 import { estimateProviderInputTokens } from "@/shared/providerInputBudget";
+import { canonicalTurnTaskMessage, getTurnAllowedTools, getTurnConfirmationActions, isTurnTaskContract, TURN_READ_TOOLS, type TurnTaskContract } from "@/shared/turnTaskContract";
+import { resolveDesignMethodPackIds } from "@/shared/designMethodPack";
 
 import type {
   OpenAiCompatibleResponseRequest,
@@ -59,6 +60,7 @@ const REGISTERED_TOOL_NAMES = new Set(
 );
 
 export type ValidatedAPlusAgentProviderRequest = Readonly<{
+  taskContract?: TurnTaskContract;
   input: APlusAgentProviderRequest["input"];
   continuationItems: readonly APlusAgentContinuationItem[];
   promptContractVersion: typeof MORPHO_AGENT_PROMPT_CONTRACT_VERSION;
@@ -99,7 +101,7 @@ export function parseAPlusAgentProviderRequest(value: unknown):
     "previousRuntimeItem",
     "strategy",
     "strategyAnchorMessageId",
-    "methodPacks"
+    "methodPacks", "taskContract"
   ]);
   if (unknown.length > 0) {
     return failed(`providerRequest 包含不允许的字段：${unknown.join("、")}。`);
@@ -110,6 +112,12 @@ export function parseAPlusAgentProviderRequest(value: unknown):
   if (value.mode !== "auto" && value.mode !== "confirm") {
     return failed("mode 必须是 auto 或 confirm。");
   }
+  if (value.taskContract !== undefined && !isTurnTaskContract(value.taskContract)) return failed("taskContract 格式无效或超出界限。");
+  if (isTurnTaskContract(value.taskContract) && (
+    (value.strategy !== undefined && value.strategy !== value.taskContract.primaryFocus) ||
+    (isRecord(value.capabilityIntent) && (value.capabilityIntent.webSearch === true) !== getTurnAllowedTools(value.taskContract).includes("search_web_evidence")) ||
+    (value.methodPacks !== undefined && JSON.stringify(value.methodPacks) !== JSON.stringify(resolveDesignMethodPackIds({ taskContract: value.taskContract, draft: value.taskContract.userGoal })))
+  )) return failed("Strategy、Method 或 capabilityIntent 与 taskContract 不一致。");
   if (
     !isRecord(value.capabilityIntent) ||
     unknownKeys(value.capabilityIntent, ["comparisonAnalysis", "webSearch"]).length > 0 ||
@@ -158,6 +166,7 @@ export function parseAPlusAgentProviderRequest(value: unknown):
   return {
     status: "ok",
     value: {
+      ...(isTurnTaskContract(value.taskContract) ? { taskContract: structuredClone(value.taskContract) } : {}),
       input: parsedInput.value,
       continuationItems: continuationItems.value,
       promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
@@ -180,7 +189,17 @@ export function buildAPlusAgentProviderContract(input: {
   request: ValidatedAPlusAgentProviderRequest;
   webSearchEnabled: boolean;
 }): APlusAgentProviderContract {
-  const tools = buildMorphoAgentTools(input.webSearchEnabled && input.request.capabilityIntent.webSearch);
+  const contract = input.request.taskContract;
+  const allowedNames = contract ? getTurnAllowedTools(contract) : [...TURN_READ_TOOLS];
+  if (contract && allowedNames.includes("search_web_evidence") && !input.webSearchEnabled) {
+    throw new APlusAgentProviderRequestError("本轮已授权联网，但服务端尚未启用该能力。");
+  }
+  const tools = buildMorphoAgentTools(true).filter((tool) => tool.type === "function" && allowedNames.some((name) => name === tool.name)).map((tool) => {
+    if (tool.type !== "function" || tool.name !== "request_confirmation" || !contract) return tool;
+    const properties = tool.parameters.properties as Record<string, unknown>;
+    return { ...tool, parameters: { ...tool.parameters, properties: { ...properties,
+      action: { type: "string", enum: getTurnConfirmationActions(contract) } } } };
+  });
   const effectiveToolProfile: AgentToolProfile = tools.some(
     (tool) => tool.type === "function" && tool.name === "search_web_evidence"
   )
@@ -194,6 +213,10 @@ export function buildAPlusAgentProviderContract(input: {
     previous: input.request.previousRuntimeItem
   });
   const stableSystemPrompt = buildMorphoAgentStableSystemPrompt();
+  const strategies: readonly AgentTaskStrategyKind[] = contract
+    ? [...new Set(contract.activities.map((activity) => activity.kind === "critique" ? "discussion" as const : activity.kind))]
+    : input.request.strategy ? [input.request.strategy] : [];
+  const methodPacks = contract ? resolveDesignMethodPackIds({ taskContract: contract, draft: contract.userGoal }) : input.request.methodPacks;
   const request: OpenAiCompatibleResponseRequest = {
     input: [
       {
@@ -201,15 +224,12 @@ export function buildAPlusAgentProviderContract(input: {
         content: [{ type: "input_text", text: stableSystemPrompt }]
       },
       canonicalAgentRuntimeMessage(runtimeItem),
-      ...(input.request.strategy
-        ? [canonicalAgentStrategyMessage({
-            type: "morpho_strategy",
-            strategy: input.request.strategy,
-            anchorMessageId: input.request.strategyAnchorMessageId ?? "turn"
-          })]
-        : []),
-      ...(input.request.methodPacks && input.request.methodPacks.length > 0
-        ? [canonicalDesignMethodMessage(input.request.methodPacks)]
+      ...(contract ? [canonicalTurnTaskMessage(contract)] : []),
+      ...strategies.map((strategy) => canonicalAgentStrategyMessage({
+        type: "morpho_strategy", strategy, anchorMessageId: input.request.strategyAnchorMessageId ?? "turn"
+      })),
+      ...(methodPacks?.length
+        ? [canonicalDesignMethodMessage(methodPacks)]
         : []),
       ...input.request.input.map(copyProviderMessage),
       ...input.request.continuationItems.map(copyContinuationItem)

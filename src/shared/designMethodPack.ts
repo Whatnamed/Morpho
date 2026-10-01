@@ -155,9 +155,14 @@ export const DESIGN_METHOD_PACKS: Record<DesignMethodPackId, DesignMethodPack> =
  * get no pack, so ordinary discussion stays light.
  */
 export function resolveDesignMethodPackIds(input: {
-  strategy: AgentTaskStrategyKind;
+  strategy?: AgentTaskStrategyKind;
   draft: string;
+  taskContract?: import("./turnTaskContract").TurnTaskContract;
 }): DesignMethodPackId[] {
+  if (input.taskContract) {
+    return [...new Set(input.taskContract.activities.flatMap((activity) => activity.kind === "critique" ? ["designCritique" as const] :
+      resolveDesignMethodPackIds({ strategy: activity.kind, draft: activity.instruction })))].slice(0, MAX_METHOD_PACKS_PER_TURN);
+  }
   const text = input.draft.replace(/\s+/g, " ").trim();
   const ids: DesignMethodPackId[] = [];
   const pushUnique = (id: DesignMethodPackId) => {

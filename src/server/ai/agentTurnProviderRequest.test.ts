@@ -202,7 +202,7 @@ describe("A+ Provider continuation contract", () => {
     expect(messageText(methodItem)).toContain("参考图解读");
     // The stable prefix stays untouched: system[0] is the stable prompt and
     // system[1] the runtime item.
-    expect(messageText(systemItems[0])).toContain("Prompt contract: morpho-agent-v3.7-2026-09-30");
+    expect(messageText(systemItems[0])).toContain("Prompt contract: morpho-agent-v3.8-2026-10-01");
     expect(messageText(systemItems[1])).toContain("[Morpho Canonical Runtime | trusted server item]");
   });
 
@@ -285,18 +285,28 @@ describe("A+ Provider Tool boundary", () => {
 
     const authorizedRequest = {
       ...denied.value,
-      capabilityIntent: { ...denied.value.capabilityIntent, webSearch: true }
+      capabilityIntent: { ...denied.value.capabilityIntent, webSearch: true },
+      taskContract: {
+        version: 1 as const, userGoal: "联网核实最新标准", primaryFocus: "research" as const,
+        execution: { taskMode: "chatAnalysis" as const, taskModeSource: "autoRecommended" as const,
+          workIntent: "discussion" as const, workIntentSource: "autoRecommended" as const },
+        completionConditions: ["chatAnswer"], requiredReads: [], activities: [{
+          id: "research-1", kind: "research" as const, instruction: "联网核实最新标准",
+          targetObjectIds: [], sourceObjectIds: [], referenceObjectIds: [], excludedObjectIds: [], includeDefaultReference: false,
+          requiredFacts: [], expectedOutputs: ["chatAnswer"], effectGrants: [{ tool: "search_web_evidence" as const, origin: "currentUserInstruction" as const }]
+        }]
+      }
     };
     expect(buildAPlusAgentProviderContract({
       localProjectId: "project-local",
       request: authorizedRequest,
       webSearchEnabled: true
     }).effectiveToolProfile).toBe("standardWithWebSearch");
-    expect(buildAPlusAgentProviderContract({
+    expect(() => buildAPlusAgentProviderContract({
       localProjectId: "project-local",
       request: authorizedRequest,
       webSearchEnabled: false
-    }).effectiveToolProfile).toBe("standard");
+    })).toThrow("服务端尚未启用");
   });
 
   it("derives only bounded Search and Image authorization claims from server-observed calls", () => {

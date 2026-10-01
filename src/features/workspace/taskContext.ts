@@ -15,6 +15,7 @@ import { qualifyEvidence, qualifyObjectEvidence, type EvidenceQualification } fr
 import { GRS_REFERENCE_IMAGE_LIMIT } from "../../domain/morpho/imageLimits";
 import { buildProjectContinuityContext, type ProjectContinuityContext } from "../../domain/morpho/projectContinuity";
 import { resolveDocumentFragmentSourceAvailability } from "./documentFragments";
+import type { TurnTaskActivity, TurnTaskContract } from "@/shared/turnTaskContract";
 
 export type TaskContextKind = "research" | "general" | "directionPreview" | "visualDevelopment" | "designDefinition" | "conceptDirection" | "comparison";
 
@@ -175,6 +176,8 @@ export type BuildTaskContextInput = {
   explicitObjectIds?: MorphoObjectId[];
   targetDirectionIds?: MorphoObjectId[];
   visualBranchId?: string;
+  includeDefaultReference?: boolean;
+  excludedObjectIds?: readonly string[];
 };
 
 export const TASK_CONTEXT_LIMITS = {
@@ -195,7 +198,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
   const documentObjectIds: MorphoObjectId[] = [];
   const directionIds = new Set(input.targetDirectionIds ?? []);
 
-  const selectedIds = uniqueStrings([...input.selectedObjectIds, ...(input.explicitObjectIds ?? [])]);
+  const selectedIds = uniqueStrings([...input.selectedObjectIds, ...(input.explicitObjectIds ?? [])]).filter((id) => !input.excludedObjectIds?.includes(id));
   for (const objectId of selectedIds) {
     addObjectIfAvailable(workspace, objectIds, skipped, objectId);
     const object = workspace.objects[objectId];
@@ -264,7 +267,9 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
     addRelatedKeyConclusions(workspace, objectIds, directionId);
   }
 
-  const defaultReference = resolveDefaultReference(workspace, input, directionIds);
+  const defaultReference: TaskContextDefaultReference = input.includeDefaultReference === false
+    ? { status: "notIncluded", reason: "Task activity excludes implicit default reference." }
+    : resolveDefaultReference(workspace, input, directionIds);
   if (defaultReference.status === "included") {
     addObjectIfAvailable(workspace, objectIds, skipped, defaultReference.objectId);
     if (!imageObjectIds.includes(defaultReference.objectId)) {
@@ -279,7 +284,7 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
     .filter((revision): revision is ConceptDirectionRevision => Boolean(revision));
   const designDefinitionRevision = getCurrentDesignDefinitionRevision(workspace);
   const visualBranches = collectVisualBranches(workspace, input, imageObjectIds, directionIds);
-  const budgeted = applyObjectBudget(workspace, objectIds, skipped);
+  const budgeted = applyObjectBudget(workspace, objectIds.filter((id) => !input.excludedObjectIds?.includes(id)), skipped);
   const budgetedDocuments = applyDocumentBudget(documentObjectIds, skipped);
   const budgetedImages = applyImageBudget(imageObjectIds, skipped);
   const documentFragmentExtracts = collectDocumentFragmentExtracts(workspace, budgeted.objectIds);
@@ -319,6 +324,43 @@ export function buildTaskContext(workspace: MorphoWorkspace, input: BuildTaskCon
     scopeNote: `本次 ${input.kind} Context 只包含用户选择对象、直接相关的设计定义/方向/结论，以及被明确授权的图片和本地解析资料。`,
     projectContinuity
   };
+}
+
+export function taskActivityContextKind(activity: TurnTaskActivity): TaskContextKind {
+  return activity.kind === "discussion" || activity.kind === "critique" || activity.kind === "historyAndMemory" || activity.kind === "deliveryPreparation"
+    ? "general" : activity.kind;
+}
+
+/** Per-activity P1B projections; the aggregate is read-only discussion input.
+ * Effects always use their activity Context, never this union.
+ */
+export function buildTurnTaskContexts(workspace: MorphoWorkspace, contract: TurnTaskContract): {
+  context: TaskContextResult;
+  activityContexts: Readonly<Record<string, TaskContextResult>>;
+} {
+  const entries = contract.activities.map((activity) => [activity.id, buildTaskContext(workspace, {
+    kind: taskActivityContextKind(activity), draft: activity.instruction,
+    selectedObjectIds: [...activity.sourceObjectIds], excludedObjectIds: activity.excludedObjectIds,
+    includeDefaultReference: activity.includeDefaultReference
+  })] as const);
+  const activityContexts = Object.fromEntries(entries);
+  const primary = entries.find(([id]) => contract.activities.find((activity) => activity.id === id)?.kind === contract.primaryFocus)?.[1] ?? entries[0]![1];
+  if (entries.length === 1) return { context: primary, activityContexts };
+  const contexts = entries.map(([, context]) => context);
+  const byId = <T extends { id: string }>(items: T[]): T[] => [...new Map(items.map((item) => [item.id, item])).values()];
+  const context: TaskContextResult = { ...primary,
+    objectIds: uniqueStrings(contexts.flatMap((context) => context.objectIds)),
+    imageObjectIds: uniqueStrings(contexts.flatMap((context) => context.imageObjectIds)),
+    documentObjectIds: uniqueStrings(contexts.flatMap((context) => context.documentObjectIds)),
+    semanticSummaries: byId(contexts.flatMap((context) => context.semanticSummaries)),
+    documentFragmentExtracts: [...new Map(contexts.flatMap((context) => context.documentFragmentExtracts).map((item) => [item.objectId, item])).values()],
+    proposalDrafts: [...new Map(contexts.flatMap((context) => context.proposalDrafts).map((item) => [item.proposalId, item])).values()],
+    directionRevisions: byId(contexts.flatMap((context) => context.directionRevisions)),
+    visualBranches: byId(contexts.flatMap((context) => context.visualBranches)),
+    sourceSnapshots: captureSourceSnapshots(workspace, uniqueStrings(contexts.flatMap((context) => context.objectIds))),
+    truncated: contexts.some((context) => context.truncated), skipped: contexts.flatMap((context) => context.skipped),
+    scopeNote: "Turn activities have independent scopes. This aggregate is for discussion/reading only; comparison sources never authorize generation or writes." };
+  return { context, activityContexts };
 }
 
 function isHistoryOrientedDraft(draft: string): boolean {

@@ -966,7 +966,7 @@ describe("Morpho agent persona and prompt contract", () => {
           selectedObjectIds: []
         })
       )
-    })).toContain("morpho-agent-v3.7-2026-09-30");
+    })).toContain("morpho-agent-v3.8-2026-10-01");
   });
 
   it("carries the continuous design-partner persona in the stable prompt", () => {

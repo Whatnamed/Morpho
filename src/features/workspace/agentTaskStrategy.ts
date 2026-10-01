@@ -13,32 +13,15 @@ import {
   stripUntrustedInstructionSegments
 } from "@/shared/userInstructionAuthority";
 import { isExplicitComparisonRequest } from "./morphoAgent";
+import type { TurnTaskContract } from "@/shared/turnTaskContract";
+import type { RequiredAgentReadRequirement, RequiredAgentReadToolName } from "@/shared/turnTaskContract";
+export type { RequiredAgentReadRequirement, RequiredAgentReadToolName } from "@/shared/turnTaskContract";
 
 export type AgentTaskStrategy = {
   kind: AgentTaskStrategyKind;
   contextKind: TaskContextKind;
   reason: string;
 };
-
-export type RequiredAgentReadToolName =
-  | "read_project_memory"
-  | "read_stage_record"
-  | "search_project_conversation";
-
-export type RequiredAgentReadRequirement =
-  | {
-      tool: "read_project_memory";
-      requiredKeys: ProjectMemoryKey[];
-    }
-  | {
-      tool: "read_stage_record";
-      requiredStages: StageRecordKey[];
-    }
-  | {
-      tool: "search_project_conversation";
-      requiredMode: "earliest" | "latest" | "keyword";
-      keyword?: string;
-    };
 
 export type AgentReadIntent = {
   history: boolean;
@@ -241,6 +224,7 @@ export function buildRequiredAgentReadReminder(toolNames: readonly RequiredAgent
 }
 
 export function resolveAgentTaskStrategy(input: {
+  taskContract?: TurnTaskContract;
   draft: string;
   taskMode: AiTaskMode;
   workIntent: AiWorkIntent;
@@ -248,6 +232,12 @@ export function resolveAgentTaskStrategy(input: {
   workspace: Pick<MorphoWorkspace, "workingState">;
   hasDeliveryDraftTarget?: boolean;
 }): AgentTaskStrategy {
+  if (input.taskContract) {
+    const kind = input.taskContract.primaryFocus;
+    const activity = input.taskContract.activities.find((candidate) => candidate.kind === kind);
+    return strategy(kind, kind === "discussion" || kind === "historyAndMemory" || kind === "deliveryPreparation" ? "general" : kind,
+      activity?.instruction ?? "Turn Task Contract primary focus");
+  }
   const text = stripUntrustedInstructionSegments(input.draft).trim();
   const selectedDirections = input.selectedObjects.filter((object) => object.type === "conceptDirection");
   const selectedImages = input.selectedObjects.filter((object) => object.type === "image");

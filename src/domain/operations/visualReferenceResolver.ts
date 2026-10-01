@@ -18,6 +18,7 @@ export function resolveVisualReferences(input: {
   selectedSourceObjectIds: readonly string[];
   projectReferenceObjectIds?: readonly string[];
   providerLimit?: number;
+  allowedReferenceObjectIds?: readonly string[];
 }): VisualReferenceResolution {
   const providerLimit = Math.max(0, input.providerLimit ?? GRS_REFERENCE_IMAGE_LIMIT);
   const candidates: CandidateInput[] = [];
@@ -50,6 +51,9 @@ export function resolveVisualReferences(input: {
   const resolvedCandidates: VisualReferenceResolution["candidates"] = candidates
     .sort((left, right) => left.priority - right.priority)
     .map((candidate) => {
+      if (input.allowedReferenceObjectIds && !input.allowedReferenceObjectIds.includes(candidate.objectId)) {
+        return { ...candidate, included: false, omissionReason: "taskScopeExcluded" as const };
+      }
       const object = input.workspace.objects[candidate.objectId];
       if (!object || object.type !== "image" || object.visibility !== "active" || !object.assetId) {
         return { ...candidate, included: false, omissionReason: "unavailable" as const };
