@@ -15,6 +15,7 @@ import type {
   APlusToolCall
 } from "@/shared/agentTurnJournalProtocol";
 import { MAX_AGENT_FUNCTION_CALLS } from "@/shared/agentFunctionCallLimits";
+import { MAX_AGENT_INPUT_IMAGE_COUNT as MAX_IMAGE_COUNT, MAX_AGENT_INPUT_IMAGE_BYTES as MAX_IMAGE_BYTES, MAX_AGENT_TOTAL_INPUT_IMAGE_BYTES as MAX_TOTAL_IMAGE_BYTES, agentInputImageBytes as imageDataBytes } from "@/shared/agentImageInputLimits";
 import {
   canonicalAgentRuntimeMessage,
   isValidCanonicalAgentRuntimeItem,
@@ -45,14 +46,10 @@ import type {
 const MAX_INPUT_ITEMS = 1_024;
 const MAX_CONTENT_PARTS = 64;
 const MAX_TEXT_PART_CHARS = 120_000;
-const MAX_IMAGE_COUNT = 4;
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const MAX_TOTAL_IMAGE_BYTES = 24 * 1024 * 1024;
 const MAX_CONTINUATION_ITEMS = 64;
 const MAX_FUNCTION_ARGUMENT_CHARS = 120_000;
 const MAX_FUNCTION_OUTPUT_CHARS = 120_000;
 const MAX_FUNCTION_ARGUMENT_DEPTH = 12;
-const IMAGE_DATA_URL = /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/;
 const REGISTERED_TOOL_NAMES = new Set(
   buildMorphoAgentTools(true, true).flatMap((tool) =>
     tool.type === "function" ? [tool.name] : []
@@ -511,16 +508,6 @@ function parseMessages(value: readonly unknown[]):
     return failed(`图片最多 ${MAX_IMAGE_COUNT} 张，总大小不得超过 ${MAX_TOTAL_IMAGE_BYTES} bytes。`);
   }
   return { status: "ok", value: messages };
-}
-
-function imageDataBytes(value: string): number | undefined {
-  const match = value.match(IMAGE_DATA_URL);
-  if (!match) {
-    return undefined;
-  }
-  const base64 = match[2]!;
-  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
-  return Math.floor((base64.length * 3) / 4) - padding;
 }
 
 function canonicalJson(value: unknown): string {

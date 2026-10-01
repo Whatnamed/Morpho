@@ -774,7 +774,7 @@ export function rebuildAgentProviderConversation(input: {
 }): APlusAgentProviderRequest {
   if (input.base.taskContract?.readContractVersion !== 1) return structuredClone(input.base);
   const conversation = buildContinuousConversationContext({ workspace: input.workspace, limits: input.limits });
-  const originalUser = input.base.input.filter((message) => message.content.some((part) => "text" in part && part.text.includes("<morpho_input_coverage>")));
+  const originalUser = input.base.input.filter((message) => message.content.some((part) => "text" in part && (part.text.includes("<morpho_input_coverage>") || part.text.startsWith("本次原始参考像素 ") || part.text.startsWith("只读观察 "))));
   const history = conversation.messages.filter((message) => message.id !== input.userMessageId).map<APlusAgentProviderMessage>((message) => ({
     role: message.role, content: [{ type: message.role === "assistant" ? "output_text" : "input_text", text: message.body }]
   }));

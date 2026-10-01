@@ -829,9 +829,16 @@ P2A Turn Task ownership (2026-10-01; accepted implementation `02655e829a72aea7bd
 - Delivery preparation sends the actual section and allowed stable reference snapshots, with bounded
   coverage and subsequent section reads. Draft validation stays bound to that target. This adds no
   stale-draft/apply-baseline, reference-refresh or handoff semantics.
-- Explicit generate-then-compare/critique tasks can read newly created image pixels. Observation uses
-  read-only receipts and at most four observation image messages per request; omitted observations
-  remain unverified. It adds no paid authority, automatic Compare write, adoption or engineering
+- Explicit generate-then-compare/critique tasks can read newly created image pixels. Each fresh
+  continuation rematerializes only scoped source/reference pixels needed by pending generation or
+  later activities, together with authorized observations. Original sources retain request order
+  and take precedence over observation read order. Shared Provider bounds cover the whole request:
+  at most four image parts, 8 MiB per image and 24 MiB total. Images that do not fit are omitted;
+  indivisible contact sheets containing unrelated members are omitted rather than leaking them.
+  Request-local coverage records `requestImageStatus`, `requestStepSequence` and omission reason.
+  Omitted coverage projects to unavailable metadata; historical `delivered` remains historical and
+  cannot satisfy current pixel obligations. Compaction preserves the materialized visual messages;
+  active Recovery bodies remain frozen. Observation adds no paid authority, Compare write, adoption or engineering
   validation. Ordinary generation adds no observation obligation, and completing the authorized
   image count prevents a second batch being submitted as an observation follow-up.
 - `agentTaskFulfillment.ts` evaluates explicit read obligations and actual effect receipts against
@@ -839,6 +846,7 @@ P2A Turn Task ownership (2026-10-01; accepted implementation `02655e829a72aea7bd
   target drafts. It persists `fulfilled / partial / blocked / awaitingUser / notPerformed / unknown`
   separately from Provider/Runtime outcome. Provider prose does not certify a Workspace write;
   unfinished structural obligations produce an honest final notice and keep successful effects.
+  Comparison/critique with omitted scoped source pixels cannot report that visual obligation fulfilled.
   The evaluator does not grade design quality or decide user-owned project state.
 
 Validation and package acceptance live in the Program Map. P3A/P3B execution observation and result

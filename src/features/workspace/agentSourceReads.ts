@@ -98,7 +98,7 @@ export function requirementCovered(requirement: RequiredAgentReadRequirement, re
     receipt.query?.mode === requirement.requiredMode && (!requirement.keyword || receipt.query.keyword === requirement.keyword));
   const matching = usable.filter((receipt) => receipt.kind === requirement.kind && receipt.objectId === requirement.objectId &&
     (!requirement.revisionId || receipt.revisionId === requirement.revisionId) && (!requirement.sectionId || receipt.sectionId === requirement.sectionId));
-  if (requirement.kind === "image") return matching.some((receipt) => receipt.status === "full" && ["pixels", "contactSheet"].includes(receipt.representation ?? ""));
+  if (requirement.kind === "image") return matching.some((receipt) => receipt.status === "full" && receipt.requestImageStatus !== "omitted" && ["pixels", "contactSheet"].includes(receipt.representation ?? ""));
   if (matching.some((receipt) => receipt.status === "full" && requirement.start === undefined && requirement.end === undefined)) return true;
   for (const identity of matching) {
     const ranges = matching.filter((receipt) => (identity.incarnationId ? receipt.incarnationId === identity.incarnationId : receipt.id === identity.id) && receipt.revisionId === identity.revisionId && receipt.fingerprint === identity.fingerprint && receipt.contentHash === identity.contentHash && receipt.assetId === identity.assetId && receipt.range?.total === identity.range?.total).flatMap((receipt) => receipt.range ? [receipt.range] : []).sort((a, b) => a.start - b.start);

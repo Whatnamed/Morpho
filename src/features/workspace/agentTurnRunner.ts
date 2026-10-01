@@ -1,5 +1,6 @@
 import { evaluateAgentTaskFulfillment, taskFulfillmentNotice } from "./agentTaskFulfillment";
 import { requirementCovered } from "./agentSourceReads";
+import { materializeContinuationImages } from "./agentContinuationImages";
 import { advanceRequiredAgentReadState, buildRequiredAgentReadReminder } from "./agentTaskStrategy";
 import { buildTurnTaskContexts, buildProviderTaskContext, buildProviderComparisonTaskContext } from "./taskContext";
 import { buildConversationCompactionPlan } from "@/domain/morpho/conversationCompaction";
@@ -1428,6 +1429,11 @@ async function freshContinuationProviderRequest(session: APlusSession): Promise<
     (session.prepared.activityContexts as Record<string, typeof context>)[id] = context;
   }
   const state = session.prepared.runtimeState;
+  const stepSequence = (session.coordinator.getServerSnapshot()?.latestStepSequence ?? 0) + 1;
+  const visual = base.taskContract.readContractVersion === 1 ? materializeContinuationImages({ base,
+    observations: state.observationMessages, reads: state.readReceipts, effects: state.effectReceipts,
+    workspace, contract: base.taskContract, stepSequence }) : undefined;
+  if (visual) state.readReceipts = visual.reads;
   const anticipated = { ...state.requiredReadState, completedTools: new Set(state.requiredReadState.completedTools) };
   const nextReceipts = state.readReceipts.map((receipt) => ({ ...receipt, delivered: true }));
   for (const tool of anticipated.requiredTools) if (anticipated.requirements.filter((requirement) => requirement.tool === tool).every((requirement) => requirementCovered(requirement, nextReceipts, workspace))) anticipated.completedTools.add(tool);
@@ -1435,12 +1441,10 @@ async function freshContinuationProviderRequest(session: APlusSession): Promise<
   state.requiredReadState = { ...advanced.state, completedTools: state.requiredReadState.completedTools };
   const reminder = advanced.action === "remind" ? `${buildRequiredAgentReadReminder(advanced.missingTools)}\n${JSON.stringify(base.taskContract.requiredReads.filter((requirement) => !requirementCovered(requirement, state.readReceipts, workspace)))}` : "";
   const fresh = { role: "user" as const, content: [{ type: "input_text" as const, text: `<morpho_fresh_context>\n${JSON.stringify(Object.entries(contexts.activityContexts).map(([id, context]) => ({ activityId: id, context: context.kind === "comparison" ? buildProviderComparisonTaskContext(context) : buildProviderTaskContext(context) })))}\n${reminder}\n</morpho_fresh_context>` }] };
-  const retainedInput = base.input.filter((message) => !message.content.some((part) => "text" in part && (part.text.startsWith("<morpho_fresh_context>") || part.text.startsWith("只读观察 "))))
-    .map((message) => state.observationMessages.length ? { ...message, content: message.content.filter((part) => part.type !== "input_image") } : message);
-  const request = { ...base, input: [...retainedInput, fresh, ...state.observationMessages.slice(-4)] };
+  const request = { ...base, input: [...(visual?.input ?? base.input), fresh] };
   // Persist the newly built body before submission. Coordinator owns exact
   // replay after submission; recovery never reconstructs that active body.
-  session.recovery.updateMetadata((metadata) => ({ ...metadata, runtime: { ...metadata.runtime, pendingReadStepSequence: (session.coordinator.getServerSnapshot()?.latestStepSequence ?? 0) + 1, pendingReadIds: state.readReceipts.filter((receipt) => !receipt.delivered && (receipt.kind !== "image" || state.observationMessages.slice(-4).some((message) => message.content.some((part) => "text" in part && part.text.startsWith(`只读观察 ${receipt.objectId}；`))))).map((receipt) => receipt.id), providerBaseRequest: { ...request, continuationItems: undefined }, facts: snapshotAgentTurnRuntimeFacts(state) } }));
+  session.recovery.updateMetadata((metadata) => ({ ...metadata, runtime: { ...metadata.runtime, pendingReadStepSequence: stepSequence, pendingReadIds: state.readReceipts.filter((receipt) => !receipt.delivered && (receipt.kind !== "image" || receipt.requestImageStatus === "materialized")).map((receipt) => receipt.id), providerBaseRequest: { ...request, continuationItems: undefined }, facts: snapshotAgentTurnRuntimeFacts(state) } }));
   if (!await session.recovery.flush()) throw new Error("新 continuation 读取回执无法持久化。");
   return request;
 }

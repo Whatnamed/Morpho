@@ -18,6 +18,10 @@ export type AgentReadReceipt = {
   extractionTruncated?: boolean;
   /** Set only after an exact request carrying this material is observed by the Runner. */
   delivered: boolean;
+  /** Historical delivery is separate from pixels present in the latest fresh request. */
+  requestImageStatus?: "materialized" | "omitted";
+  requestStepSequence?: number;
+  imageOmissionReason?: "scope" | "imageCount" | "imageBytes" | "unavailable";
 };
 
 export type AgentEffectReceipt = {
@@ -52,6 +56,9 @@ export function isAgentReadReceipt(value: unknown): value is AgentReadReceipt {
     ["object", "document", "image", "delivery", "memory", "stage", "conversation"].includes(String(value.kind)) &&
     ["full", "summary", "partial", "missing", "unavailable", "stale"].includes(String(value.status)) &&
     typeof value.delivered === "boolean" &&
+    (value.requestImageStatus === undefined || ["materialized", "omitted"].includes(String(value.requestImageStatus))) &&
+    (value.requestStepSequence === undefined || integer(value.requestStepSequence)) &&
+    (value.imageOmissionReason === undefined || ["scope", "imageCount", "imageBytes", "unavailable"].includes(String(value.imageOmissionReason))) &&
     (value.representation === undefined || ["text", "metadata", "pixels", "contactSheet"].includes(String(value.representation))) &&
     (value.extractionTruncated === undefined || typeof value.extractionTruncated === "boolean") &&
     (value.keys === undefined || Array.isArray(value.keys) && value.keys.length <= 64 && value.keys.every(text)) &&

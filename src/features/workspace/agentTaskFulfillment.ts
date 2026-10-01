@@ -17,6 +17,14 @@ export function evaluateAgentTaskFulfillment(input: {
   });
   for (const activity of contract.activities) {
     const relevant = effects.filter((receipt) => receipt.activityId === activity.id);
+    if (activity.observeGeneratedImages || activity.kind === "comparison" || activity.kind === "critique") {
+      const sourceImages = [...new Set([...activity.sourceObjectIds, ...activity.referenceObjectIds, ...activity.targetObjectIds])]
+        .filter((objectId) => !activity.excludedObjectIds.includes(objectId) && reads.some((receipt) => receipt.kind === "image" && receipt.objectId === objectId && receipt.requestImageStatus !== undefined));
+      if (sourceImages.length) {
+        const covered = sourceImages.filter((objectId) => requirementCovered({ tool: "read_workspace_source", kind: "image", objectId }, reads, workspace));
+        obligations.push({ id: `${activity.id}:sourcePixels`, status: covered.length === sourceImages.length ? "fulfilled" : covered.length ? "partial" : "blocked", ...(covered.length === sourceImages.length ? {} : { reason: "本次视觉判断所需的原图像素未完整进入请求。" }) });
+      }
+    }
     for (const output of activity.expectedOutputs) {
       const id = `${activity.id}:${output}`;
       if (activity.scopeBlockedReason) { obligations.push({ id, status: "blocked", reason: activity.scopeBlockedReason }); continue; }

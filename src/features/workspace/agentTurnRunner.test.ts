@@ -1852,6 +1852,54 @@ function hostWithGeneratedImages(fixture: ReturnType<typeof createFixture>, coun
 
 
 describe("P2B request materialization and Recovery", () => {
+  it.each([1, 3])("keeps %i original scoped images beside observed results and freezes the submitted visual body", async (sourceCount) => {
+    const fixture = createFixture([
+      { status: "awaitingNextRequest", toolCalls: [visualToolCall("images")] },
+      { status: "awaitingNextRequest", toolCalls: [{ callId: "observe-0", name: "read_workspace_source", argumentsText: JSON.stringify({ kind: "image", objectId: "p2b-generated-0" }) }] },
+      { status: "awaitingNextRequest", toolCalls: [{ callId: "observe-1", name: "read_workspace_source", argumentsText: JSON.stringify({ kind: "image", objectId: "p2b-generated-1" }) }] },
+      { status: "providerRunning", outputText: "正在对照原图评价" }
+    ]);
+    const workspace = fixture.fake.getWorkspace();
+    const image = Object.values(workspace.objects).find((object) => object.type === "image")!;
+    if (image.type !== "image") throw new Error("image");
+    const sources = Array.from({ length: sourceCount }, (_, index) => ({ ...image, id: `source-${index}`, title: String.fromCharCode(65 + index), incarnationId: `source-identity-${index}` }));
+    sources.forEach((source) => { workspace.objects[source.id] = source; });
+    workspace.workingState.currentDefaultReferenceId = undefined;
+    Object.values(workspace.objects).forEach((object) => { if (object.type === "image") object.isDefaultReference = false; });
+    fixture.input.selectedObjects = sources; fixture.input.selectedObjectIds = sources.map((source) => source.id);
+    fixture.input.taskMode = fixture.input.recommendedTaskMode = "imageGeneration";
+    const names = sources.map((source) => source.title).join("+");
+    fixture.input.draft = `基于 ${names} 生成两张；然后对照 ${names} 评价新生成的图`;
+    vi.spyOn(imageAttachments, "collectAiProviderImageAttachments").mockImplementation(async (_workspace, objectIds) => ({
+      attachments: [...objectIds].map((objectId) => ({ id: objectId, kind: "image", objectId, mimeType: "image/png", dataUrl: `data:image/png;base64,${Buffer.from(objectId).toString("base64")}`, representation: "single", status: "ready" })),
+      entries: [...objectIds].map((objectId) => ({ objectId, representation: "single", attachmentId: objectId, status: "ready" })), skippedObjectIds: []
+    }));
+    const host = hostWithGeneratedImages(fixture, 2);
+    const generate = vi.spyOn(host, "executeVisualGenerationPlan");
+    await runMorphoAgentTurn(fixture.input, host, fixture.dependencies);
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(fixture.coordinatorHost.executions).toHaveLength(4);
+    const first = fixture.coordinatorHost.executions[0]!.providerRequest;
+    expect(first.input.flatMap((message) => message.content).filter((part) => part.type === "input_image")).toHaveLength(sourceCount);
+    const final = fixture.coordinatorHost.executions[3]!.providerRequest;
+    expect(parseAPlusAgentProviderRequest(final).status).toBe("ok");
+    const images = final.input.flatMap((message) => message.content).flatMap((part) => part.type === "input_image" ? [part.image_url] : []);
+    expect(images).toHaveLength(Math.min(sourceCount + 2, 4));
+    sources.forEach((source) => expect(images).toContain(`data:image/png;base64,${Buffer.from(source.id).toString("base64")}`));
+    const coveragePart = final.input.flatMap((message) => message.content).find((part) => "text" in part && part.text.startsWith("<morpho_input_coverage>"));
+    if (!coveragePart || !("text" in coveragePart)) throw new Error("coverage");
+    const coverage = JSON.parse(coveragePart.text.split("\n")[1]!) as import("@/shared/agentReadCoverage").AgentReadReceipt[];
+    expect(coverage.filter((receipt) => receipt.requestImageStatus === "materialized")).toHaveLength(images.length);
+    if (sourceCount === 3) expect(coverage).toContainEqual(expect.objectContaining({ objectId: "p2b-generated-1", requestImageStatus: "omitted", imageOmissionReason: "imageCount", delivered: false, status: "unavailable", representation: "metadata" }));
+    const frozen = structuredClone(fixture.store.record!.coordinator.activeRequest);
+    sources[0]!.assetId = "changed-after-submission";
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, host, fixture.dependencies)).toBe("pending");
+    expect(fixture.store.record!.coordinator.activeRequest).toEqual(frozen);
+    expect(fixture.coordinatorHost.executions).toHaveLength(4);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
   it("lets the Provider choose Delivery references from its actual section input", async () => {
     const fixture = createFixture([]);
     const delivery = Object.values(fixture.fake.getWorkspace().objects).find((object) => object.type === "delivery")!;
