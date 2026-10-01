@@ -93,6 +93,8 @@ export type ExecuteAgentVisualGenerationPlan = (input: {
     actionId: string;
   }>;
   restoredExternalAction?: Readonly<APlusExternalActionDescriptor & { callId?: string }>;
+  /** Legacy recovery may recover recorded results, never submit an unrecorded child. */
+  recoverExactExternalActionOnly?: boolean;
   onExternalActionIntent?: (input: Readonly<{
     actionId: string;
     action: APlusExternalActionDescriptor;

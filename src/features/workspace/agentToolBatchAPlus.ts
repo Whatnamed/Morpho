@@ -11,6 +11,9 @@ import {
 import { buildAgentToolActivityDescriptor } from "./agentToolActivity";
 import {
   isAPlusExternalActionRunningError,
+  hashAPlusExternalActionBody,
+  buildAPlusImageBatchIdentity,
+  buildAPlusImageChildActionId,
   type APlusExternalActionDescriptor
 } from "./agentExternalActionClientAPlus";
 import type { AgentTurnCoordinator, AgentTurnCoordinatorActionResult } from "./agentTurnCoordinator";
@@ -28,6 +31,7 @@ import {
 import { getAgentToolAuthorizationBlockReason } from "./agentToolAuthority";
 import { getTurnActivityForTool } from "@/shared/turnTaskContract";
 import { buildProviderComparisonTaskContext, buildProviderTaskContext } from "./taskContext";
+import { mergeAgentSearchCitations, webSearchSourcesToCitations } from "./agentTurnLimits";
 
 export type APlusExternalRequestIdentity = Readonly<{
   serverTurnId: string;
@@ -110,6 +114,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
     argumentsText: call.argumentsText
   }));
   const parsedCalls = parseMorphoAgentToolCallBatch(calls);
+  const legacyRecovery = !input.prepared.providerRequest.taskContract;
   if (input.restoredPendingExternalAction && !hasMatchingExternalActionCall(
     input.restoredPendingExternalAction,
     parsedCalls
@@ -124,7 +129,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
   const visualSelectedObjects = visualActivity ? visualActivity.sourceObjectIds.map((id) => input.host.readWorkspace().objects[id]).filter((object) => Boolean(object)) : input.turnInput.selectedObjects;
   const selectedDirectionCount = visualSelectedObjects
     .filter((object) => object.type === "conceptDirection").length;
-  const validVisualCalls = parsedCalls.flatMap((entry) =>
+  const validVisualCalls = legacyRecovery ? [] : parsedCalls.flatMap((entry) =>
     entry.status === "valid" && entry.parsed.name === "generate_visuals"
       ? [{
           callId: entry.call.callId,
@@ -170,6 +175,8 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
 
   for (const entry of parsedCalls) {
     const callId = entry.call.callId;
+    const recoverExactAction = legacyRecovery && input.restoredPendingExternalAction &&
+      hasMatchingExternalActionCall(input.restoredPendingExternalAction, [entry]);
     const existing = existingResults.find((result) => result.callId === callId);
     if (existing) {
       terminalResults.push(existing);
@@ -204,7 +211,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
     }
     let terminal: ToolCallTerminalResult;
     let providerResult: unknown;
-    if (stopRemaining || input.prepared.controller.signal.aborted) {
+    if ((stopRemaining && !recoverExactAction) || input.prepared.controller.signal.aborted) {
       terminal = { status: "cancelled", callId, reason: "当前 Tool Batch 已停止继续执行。" };
       providerResult = { status: "cancelled", reason: terminal.reason };
     } else if (entry.status === "invalid") {
@@ -220,7 +227,9 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
       };
       providerResult = { status: "failed", code: "invalid_tool_arguments", error: entry.error };
     } else {
-      const authorityBlockReason = getAgentToolAuthorizationBlockReason(input.prepared.authorityProfile, entry.parsed, input.host.readWorkspace());
+      // An exact persisted action is an execution fact, not a new effect grant.
+      // Keep this path outside the normal executor/authority profile.
+      const authorityBlockReason = recoverExactAction ? undefined : getAgentToolAuthorizationBlockReason(input.prepared.authorityProfile, entry.parsed, input.host.readWorkspace());
       if (authorityBlockReason) {
         terminal = {
           status: "failed",
@@ -266,7 +275,7 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
           value: undefined
         };
       });
-      const executionPolicy = resolveAgentToolExecutionPolicy({
+      const executionPolicy = recoverExactAction ? "execute" : resolveAgentToolExecutionPolicy({
         name: entry.parsed.name,
         mode: input.turnInput.agentTurnMode,
         explicitUserCommand:
@@ -357,7 +366,9 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
           );
         }
         try {
-          const result = await executeAgentTool({ ...executorInput, parsed: entry.parsed });
+          const result = recoverExactAction
+            ? await recoverLegacyExternalAction(input, input.restoredPendingExternalAction!, callId)
+            : await executeAgentTool({ ...executorInput, parsed: entry.parsed });
           providerResult = result;
           const returnedPending = isRecord(result) && result.status === "pendingConfirmation";
           if (returnedPending || capturedConfirmation.value) {
@@ -540,6 +551,44 @@ function recoveredProviderResult(result: ToolCallTerminalResult): unknown {
     case "pendingConfirmation":
       return { status: "pendingConfirmation", recovered: true };
   }
+}
+
+async function recoverLegacyExternalAction(
+  input: Parameters<typeof executeAgentToolBatchAPlus>[0],
+  action: Readonly<APlusExternalActionDescriptor & { callId?: string }>,
+  callId: string
+): Promise<unknown> {
+  const body: unknown = JSON.parse(action.requestBody);
+  if (await hashAPlusExternalActionBody(action.requestBody) !== action.requestHash || !isRecord(body) ||
+    body.actionId !== action.actionId || body.localProjectId !== input.externalRequest.localProjectId ||
+    body.requestId !== input.externalRequest.requestId || body.stepSequence !== input.externalRequest.stepSequence ||
+    (action.actionKind === "image" && body.claimCallId !== callId)) {
+    throw new AgentToolBatchAPlusError("external_action_request_payload_unavailable", "旧 Recovery 的 exact Action 身份或请求校验失败，不能构造替代请求。");
+  }
+  if (action.actionKind === "webSearch") {
+    const result = await input.requestWebSearch({ identity: input.externalRequest, actionId: action.actionId,
+      queries: [], preparedAction: action, signal: input.prepared.controller.signal });
+    const citations = webSearchSourcesToCitations(result.sources);
+    input.prepared.runtimeState.collectedCitations = mergeAgentSearchCitations(input.prepared.runtimeState.collectedCitations, citations);
+    input.prepared.runtimeState.hasWebSearchEvidence = true;
+    return { ...result, citations, recovered: true, provenance: { kind: "providerExternalEvidence", grantsAuthority: false } };
+  }
+  const workspace = input.host.readWorkspace();
+  const identity = await buildAPlusImageBatchIdentity(input.externalRequest.serverTurnId, callId);
+  const operation = workspace.operations[identity.operationId];
+  const plan = operation?.imageGeneration?.plan;
+  const childIds = plan ? await Promise.all(plan.items.map((item) => buildAPlusImageChildActionId(callId, item.id))) : [];
+  if (!plan || !childIds.includes(action.actionId)) {
+    throw new AgentToolBatchAPlusError("external_action_request_payload_unavailable", "旧 Image Recovery 缺少匹配 exact Action 的原始 Operation Plan，不能重新编译。");
+  }
+  const result = await input.host.executeVisualGenerationPlan({ workspaceSnapshot: workspace,
+    draft: operation.userInput, plan, sourceObjectIds: operation.inputSnapshot.selectedObjectIds,
+    selectedDirectionIds: [...new Set(plan.items.flatMap((item) => item.targetDirectionId ? [item.targetDirectionId] : []))],
+    selectedImageIds: operation.inputSnapshot.selectedObjectIds.filter((id) => workspace.objects[id]?.type === "image"),
+    requestedPreviewCount: operation.imageGeneration?.requestedPreviewCount,
+    signal: input.prepared.controller.signal, aPlusExternalAction: { ...input.externalRequest, actionId: callId },
+    restoredExternalAction: action, recoverExactExternalActionOnly: true });
+  return { status: "recovered", objectIds: result.createdObjectIds, failedItems: result.failedItems };
 }
 
 function sameOrderedIds(left: readonly string[], right: readonly string[]): boolean {

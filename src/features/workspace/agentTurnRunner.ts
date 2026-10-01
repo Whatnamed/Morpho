@@ -789,6 +789,7 @@ async function driveSession(session: APlusSession): Promise<void> {
         requireCoordinatorOk(session.coordinator.finalizeTurn());
         continue;
       }
+      if (await stopUnsupportedLegacyContinuation(session)) return;
       await maybeCompact(session, "preContinuation");
       const afterCompaction = session.coordinator.getLifecycleSnapshot();
       if (!afterCompaction || afterCompaction.phase === "terminal") continue;
@@ -809,6 +810,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       lifecycle.providerOutput.kind === "consumed" &&
       session.recovery.metadata.runtime.continuationItems.length > 0
     ) {
+      if (await stopUnsupportedLegacyContinuation(session)) return;
       await maybeCompact(session, "preContinuation");
       if (session.coordinator.getLifecycleSnapshot()?.phase === "compacting") {
         session.host.ui.setStreaming(false);
@@ -825,6 +827,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       lifecycle.phase === "requestingProvider" &&
       lifecycle.serverExecutionStatus === "created"
     ) {
+      if (await stopUnsupportedLegacyContinuation(session)) return;
       const started = await session.coordinator.startInitialRequest(
         session.recovery.metadata.runtime.providerBaseRequest
       );
@@ -849,6 +852,17 @@ async function driveSession(session: APlusSession): Promise<void> {
   });
 }
 
+async function stopUnsupportedLegacyContinuation(session: APlusSession): Promise<boolean> {
+  const request = session.recovery.metadata.runtime.providerBaseRequest;
+  if (request.taskContract || request.promptContractVersion === MORPHO_AGENT_PROMPT_CONTRACT_VERSION) return false;
+  const lifecycle = session.coordinator.getLifecycleSnapshot();
+  if (!lifecycle) return false;
+  await terminateDeniedSession(session, { status: "denied", code: "legacy_prompt_contract_continuation_unavailable",
+    error: "旧回合的 Prompt Contract 已不支持继续。已保留可恢复的在途操作结果；本轮未重建任务范围或增加授权，请重新发起后续任务。",
+    recoverable: false, lifecycle });
+  return true;
+}
+
 async function reconcileRequestResult(
   session: APlusSession,
   result: AgentTurnCoordinatorActionResult,
@@ -858,6 +872,7 @@ async function reconcileRequestResult(
   await session.recovery.flush();
   if (result.status === "ok") return "usable";
   if (result.code === "request_not_observed" && result.recoverable && allowExactRetry) {
+    if (await stopUnsupportedLegacyContinuation(session)) return "failed";
     const retried = await session.coordinator.retryActiveRequest();
     await session.recovery.flush();
     if (retried.status === "ok") return "usable";

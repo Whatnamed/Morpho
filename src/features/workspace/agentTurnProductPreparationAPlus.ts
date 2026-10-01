@@ -537,20 +537,17 @@ export function restorePreparedAgentTurnProductAPlus(
     imageGenerationModelId: runtime.input.imageGenerationModelId,
     readConversationTokenLimits: () => runtime.input.conversationTokenLimits
   };
-  const restoredContract = runtime.providerBaseRequest.taskContract ?? resolveTurnTaskContract({
-    workspace, draft: turnInput.draft, executionTaskMode: runtime.executionTaskMode, directionPreviewCount: turnInput.directionPreviewCount,
-    executionTaskModeSource: runtime.executionTaskModeSource, executionWorkIntent: runtime.executionWorkIntent,
-    executionWorkIntentSource: runtime.executionWorkIntentSource, selectedObjects,
-    hasDeliveryDraftTarget: Boolean(turnInput.pendingDeliveryDraftTarget),
-    hasDocumentExtracts: runtime.documentExtractObjectIds.length > 0, hasDocumentFragments: false,
-    hasRequiredMemoryUpdates: resolveRequiredAgentMemoryUpdates(turnInput.draft).length > 0,
-    allowStructuredComparison: runtime.allowStructuredComparison
-  });
-  // Legacy recovery has no frozen effect scopes. Preserve its exact request,
-  // but align with the Server's read-only compatibility tool set; never mint
-  // new write/paid authority from today's Workspace while restoring it.
-  const taskContract = runtime.providerBaseRequest.taskContract ? restoredContract : {
-    ...restoredContract, activities: restoredContract.activities.map((activity) => ({ ...activity, effectGrants: [] }))
+  // Legacy records contain no task scope. Do not reinterpret their draft or
+  // today's selection as historical intent; reads use the recorded selection.
+  // Exact pending external actions are recovered separately as execution facts.
+  const taskContract: TurnTaskContract = runtime.providerBaseRequest.taskContract ?? {
+    version: 1, userGoal: turnInput.draft, primaryFocus: "discussion",
+    execution: { taskMode: runtime.executionTaskMode, taskModeSource: runtime.executionTaskModeSource,
+      workIntent: runtime.executionWorkIntent, workIntentSource: runtime.executionWorkIntentSource },
+    completionConditions: [], requiredReads: [],
+    activities: [{ id: "legacy-read-context", kind: "discussion", instruction: "Legacy Recovery: recorded selection for reading only; task scope unavailable.",
+      targetObjectIds: [], sourceObjectIds: runtime.input.selectedObjectIds, referenceObjectIds: [], excludedObjectIds: [],
+      includeDefaultReference: false, requiredFacts: [], effectGrants: [], expectedOutputs: [] }]
   };
   const { context, activityContexts } = buildTurnTaskContexts(workspace, taskContract);
   context.sourceSnapshots = runtime.sourceSnapshots?.map((snapshot) => ({ ...snapshot })) ?? context.objectIds.map((objectId) => ({ objectId, objectType: "unknown", visibility: "unknown", semanticFingerprint: "unknown" }));

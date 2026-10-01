@@ -296,6 +296,21 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 
 实际推进后按 ID 拆成独立行，保留 early slice 的 accepted commit。建议状态限于 `not_started / planning / ready / implementing / validating / accepted / accepted_with_limits / blocked / deferred`。`accepted_with_limits` 必须列出不影响该包承诺的剩余限制；关键证据缺失不允许伪装为有限验收。
 
+P2A 有限复审修复（2026-10-01；从 `9336cc0` 继续，仍为 `validating`）：
+`402f50a185504dee92aa235703c035998b43f332` 修复 visual activity clause ownership；comparison 的
+“只针对 A+B”以及 exclusion/default-reference 限制不再污染独立视觉 scope。
+Legacy Recovery 不从旧 draft/current Workspace 重建 effect grants；已持久化 exact web/image
+Action 按原 call/action identity、request body/hash 恢复，Image 使用原 Operation Plan，禁止新 child。
+旧 Prompt Contract 可完成已提交结果观察/恢复，但新请求、continuation、未观察到的 Text retry
+在不支持旧版本时明确结束兼容恢复，不改写 version 或伪造旧 task scope。
+关闭证据：新增回归在修复前代码上 7 项失败；修复后 targeted 6 文件/126 项及最终 Runner 50 项通过；
+最终全量 unit 225 文件/2250 项、typecheck、lint、production build、Chromium 7 项及 diff check 通过。
+Chromium 覆盖原代表路径和“只针对 A+B 比较；只继续 A 生成两张”的 UI/Runner/视觉落盘/reload；
+真实 Runner Recovery 回归覆盖 contract-less 已提交文本完成、exact Search running 观察与结果恢复、
+exact Image 原计划/原请求恢复且不读取当前参考像素，以及新 generate/search/write/child 拒绝。
+外部 Provider/Journal 接口继续模拟；无 paid 调用、生产 Journal 或新 execution-observation 架构验证。
+P2B/P3A 未开始，未 accepted、未 merge main。Recovery 修复 commit 以本段所在 Git commit 为准。
+
 P1B-1 网页 Chat 复审修复（2026-10-01，`85b2636de632c609bc3eb2e13d27495221f5790b`）：
 新增创建边界的 object incarnation，Source/EvidenceBasis/Decision/Proposal 修改目标及 Fragment 父文件按身份绑定；
 真实 `capture → delete → 同 ID 同内容 recreate` 回归证明旧 Proposal 不自动适用、旧 evidence 不恢复 supported、旧 Decision 不恢复 current。

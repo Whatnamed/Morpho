@@ -1255,3 +1255,11 @@ schema migration. Preserve the exact contract across continuation and Recovery. 
 without frozen scopes retain reads only. Extract the existing tool and stable Prompt contracts to
 shared modules rather than moving the Runtime or adding a workflow/planner. P2B owns read/input/
 execution fulfillment; a successful Provider/Turn is still not proof of complete task fulfillment.
+
+P2A review fix: visual scope derives only from owned activity clauses. Legacy Recovery keeps a
+read-only recorded-selection context without reconstructing historical intent. Exact persisted
+web/image external actions remain recoverable through the existing Journal/visual execution path;
+the exception is bounded to matching identity, body/hash and saved Image Operation Plan, with no
+new child submission. Unsupported old Prompt Contracts stop before a new Provider request with an
+explicit compatibility notice, preserving already recovered effects rather than upgrading or
+reinterpreting the old task. No new execution-observation architecture or P2B fulfillment is added.

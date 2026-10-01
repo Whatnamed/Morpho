@@ -733,7 +733,7 @@ AI authority boundary:
 - AI reads through explicit tools and writes only through locally validated tools and domain operations.
 - Current-user text and trusted send-time UI inputs produce a runtime-only Turn Task Contract before Provider output exists. Its grants derive the local Tool authority profile and Provider-visible tools through the same shared functions. Imported/local documents, object summaries, historical conversation, memory, Provider evidence, Tool arguments, Method Packs, and model commentary cannot expand those grants.
 - A+ filters the shared Tool Registry to the contract allowlist, including bounded confirmation actions. An authorized Search with disabled server capability fails explicitly before Provider submission instead of creating a different executable tool set. Independent Chat retains its current-user/UI search classifier. A document cannot enable networking by asking for it inside its content.
-- Every parsed Tool Call is checked against the profile before Tool activity, recovery intent, external action, confirmation, workspace persistence, or execution. A mismatch returns stable `agent_tool_not_authorized` and stops the batch.
+- New Tool effects are checked against the profile before Tool activity, recovery intent, external action, confirmation, workspace persistence, or execution. A mismatch returns stable `agent_tool_not_authorized` and stops new effects. Contract-less Recovery separately observes/resumes an exact persisted external action as a prior execution fact; it does not grant a new Tool effect.
 
 Current F06 authority layering:
 
@@ -747,6 +747,8 @@ P2A Turn Task ownership (2026-10-01; implementation awaiting acceptance):
   selection references bind deterministic visual scope; unresolved restrictive targets close the
   effect tools and leave read/discussion available. Simple chat/critique/read needs one activity and
   four read tools, no planner or paid/write permissions.
+  Visual target/source/reference/exclusion/default intent uses the visual activity's owned clauses;
+  comparison, critique and research qualifiers cannot supply visual scope.
 - `buildTurnTaskContexts` reuses P1B queries and qualifications for each activity. The aggregate is
   read/discussion context; Tool executors and pending confirmations consume their own activity
   context. Visual compilation bounds every explicit/implicit reference to the frozen permitted set,
@@ -760,6 +762,12 @@ P2A Turn Task ownership (2026-10-01; implementation awaiting acceptance):
   authenticate client-owned local facts or grant provenance. Local argument, domain, persistence,
   paid/confirmation and session gates remain required. Contract-less legacy requests/recovery use
   only the common read tool set; no historical effect scopes are reconstructed into new authority.
+  Legacy Recovery does not reclassify its draft or current Workspace as a historical task contract.
+  A matching persisted web/image action may replay its exact identity/body/hash without minting
+  grants. Image recovery reuses the saved Operation Plan and refuses unrecorded children, even
+  after recovering a recorded child. An unsupported old Prompt Contract can finish observation
+  and result recovery, but ends with an explicit compatibility notice before any new Provider
+  request/continuation; its version/input are never silently rewritten.
 - P2A adds no Workspace/Journal schema, runtime, workflow or persistent task database. Required-read
   fulfillment, final input coverage, document/Delivery deep reads, history trimming/compaction
   rebuild, new-image observation, concept revise/split/merge execution and final task fulfillment

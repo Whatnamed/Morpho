@@ -43,6 +43,8 @@ describe("A+ local Recovery Store", () => {
     expect(restored.prepared.providerRequest).toEqual(original.providerBaseRequest);
     const legacy = restorePreparedAgentTurnProductAPlus({ ...original, input: runtime.input }, host);
     expect(legacy.prepared.context.sourceSnapshots?.[0]).toMatchObject({ objectId: "source", semanticFingerprint: "unknown" });
+    expect(legacy.prepared.taskContract.activities).toMatchObject([{ kind: "discussion", targetObjectIds: [], effectGrants: [], expectedOutputs: [] }]);
+    expect(legacy.prepared.authorityProfile.allowedTools).toEqual(["read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation"]);
   });
   it("preserves frozen proposal source dependencies across save/load while keeping legacy runtimes readable", async () => {
     const fixture = createFixture();

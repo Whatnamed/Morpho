@@ -302,6 +302,9 @@ async function prepareVisualGenerationExecution(
       throw new Error("A+ 图像 Operation ID 与现有非图像 Operation 冲突。");
     }
     const existingPlan = existingOperation?.imageGeneration?.plan;
+    if (input.recoverExactExternalActionOnly && (!input.restoredExternalAction || !existingPlan)) {
+      throw aPlusExternalActionPayloadError("旧 Image Recovery 缺少已持久化的 Action 或原始 Operation Plan，不能重建生成任务。");
+    }
     if (existingPlan && JSON.stringify(existingPlan) !== JSON.stringify(validatedPlan.plan)) {
       throw new Error("A+ 图像 Operation 的恢复计划与原计划不一致。");
     }
@@ -414,7 +417,7 @@ async function executeVisualGenerationItem(
     const restoredAction = context.externalAction && aPlusActionId
       ? context.restoredActionCursor.match(context.externalAction.actionId, aPlusActionId)
       : undefined;
-    if (context.restoredActionCursor.hasPending() && !restoredAction) {
+    if ((context.restoredActionCursor.hasPending() || input.recoverExactExternalActionOnly) && !restoredAction) {
       throw aPlusExternalActionPayloadError(
         "A+ Image 的持久化 Action 不属于当前恢复的 Image 项，不能重新构造请求。"
       );

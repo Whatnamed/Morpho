@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeWorkspaceVisualGenerationPlan } from "./workspaceVisualGenerationExecution";
 import { resolveGenerationSettings } from "./imageGenerationSettings";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import { getTurnAllowedTools } from "@/shared/turnTaskContract";
 import { buildAPlusAgentProviderContract, parseAPlusAgentProviderRequest } from "@/server/ai/agentTurnProviderRequest";
 import type { ImageObject } from "@/domain/morpho/types";
@@ -46,6 +47,124 @@ afterEach(() => {
 });
 
 describe("A+ Agent turn runner", () => {
+  it("does not retry an unobserved legacy Text request through the current-only server parser", async () => {
+    const fixture = createFixture([{ status: "transportFailure" }]);
+    fixture.coordinatorHost.queryError = new Error("Journal temporarily unavailable");
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    makeLegacyRecovery(fixture);
+    fixture.coordinatorHost.queryError = undefined;
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, fixture.host, fixture.dependencies)).toBe("failed");
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(latestAssistant(fixture.fake.getWorkspace())?.body).toContain("Prompt Contract 已不支持继续");
+  });
+  it("observes a contract-less v3.7 Provider completion without submitting a new request", async () => {
+    const fixture = createFixture([{ status: "providerRunning", outputText: "旧回合的已提交结果。" }]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    makeLegacyRecovery(fixture);
+    expect(parseAPlusAgentProviderRequest(fixture.store.record!.metadata.runtime.providerBaseRequest).status).toBe("failed");
+    fixture.coordinatorHost.setJournalStatus("externallyCompleted");
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, fixture.host, fixture.dependencies)).toBe("recovered");
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(latestAssistant(fixture.fake.getWorkspace())?.body).toContain("旧回合的已提交结果");
+    expect(fixture.store.record).toBeUndefined();
+  });
+
+  it.each(["oldPrompt", "currentPrompt", "newEffects"] as const)("recovers only the exact legacy Search action: %s", async (variant) => {
+    const fixture = createFixture([{ status: "awaitingNextRequest", toolCalls: [searchToolCall("legacy-search")] },
+      variant === "newEffects" ? { status: "awaitingNextRequest", toolCalls: [researchToolCall("new-write"), visualToolCall("new-image"), searchToolCall("new-search")] } :
+      { status: "externallyCompleted", outputText: "只读兼容恢复。" },
+      { status: "externallyCompleted", outputText: "已拒绝所有新效果。" }]);
+    fixture.input.draft = "请联网搜索当前资料。";
+    let running = true;
+    const bodies: string[] = [];
+    fixture.fake.setFetchRoute(`/api/ai/agent/turns/${TURN_ID}/actions/web-search`, async (request) => {
+      bodies.push(await request.clone().text());
+      return running ? Response.json({ action: { status: "running" } }, { status: 202 }) :
+        Response.json({ replayed: true, sources: [{ title: "Recovered", url: "https://example.com/exact" }] });
+    });
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const exact = structuredClone(fixture.store.record!.metadata.pendingExternalAction);
+    makeLegacyRecovery(fixture, variant === "oldPrompt" ? undefined : MORPHO_AGENT_PROMPT_CONTRACT_VERSION);
+    const generate = vi.spyOn(fixture.host, "executeVisualGenerationPlan");
+    const beforeObjects = structuredClone(fixture.fake.getWorkspace().objects);
+    if (variant === "oldPrompt") {
+      expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, fixture.host, fixture.dependencies)).toBe("pending");
+      expect(fixture.store.record?.metadata.pendingExternalAction).toMatchObject({ actionId: exact!.actionId, requestBody: exact!.requestBody, requestHash: exact!.requestHash });
+      expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    }
+    running = false;
+    await resumeMorphoAgentTurn(LOCAL_PROJECT_ID, fixture.host, fixture.dependencies);
+    expect(new Set(bodies)).toEqual(new Set([exact!.requestBody]));
+    expect(bodies).toHaveLength(variant === "oldPrompt" ? 9 : 5);
+    expect(generate).not.toHaveBeenCalled();
+    expect(fixture.fake.getWorkspace().objects).toEqual(beforeObjects);
+    if (variant === "oldPrompt") {
+      expect(fixture.coordinatorHost.executions).toHaveLength(1);
+      expect(latestAssistant(fixture.fake.getWorkspace())?.body).toContain("Prompt Contract 已不支持继续");
+    } else {
+      expect(fixture.coordinatorHost.executions).toHaveLength(variant === "newEffects" ? 3 : 2);
+      const continuation = fixture.coordinatorHost.executions[1]!.providerRequest;
+      expect(continuation.taskContract).toBeUndefined();
+      expect(continuation.continuationItems?.some((item) => item.type === "function_call_output" && item.output.includes("https://example.com/exact"))).toBe(true);
+      const parsed = parseAPlusAgentProviderRequest(continuation);
+      if (parsed.status !== "ok") throw new Error(parsed.reason);
+      expect(buildAPlusAgentProviderContract({ localProjectId: LOCAL_PROJECT_ID, request: parsed.value, webSearchEnabled: true }).request.tools).toHaveLength(4);
+    }
+    expect(fixture.store.record).toBeUndefined();
+  });
+
+  it.each([1, 2])("recovers a legacy Image via the frozen Operation Plan without new child authority (%i items)", async (count) => {
+    const call = visualToolCall("legacy-image");
+    const args = JSON.parse(call.argumentsText) as { items: Array<{ requestedReferenceObjectIds: string[] }> };
+    args.items = args.items.slice(0, count);
+    const fixture = createFixture([]);
+    fixture.input.draft = `生成 ${count} 张图`;
+    fixture.input.taskMode = fixture.input.recommendedTaskMode = "imageGeneration";
+    const image = fixture.fake.getWorkspace().objects["image-soft-rail-v2"]!;
+    if (image.type !== "image") throw new Error("Need image fixture");
+    image.assetId = "legacy-source-asset";
+    fixture.input.selectedObjectIds = [image.id]; fixture.input.selectedObjects = [image];
+    args.items.forEach((item) => { item.requestedReferenceObjectIds = [image.id]; });
+    fixture.coordinatorHost.appendScripts([{ status: "awaitingNextRequest", toolCalls: [{ ...call, argumentsText: JSON.stringify(args) }] }]);
+    let running = true;
+    const bodies: string[] = [];
+    let saved = 0;
+    const session = { projectId: LOCAL_PROJECT_ID, workspaceReady: true, generation: Symbol("legacy-image") };
+    const reads = vi.fn(async () => null);
+    const host: AgentTurnHost = { ...fixture.host, executeVisualGenerationPlan: (input) => executeWorkspaceVisualGenerationPlan(input,
+      resolveGenerationSettings({ modelId: "gpt-image-2", aspectRatio: "1:1" }), {
+        fetch: async (_url, init) => {
+          bodies.push(String(init?.body));
+          return running ? Response.json({ action: { status: "running" } }, { status: 202 }) :
+            new Response(new Blob(["recovered"], { type: "image/png" }), { headers: { "content-type": "image/png" } });
+        },
+        getCurrentSession: () => session, assertCurrentSession: () => {},
+        commitWorkspace: (_session, transform) => fixture.fake.commitWorkspace(transform),
+        updatePendingImageGenerationSlots: () => {}, setImageTaskStatus: () => {}, readReferenceAsset: reads,
+        saveGeneratedAsset: async () => ({ status: "ok", asset: { id: `legacy-asset-${++saved}`, fileName: "legacy.png", mimeType: "image/png",
+          size: 9, createdAt: "2026-10-01T00:00:00Z", storageKey: `blob:legacy-${saved}`, sourceType: "aiGeneratedImage", width: 1, height: 1 } }),
+        deleteAsset: async () => {}, selectObjects: () => {}, focusObject: () => {}, now: fixture.fake.now, randomSuffix: fixture.fake.randomSuffix
+      }) };
+    await runMorphoAgentTurn(fixture.input, host, fixture.dependencies);
+    expect(fixture.store.record, JSON.stringify(fixture.coordinatorHost.executions.at(-1)?.providerRequest.continuationItems)).toBeDefined();
+    const exact = structuredClone(fixture.store.record!.metadata.pendingExternalAction!);
+    const beforeIds = new Set(Object.keys(fixture.fake.getWorkspace().objects));
+    makeLegacyRecovery(fixture);
+    // Today's selection/draft cannot remint authority or change the frozen plan.
+    fixture.store.record = { ...fixture.store.record!, metadata: { ...fixture.store.record!.metadata,
+      runtime: { ...fixture.store.record!.metadata.runtime, input: { ...fixture.store.record!.metadata.runtime.input, draft: "生成 12 张全新图", selectedObjectIds: [] } } } };
+    running = false;
+    reads.mockClear();
+    await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, host, fixture.dependencies);
+    expect(new Set(bodies)).toEqual(new Set([exact.requestBody]));
+    expect(bodies).toHaveLength(2);
+    expect(reads).not.toHaveBeenCalled();
+    expect(saved).toBe(1);
+    expect(Object.values(fixture.fake.getWorkspace().objects).filter((object) => object.type === "image" && !beforeIds.has(object.id))).toHaveLength(1);
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    if (count === 1) expect(latestAssistant(fixture.fake.getWorkspace())?.body).toContain("Prompt Contract 已不支持继续");
+    expect(fixture.store.record).toBeUndefined();
+  });
   it.each(["referenceB", "compareWrite", "primaryWrite", "autoPaid"] as const)("rejects %s in a scoped mixed turn before any new effect", async (attack) => {
     const fixture = createFixture([]);
     const images = Object.values(fixture.fake.getWorkspace().objects).filter((object) => object.type === "image" && object.visibility === "active").slice(0, 2);
@@ -1416,6 +1535,18 @@ function savedPersistence(): WorkspacePersistenceState {
     isDirty: false,
     lastSavedAt: "2026-07-29T00:00:00.000Z"
   };
+}
+
+function makeLegacyRecovery(fixture: ReturnType<typeof createFixture>, version = "morpho-agent-v3.7-2026-08-16") {
+  detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+  const record = fixture.store.record!;
+  const { taskContract: omitted, ...request } = record.metadata.runtime.providerBaseRequest;
+  void omitted;
+  fixture.store.record = { ...record, coordinator: { ...record.coordinator,
+    ...(record.coordinator.activeRequest ? { activeRequest: { ...record.coordinator.activeRequest,
+      providerRequest: { ...request, promptContractVersion: version } } } : {}) },
+    metadata: { ...record.metadata, runtime: { ...record.metadata.runtime,
+    providerBaseRequest: { ...request, promptContractVersion: version } } } };
 }
 
 function failedPersistence(): WorkspacePersistenceState {
