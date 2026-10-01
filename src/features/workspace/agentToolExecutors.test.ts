@@ -128,7 +128,7 @@ describe("Agent tool executors", () => {
     expect(fixture.host.getEvents()).toEqual([]);
   });
 
-  it("completes a required project-memory read only after producing its result", async () => {
+  it("returns undelivered coverage until the Runner submits the actual tool result", async () => {
     const fixture = createFixture();
     fixture.input.runtimeState.requiredReadState = createRequiredAgentReadState([
       "read_project_memory"
@@ -144,11 +144,11 @@ describe("Agent tool executors", () => {
     });
 
     expect(output).toMatchObject({
-      documents: [{ key: "projectOverview" }]
+      documents: [{ key: "projectOverview" }], receipts: [{ kind: "memory", keys: ["projectOverview"], delivered: false }]
     });
     expect(
       fixture.input.runtimeState.requiredReadState.completedTools.has("read_project_memory")
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("merges web-search citations into the turn runtime", async () => {

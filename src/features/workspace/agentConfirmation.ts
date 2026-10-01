@@ -95,6 +95,7 @@ export function buildPendingAgentActionConfirmation(input: {
           .filter((object) => object.type === "image")
           .map((object) => object.id)
       };
+    case "read_workspace_source":
     case "read_selected_context":
     case "read_project_memory":
     case "read_stage_record":

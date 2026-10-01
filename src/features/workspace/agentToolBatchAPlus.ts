@@ -1,3 +1,5 @@
+import { isAgentReadReceipt, type AgentEffectReceipt } from "@/shared/agentReadCoverage";
+import { failRequiredAgentRead } from "./agentTaskStrategy";
 import { compileVisualGenerationPlan } from "@/domain/operations/imagePromptCompiler";
 import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import type { APlusAgentContinuationItem, APlusToolCall } from "@/shared/agentTurnJournalProtocol";
@@ -229,7 +231,9 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
     } else {
       // An exact persisted action is an execution fact, not a new effect grant.
       // Keep this path outside the normal executor/authority profile.
-      const authorityBlockReason = recoverExactAction ? undefined : getAgentToolAuthorizationBlockReason(input.prepared.authorityProfile, entry.parsed, input.host.readWorkspace());
+      const generatedEarlier = input.prepared.runtimeState.effectReceipts.filter((receipt) => receipt.tool === "generate_visuals" && !callIds.includes(receipt.callId)).flatMap((receipt) => receipt.objectIds);
+      const generationLimit = entry.parsed.name === "generate_visuals" && visualActivity?.expectedVisualCount && new Set(generatedEarlier).size >= visualActivity.expectedVisualCount ? "本轮已完成授权图像数量；只读观察不能授权另一批生成。" : undefined;
+      const authorityBlockReason = recoverExactAction ? undefined : generationLimit ?? getAgentToolAuthorizationBlockReason(input.prepared.authorityProfile, entry.parsed, input.host.readWorkspace());
       if (authorityBlockReason) {
         terminal = {
           status: "failed",
@@ -476,6 +480,22 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
       }));
       }
     }
+    if (entry.status === "valid") {
+      const tool = entry.parsed.name;
+      if (terminal.status === "failed" && input.prepared.runtimeState.requiredReadState.requiredTools.includes(tool as import("./agentTaskStrategy").RequiredAgentReadToolName)) {
+        input.prepared.runtimeState.requiredReadState = failRequiredAgentRead(input.prepared.runtimeState.requiredReadState, tool as import("./agentTaskStrategy").RequiredAgentReadToolName).state;
+      }
+      const result = isRecord(providerResult) ? providerResult : {};
+      const activity = getTurnActivityForTool(input.prepared.taskContract, tool);
+      const ids = [result.objectIds, result.directionIds].flatMap((value) => Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : []);
+      if (typeof result.researchObjectId === "string") ids.push(result.researchObjectId);
+      const workspace = input.host.readWorkspace();
+      const effect: AgentEffectReceipt = { callId, tool, resultStatus: typeof result.status === "string" ? result.status.slice(0, 80) : undefined, activityId: activity?.id, status: terminal.status, objectIds: [...new Set(ids)].filter((id) => Boolean(workspace.objects[id])),
+        revisionIds: ids.flatMap((id) => { const object = workspace.objects[id]; return object?.type === "conceptDirection" ? [object.currentRevisionId] : []; }),
+        ...(terminal.status === "executed" ? { persistence: terminal.persistence } : {}),
+        ...Object.fromEntries(["proposalId", "draftId", "analysisId", "deliveryObjectId", "sectionId"].flatMap((key) => typeof result[key] === "string" ? [[key, result[key]]] : [])) };
+      input.prepared.runtimeState.effectReceipts = [...input.prepared.runtimeState.effectReceipts.filter((receipt) => receipt.callId !== callId), effect];
+    }
     requireOk(input.coordinator.recordToolCallTerminalResult(terminal));
     terminalResults.push(terminal);
     let continuationItem: APlusAgentContinuationItem | undefined;
@@ -486,6 +506,11 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
         output: boundedOutput(providerResult)
       };
       continuationItems.push(continuationItem);
+      const serialized: unknown = JSON.parse(continuationItem.output);
+      if (isRecord(serialized)) {
+        const receipts = [serialized.receipt, ...(Array.isArray(serialized.receipts) ? serialized.receipts : [])].filter(isAgentReadReceipt);
+        input.prepared.runtimeState.readReceipts.push(...receipts);
+      }
     }
     if (input.onCallTerminal && !await input.onCallTerminal({
       terminal,
@@ -734,9 +759,9 @@ function boundedOutput(value: unknown): string {
   } catch {
     serialized = JSON.stringify({ status: "failed", code: "non_serializable_tool_output" });
   }
-  return serialized.length <= 16_000
+  return serialized.length <= 120_000
     ? serialized
-    : JSON.stringify({ status: "completed", truncated: true, preview: serialized.slice(0, 15_000) });
+    : JSON.stringify({ status: "partial", truncated: true, preview: serialized.slice(0, 90_000), receipts: isRecord(value) ? [value.receipt, ...(Array.isArray(value.receipts) ? value.receipts : [])].filter(isAgentReadReceipt).map((receipt) => ({ ...receipt, status: "partial", range: undefined })) : [] });
 }
 
 function findDuplicate(values: readonly string[]): string | undefined {

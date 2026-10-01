@@ -908,6 +908,7 @@ export type ProviderInputCacheBoundaryReason =
   | "compaction";
 
 export type ProviderInputSnapshot = {
+  coverage?: import("@/shared/agentReadCoverage").AgentReadReceipt[];
   schemaVersion: 1;
   promptContractVersion: string;
   textParts: ProviderInputSnapshotTextPart[];
@@ -950,6 +951,7 @@ export type AiMessage = {
   agentTurnId?: string;
   pairedMessageId?: string;
   agentTurnOutcome?: AgentTurnOutcome;
+  taskFulfillment?: import("@/shared/agentReadCoverage").AgentTaskFulfillment;
   agentTurnOutcomeSummary?: string;
   error?: string;
 };

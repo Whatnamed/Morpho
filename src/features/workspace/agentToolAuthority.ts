@@ -163,6 +163,20 @@ export function getAgentToolAuthorizationBlockReason(profile: AgentToolAuthority
     if (blocked) return blocked;
   }
   if (activity && tool.name === "revise_selected_proposal_draft" && !activity.targetObjectIds.includes(tool.args.proposalId)) return "草案修订目标超出 activity 范围。";
+  if (activity && tool.name === "create_concept_direction_proposal") {
+    const mode = activity.conceptOperation ?? "create";
+    if ((tool.args.applicationMode ?? "create") !== mode) return "Concept operation 与本轮任务不匹配。";
+    if (tool.args.targetDirectionId && !activity.targetObjectIds.includes(tool.args.targetDirectionId)) return "Concept 修订目标超出本轮范围。";
+    if (tool.args.parentDirectionIds?.some((id) => !activity.targetObjectIds.includes(id))) return "Concept parent 超出本轮范围。";
+    if (mode === "revise" && (!tool.args.targetDirectionId || !tool.args.targetRevisionId || !activity.targetRevisionIds?.includes(tool.args.targetRevisionId))) return "修订必须明确指定授权目标及原 revision。";
+    if ((mode === "split" || mode === "merge") && !tool.args.parentDirectionIds?.length) return "拆分/合并必须明确 parent 集合。";
+    if (workspace && mode !== "create") {
+      const targets = [tool.args.targetDirectionId, ...(tool.args.parentDirectionIds ?? [])].filter((id): id is string => Boolean(id));
+      if (targets.some((id) => { const object = workspace.objects[id]; return object?.type !== "conceptDirection" || object.visibility !== "active" || !activity.targetRevisionIds?.includes(object.currentRevisionId) || (mode === "revise" && object.currentRevisionId !== tool.args.targetRevisionId); })) return "Concept 目标 revision 已变化或不可用。";
+      const expectedParents = activity.targetObjectIds.filter((id) => workspace.objects[id]?.type === "conceptDirection");
+      if ((mode === "split" || mode === "merge") && (new Set(tool.args.parentDirectionIds).size !== tool.args.parentDirectionIds?.length || expectedParents.length !== tool.args.parentDirectionIds?.length || expectedParents.some((id) => !tool.args.parentDirectionIds?.includes(id)))) return "Concept parent 集合必须完整匹配本轮目标。";
+    }
+  }
   if (activity && tool.name === "create_concept_direction_proposal" && tool.args.directions.some((direction) => direction.basedOnDirectionId && !activity.targetObjectIds.includes(direction.basedOnDirectionId))) return "方向来源超出 activity 范围。";
   if (activity && tool.name === "create_comparison_analysis" && tool.args.objectComparisons.some((item) => !activity.targetObjectIds.includes(item.objectId))) {
     return "比较记录超出 comparison activity 的对象范围。";

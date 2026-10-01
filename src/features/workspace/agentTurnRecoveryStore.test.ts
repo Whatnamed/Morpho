@@ -59,6 +59,29 @@ describe("A+ local Recovery Store", () => {
     expect(legacy).toMatchObject({ status: "ok" });
     if (legacy.status === "ok") expect(legacy.record.metadata.runtime.sourceSnapshots).toBeUndefined();
   });
+
+  it("round-trips P2B receipts and pixels outside metadata without enriching legacy records", async () => {
+    const fixture = createFixture();
+    const original = recoveryRecord("frozen original body");
+    const reads: import("@/shared/agentReadCoverage").AgentReadReceipt[] = [{ id: "read-file", source: "tool", kind: "document", objectId: "file-1", incarnationId: "file-incarnation", fingerprint: "v2:original", contentHash: "content-hash", assetId: "extract-1", status: "partial", range: { start: 2200, end: 5000, total: 9000, nextStart: 5000 }, delivered: false }];
+    const record: APlusTurnRecoveryRecord = { ...original, metadata: { ...original.metadata, runtime: { ...original.metadata.runtime,
+      pendingReadIds: ["read-file"], pendingReadStepSequence: 2, facts: { ...original.metadata.runtime.facts, readReceipts: reads,
+        effectReceipts: [{ callId: "image-call", tool: "generate_visuals", activityId: "activity-1", status: "executed", persistence: "succeeded", objectIds: ["image-1"] }],
+        observationMessages: [{ role: "user", content: [{ type: "input_image", image_url: "data:image/png;base64,aGVsbG8=" }] }],
+        requiredReadState: { ...original.metadata.runtime.facts.requiredReadState, requiredTools: ["read_workspace_source"], requirements: [{ tool: "read_workspace_source", kind: "document", objectId: "file-1", start: 0, end: 9000 }] }
+      } } } };
+    await fixture.store.save(record);
+    const loaded = await fixture.store.load("project-test");
+    expect(loaded).toEqual({ status: "ok", record });
+    expect([...fixture.storageValues.values()].join()).not.toContain("data:image/png");
+    await fixture.store.save(original);
+    const legacy = await fixture.store.load("project-test");
+    if (legacy.status !== "ok") throw new Error("legacy record");
+    expect(legacy.record.metadata.runtime.facts.readReceipts).toBeUndefined();
+    expect(legacy.record.metadata.runtime.facts.effectReceipts).toBeUndefined();
+    expect(legacy.record.metadata.runtime.pendingReadStepSequence).toBeUndefined();
+  });
+
   it("keeps exact Provider payloads out of localStorage and verifies them on load", async () => {
     const fixture = createFixture();
     const record = recoveryRecord("large ".repeat(50_000));

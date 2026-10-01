@@ -1,3 +1,4 @@
+import { normalizeAgentTaskFulfillment } from "@/shared/agentReadCoverage";
 import { createObjectIncarnationId } from "./objectIdentity";
 import { reconcileWorkspaceDerivedState, createEmptyProjectWorkingState } from "./derivedState";
 import {
@@ -2715,6 +2716,7 @@ function normalizeAiMessage(message: AiMessage): AiMessage {
   };
   const snapshotNormalized = {
     ...withoutLegacyBMessageState,
+    ...(message.taskFulfillment ? { taskFulfillment: normalizeAgentTaskFulfillment(message.taskFulfillment) } : {}),
     ...(providerInputSnapshot ? { providerInputSnapshot } : {}),
     ...(providerOutputSnapshot ? { providerOutputSnapshot } : {})
   };

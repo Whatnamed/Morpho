@@ -41,7 +41,20 @@ export type CreateDesignDefinitionProposalArgs = DesignDefinitionDraftArgs & {
   alternatives?: DesignDefinitionDraftArgs[];
 };
 
+export type ReadWorkspaceSourceArgs = {
+  kind: "object" | "document" | "image" | "delivery";
+  objectId: string;
+  revisionId?: string;
+  sectionId?: string;
+  start?: number;
+  length?: number;
+};
+
 export type CreateConceptDirectionProposalArgs = {
+  applicationMode?: "create" | "revise" | "split" | "merge";
+  targetDirectionId?: string;
+  targetRevisionId?: string;
+  parentDirectionIds?: string[];
   title: string;
   summary: string;
   directions: ConceptDirectionProposal["directions"];
@@ -152,6 +165,7 @@ export type RequestConfirmationArgs = {
 };
 
 export type MorphoAgentToolArguments =
+  | { name: "read_workspace_source"; args: ReadWorkspaceSourceArgs }
   | { name: "read_selected_context"; args: Record<string, never> }
   | { name: "read_project_memory"; args: ReadProjectMemoryArgs }
   | { name: "read_stage_record"; args: ReadStageRecordArgs }
@@ -180,6 +194,7 @@ export type ToolEffect = {
 };
 
 export const MORPHO_AGENT_TOOL_EFFECT_MATRIX = {
+  read_workspace_source: toolEffect({ readOnly: true }),
   read_selected_context: toolEffect({ readOnly: true }),
   read_project_memory: toolEffect({ readOnly: true }),
   read_stage_record: toolEffect({ readOnly: true }),
@@ -237,10 +252,11 @@ export function resolveAgentToolExecutionPolicy(input: {
 }
 
 export function buildMorphoAgentTools(
-  webSearchEnabled: boolean
+  webSearchEnabled: boolean,
+  boundedReads = false
 ): ResponseTool[] {
   const tools: ResponseTool[] = [
-    readSelectedContextTool(),
+    readSelectedContextTool(boundedReads),
     readProjectMemoryTool(),
     readStageRecordTool(),
     searchProjectConversationTool(),
@@ -417,12 +433,14 @@ export function buildMorphoAgentTools(
     }),
     functionTool({
       name: "create_concept_direction_proposal",
-      description: "创建概念方向 proposal，供用户继续讨论、应用或生成预览。",
+      description: boundedReads ? "按本轮 conceptOperation 创建、修订、拆分或合并概念方向；修订必须指定原对象及 revision，拆分/合并必须指定完整 parent 集合。" : "创建概念方向 proposal，供用户继续讨论、应用或生成预览。",
       parameters: {
         type: "object",
         additionalProperties: false,
         required: ["title", "summary", "directions"],
         properties: {
+          ...(boundedReads ? { applicationMode: { type: "string", enum: ["create", "revise", "split", "merge"] },
+            targetDirectionId: { type: "string" }, targetRevisionId: { type: "string" }, parentDirectionIds: stringArraySchema() } : {}),
           title: { type: "string" },
           summary: { type: "string" },
           directions: {
@@ -641,6 +659,8 @@ export function buildMorphoAgentTools(
     );
   }
 
+  if (boundedReads) tools.push(functionTool({ name: "read_workspace_source", description: "有界读取本轮 scope 内当前对象或指定 revision、文档 UTF-16 range、交付章节稳定引用，或实际图片像素。start/length 使用半开区间；最多 8000 字。新生成图片只有本轮明确要求观察结果时可读；读取不授予生成或采用权限。", parameters: { type: "object", additionalProperties: false, required: ["kind", "objectId"], properties: { kind: { type: "string", enum: ["object", "document", "image", "delivery"] }, objectId: { type: "string" }, revisionId: { type: "string" }, sectionId: { type: "string" }, start: { type: "integer", minimum: 0 }, length: { type: "integer", minimum: 1, maximum: 8000 } } } }));
+
   return tools.map(withAgentToolEffectDescription);
 }
 
@@ -695,10 +715,10 @@ function functionTool(input: {
   };
 }
 
-function readSelectedContextTool(): ResponseFunctionTool {
+function readSelectedContextTool(boundedReads = false): ResponseFunctionTool {
   return functionTool({
     name: "read_selected_context",
-    description: "读取当前显式选择对象及其直接相关语境，用于判断当前资料是否足够执行。",
+    description: boundedReads ? "读取 preparation 时保存的摘要快照，不表示当前对象全文或实际像素。深入读取使用 read_workspace_source。" : "读取当前显式选择对象及其直接相关语境，用于判断当前资料是否足够执行。",
     parameters: {
       type: "object",
       additionalProperties: false,

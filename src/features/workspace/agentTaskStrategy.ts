@@ -174,6 +174,10 @@ export function validateRequiredAgentReadCall(
     return { satisfied: true };
   }
   const record = isRecord(args) ? args : {};
+  if (requirement.tool === "read_workspace_source") {
+    return record.kind === requirement.kind && record.objectId === requirement.objectId && (!requirement.revisionId || record.revisionId === requirement.revisionId) && (!requirement.sectionId || record.sectionId === requirement.sectionId)
+      ? { satisfied: true } : { satisfied: false, reason: "读取目标或 revision 不匹配。" };
+  }
   if (requirement.tool === "read_project_memory") {
     const keys = stringSet(record.keys);
     const missing = keys ? requirement.requiredKeys.filter((key) => !keys.has(key)) : [];
@@ -327,6 +331,7 @@ function defaultRequirement(tool: RequiredAgentReadToolName): RequiredAgentReadR
   if (tool === "read_stage_record") {
     return { tool, requiredStages: [] };
   }
+  if (tool === "read_workspace_source") throw new Error("对象读取必须包含明确目标。 ");
   return { tool, requiredMode: "latest" };
 }
 

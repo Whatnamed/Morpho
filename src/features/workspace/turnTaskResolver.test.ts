@@ -79,7 +79,7 @@ describe("Turn Task / scope / authority", () => {
 
   it.each(["聊聊这个方案", "批评这两个方案，给出建议", "读取当前设计原则"])("keeps %s read-only without a planner or extra grants", (draft) => {
     const { contract } = setup(draft, { executionTaskMode: "chatAnalysis", executionWorkIntent: "discussion", allowStructuredComparison: false });
-    expect(getTurnAllowedTools(contract)).toEqual(["read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation"]);
+    expect(getTurnAllowedTools(contract)).toEqual(["read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation", "read_workspace_source"]);
     expect(contract.activities).toHaveLength(1);
   });
 

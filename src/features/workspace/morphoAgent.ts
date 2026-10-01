@@ -496,6 +496,15 @@ export function parseMorphoAgentToolArguments(call: AgentFunctionCall): MorphoAg
   const parsed = parseToolArgumentsJson(call);
 
   switch (call.name) {
+    case "read_workspace_source": {
+      const record = requireExactObject(call.name, parsed, ["kind", "objectId"], ["revisionId", "sectionId", "start", "length"]);
+      requireEnum(call.name, record, "kind", ["object", "document", "image", "delivery"]);
+      requireString(call.name, record, "objectId");
+      requireOptionalString(call.name, record, "revisionId");
+      requireOptionalString(call.name, record, "sectionId");
+      for (const key of ["start", "length"]) if (record[key] !== undefined && (typeof record[key] !== "number" || !Number.isSafeInteger(record[key]) || Number(record[key]) < (key === "start" ? 0 : 1) || (key === "length" && Number(record[key]) > 8000))) throw new Error(`${key} 超出有界读取范围。`);
+      return { name: call.name, args: record as unknown as import("@/shared/agentToolContract").ReadWorkspaceSourceArgs };
+    }
     case "read_selected_context":
       requireExactObject(call.name, parsed, []);
       return { name: call.name, args: {} };
@@ -801,7 +810,11 @@ function validateCreateConceptDirectionProposalArgs(
   toolName: string,
   value: unknown
 ): asserts value is CreateConceptDirectionProposalArgs {
-  const record = requireExactObject(toolName, value, ["title", "summary", "directions"]);
+  const record = requireExactObject(toolName, value, ["title", "summary", "directions"], ["applicationMode", "targetDirectionId", "targetRevisionId", "parentDirectionIds"]);
+  requireOptionalEnum(toolName, record, "applicationMode", ["create", "revise", "split", "merge"]);
+  requireOptionalString(toolName, record, "targetDirectionId");
+  requireOptionalString(toolName, record, "targetRevisionId");
+  if (record.parentDirectionIds !== undefined) requireStringArray(toolName, record, "parentDirectionIds");
   requireString(toolName, record, "title");
   requireString(toolName, record, "summary");
   requireArray(toolName, record, "directions").forEach((entry, index) => {

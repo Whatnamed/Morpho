@@ -1,3 +1,5 @@
+import { sourceReceipt } from "./agentSourceReads";
+import type { AgentReadReceipt } from "@/shared/agentReadCoverage";
 import {
   buildContinuousConversationContext,
   type ConversationTokenLimits
@@ -143,6 +145,7 @@ export function snapshotAgentTurnRuntimeFacts(
   state: AgentTurnRuntimeState
 ): APlusTurnRecoveryFacts {
   return {
+    readReceipts: structuredClone(state.readReceipts), effectReceipts: structuredClone(state.effectReceipts), observationMessages: structuredClone(state.observationMessages),
     requiredReadState: {
       requiredTools: [...state.requiredReadState.requiredTools],
       requirements: structuredClone(state.requiredReadState.requirements),
@@ -169,6 +172,9 @@ export function restoreAgentTurnRuntimeFacts(
   state: AgentTurnRuntimeState,
   facts: APlusTurnRecoveryFacts
 ): void {
+  state.readReceipts = structuredClone([...(facts.readReceipts ?? [])]);
+  state.effectReceipts = structuredClone([...(facts.effectReceipts ?? [])]);
+  state.observationMessages = structuredClone([...(facts.observationMessages ?? [])]);
   state.requiredReadState = {
     requiredTools: [...facts.requiredReadState.requiredTools],
     requirements: [...structuredClone(facts.requiredReadState.requirements)],
@@ -284,12 +290,29 @@ export async function prepareAgentTurnProductAPlus(
         )
       ]);
 
+  const deliveryCandidate = input.pendingDeliveryDraftTarget
+    ? workspace.objects[input.pendingDeliveryDraftTarget.deliveryObjectId]
+    : undefined;
+  const deliverySectionContext = deliveryCandidate?.type === "delivery" && input.pendingDeliveryDraftTarget
+    ? buildDeliverySectionContext(
+        workspace,
+        deliveryCandidate,
+        input.pendingDeliveryDraftTarget.sectionId
+      )
+    : undefined;
+
   const userInput = buildMorphoAgentUserInput({
     draft: input.draft,
     context,
     providerTaskContext
   });
+  const serializedTaskContext = JSON.stringify(providerTaskContext);
+  const taskContextTruncated = serializedTaskContext.length > 64000;
+  userInput.content.push({ type: "input_text", text: `<untrusted_task_context truncated="${taskContextTruncated}">\n${serializedTaskContext.slice(0, 64000)}\n</untrusted_task_context>` });
   if (taskContract.activities.length > 1) userInput.content.push({ type: "input_text", text: `<untrusted_activity_contexts>\n${JSON.stringify(Object.entries(activityContexts).map(([activityId, context]) => ({ activityId, context: context.kind === "comparison" ? buildProviderComparisonTaskContext(context) : buildProviderTaskContext(context) })))}\n</untrusted_activity_contexts>` });
+  if (deliverySectionContext) userInput.content.push({ type: "input_text", text: `<untrusted_delivery_section>
+${JSON.stringify(deliverySectionContext).slice(0, 8000)}
+</untrusted_delivery_section>` });
   const providerInputTextParts: ProviderInputSnapshotTextPart[] = userInput.content
     .filter((part): part is { type: "input_text"; text: string } => part.type === "input_text")
     .map((part) => ({ kind: "userDraft" as const, text: part.text }));
@@ -305,8 +328,52 @@ export async function prepareAgentTurnProductAPlus(
     .forEach((attachment) => {
       userInput.content.push({ type: "input_image", image_url: attachment.dataUrl });
     });
+  const readReceipts: AgentReadReceipt[] = [];
+  const serializedContext = serializedTaskContext.slice(0, 64000);
+  for (const objectId of [...new Set([...context.objectIds, ...attachmentResult.entries.map((entry) => entry.objectId)])]) {
+    const object = workspace.objects[objectId];
+    const kind = object?.type === "image" ? "image" : object?.type === "file" ? "document" : "object";
+    const receipt = sourceReceipt(workspace, objectId, kind, `initial:${objectId}`, "request");
+    if (kind === "image") {
+      const entry = attachmentResult.entries.find((entry) => entry.objectId === objectId && entry.status === "ready");
+      receipt.status = entry ? "full" : "summary";
+      receipt.representation = entry ? entry.representation === "single" ? "pixels" : "contactSheet" : "metadata";
+      receipt.assetId = object?.type === "image" ? object.assetId : undefined;
+      const attachment = attachmentResult.attachments.find((attachment) => attachment.id === entry?.attachmentId);
+      if (attachment) receipt.contentHash = hashProviderImageDataUrl(attachment.dataUrl);
+    } else if (kind === "document") {
+      const extract = documentResult.extracts.find((extract) => extract.objectId === objectId);
+      const included = extract?.text.slice(0, A_PLUS_DOCUMENT_EXTRACT_SERIALIZATION_CAP);
+      receipt.status = extract ? extract.truncated || (included?.length ?? 0) < extract.charCount ? "partial" : "full" : "unavailable";
+      receipt.assetId = object?.type === "file" ? object.extractedAssetId : undefined;
+      receipt.contentHash = extract?.contentHash;
+      receipt.extractionTruncated = Boolean(extract?.extractionTruncated || extract && (extract.availableCharCount ?? extract.charCount) < extract.charCount);
+      if (extract && included) receipt.range = { start: 0, end: included.length, total: extract.availableCharCount ?? extract.charCount, ...(included.length < (extract.availableCharCount ?? extract.charCount) ? { nextStart: included.length } : {}) };
+    } else if (object && "currentRevisionId" in object && (providerTaskContext.designDefinition?.revisionId === object.currentRevisionId || providerTaskContext.directions.some((direction) => direction.revisionId === object.currentRevisionId))) {
+      receipt.revisionId = object.currentRevisionId;
+      receipt.status = taskContextTruncated ? "partial" : "full";
+    } else if (object?.type === "documentFragment") {
+      const extract = context.documentFragmentExtracts.find((extract) => extract.objectId === objectId);
+      if (extract && serializedContext.includes(JSON.stringify(extract.text).slice(1, -1))) {
+        receipt.status = extract.sourceAvailability !== "active" ? "stale" : extract.truncated || taskContextTruncated ? "partial" : "full";
+        receipt.range = { start: 0, end: extract.text.length, total: extract.charCount, ...(extract.truncated ? { nextStart: extract.text.length } : {}) };
+      }
+    } else if (!object || object.visibility !== "active") receipt.status = object ? "unavailable" : "missing";
+    readReceipts.push(receipt);
+  }
+  if (deliverySectionContext) {
+    const serialized = JSON.stringify(deliverySectionContext);
+    const receipt = sourceReceipt(workspace, deliverySectionContext.deliveryObjectId, "delivery", "initial:delivery", "request");
+    readReceipts.push({ ...receipt, sectionId: deliverySectionContext.sectionId, status: serialized.length > 8000 ? "partial" : "full", representation: "text", range: { start: 0, end: Math.min(serialized.length, 8000), total: serialized.length, ...(serialized.length > 8000 ? { nextStart: 8000 } : {}) } });
+  }
+  const coverageText = `<morpho_input_coverage>
+${JSON.stringify(readReceipts)}
+</morpho_input_coverage>`;
+  userInput.content.push({ type: "input_text", text: coverageText });
+  providerInputTextParts.push({ kind: "other", text: coverageText });
   const providerInputSnapshot = createProviderInputSnapshot({
     message: userInput,
+    coverage: readReceipts,
     promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION,
     textParts: providerInputTextParts,
     attachmentRefs: attachmentResult.entries
@@ -395,12 +462,27 @@ export async function prepareAgentTurnProductAPlus(
         text: message.body
       }]
     }));
-  const frameMessages = (preparedWorkspace.ai.providerContextFrames ?? [])
-    .slice(-24)
+  const allFrames = preparedWorkspace.ai.providerContextFrames ?? [];
+  const retainedFrames = allFrames.filter((frame) => frame.anchorMessageId === userMessageId ||
+    (frame.kind === "conversationSummary" && frame.summaryRevisionId === conversation.summaryRevision?.id) ||
+    (["projectState", "runtimeConfiguration"].includes(frame.kind) && [...allFrames].reverse().find((candidate) => candidate.kind === frame.kind)?.id === frame.id));
+  for (const frame of retainedFrames) {
+    for (const revisionId of frame.projectMemoryRevisionIds) {
+      const revision = preparedWorkspace.projectMemory.revisions[revisionId];
+      if (revision) readReceipts.push({ id: `${frame.id}:${revisionId}`, source: "request", kind: "memory", objectId: workspace.project.id, revisionId, keys: [revision.documentKey], status: "summary", delivered: false });
+    }
+    for (const revisionId of frame.stageRecordRevisionIds) {
+      const revision = preparedWorkspace.projectMemory.stageRevisions[revisionId];
+      if (revision) readReceipts.push({ id: `${frame.id}:${revisionId}`, source: "request", kind: "stage", objectId: workspace.project.id, revisionId, keys: [revision.stage], status: "summary", delivered: false });
+    }
+  }
+  const frameMessages = retainedFrames
     .map(providerContextFrameMessage)
     .flatMap(toAPlusMessage);
+  const omittedFrames = allFrames.length - retainedFrames.length;
   const currentUserMessage = toAPlusMessage(userInput);
-  const providerMessages = [...frameMessages, ...history, ...currentUserMessage].slice(-96);
+  currentUserMessage.push({ role: "user", content: [{ type: "input_text", text: `<morpho_context_coverage>历史消息 ${history.length} 条完整保留；摘要覆盖 ${conversation.coveredMessageCount} 条；旧 Context frames 省略 ${omittedFrames} 条，当前 turn frames 与当前 Summary 保留。</morpho_context_coverage>` }] });
+  const providerMessages = [...frameMessages, ...history, ...currentUserMessage];
 
   host.abortSlot.set(controller);
   host.ui.setStreaming(true);
@@ -449,21 +531,15 @@ export async function prepareAgentTurnProductAPlus(
     contextBudgetState: createAgentContextBudgetState(conversation.estimatedInputTokens),
     agentWorkLedger: createAgentTurnWorkLedger()
   });
+  runtimeState.readReceipts = readReceipts;
+  host.commitWorkspace((current) => ({ workspace: { ...current, ai: { ...current.ai, messages: current.ai.messages.map((message) => message.id === userMessageId && message.providerInputSnapshot ? { ...message, providerInputSnapshot: { ...message.providerInputSnapshot, coverage: structuredClone(readReceipts) } } : message) } }, value: undefined }));
+  if (taskContract.requiredReads.length) providerMessages.push({ role: "user", content: [{ type: "input_text", text: `结束前必须核实 requiredReads；完整且当前的输入可满足读取，摘要或部分不能。缺失时调用有界读取工具；失败必须明确未核实。\n${JSON.stringify(taskContract.requiredReads)}` }] });
   if (requiredMemoryUpdates.length > 0) {
     // The reminder is armed exactly once; the flag lives in Recovery facts so
     // refresh/retry never re-arms or regenerates it.
     runtimeState.memoryUpdateReminderInserted = true;
   }
-  const deliveryCandidate = input.pendingDeliveryDraftTarget
-    ? preparedWorkspace.objects[input.pendingDeliveryDraftTarget.deliveryObjectId]
-    : undefined;
-  const deliverySectionContext = deliveryCandidate?.type === "delivery" && input.pendingDeliveryDraftTarget
-    ? buildDeliverySectionContext(
-        preparedWorkspace,
-        deliveryCandidate,
-        input.pendingDeliveryDraftTarget.sectionId
-      )
-    : undefined;
+
 
   return {
     providerRequest: {
@@ -615,7 +691,7 @@ export function restorePreparedAgentTurnProductAPlus(
     imageAttachmentObjectIds: [...runtime.imageAttachmentObjectIds],
     documentExtractObjectIds: [...runtime.documentExtractObjectIds],
     allowStructuredComparison: runtime.allowStructuredComparison,
-    authorityProfile: resolveAgentToolAuthority({ taskContract }),
+    authorityProfile: runtime.providerBaseRequest.taskContract ? resolveAgentToolAuthority({ taskContract }) : { ...resolveAgentToolAuthority({ taskContract }), allowedTools: ["read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation"] },
     controller
   };
   return { input: turnInput, prepared };
@@ -690,4 +766,18 @@ export function serializeDocumentExtractEvidence(extract: AiDocumentExtract): st
   }
 
   return `- ${extract.title}（${extract.objectId}）${metadata}\n${includedText}`;
+}
+
+/** Rebuild only a not-yet-submitted request after successful compaction. */
+export function rebuildAgentProviderConversation(input: {
+  workspace: MorphoWorkspace; base: APlusAgentProviderRequest; userMessageId: string; limits?: ConversationTokenLimits;
+}): APlusAgentProviderRequest {
+  if (input.base.taskContract?.readContractVersion !== 1) return structuredClone(input.base);
+  const conversation = buildContinuousConversationContext({ workspace: input.workspace, limits: input.limits });
+  const originalUser = input.base.input.filter((message) => message.content.some((part) => "text" in part && part.text.includes("<morpho_input_coverage>")));
+  const history = conversation.messages.filter((message) => message.id !== input.userMessageId).map<APlusAgentProviderMessage>((message) => ({
+    role: message.role, content: [{ type: message.role === "assistant" ? "output_text" : "input_text", text: message.body }]
+  }));
+  if (conversation.summaryRevision) history.unshift({ role: "user", content: [{ type: "input_text", text: JSON.stringify(conversation.summaryRevision.summary) }] });
+  return { ...structuredClone(input.base), input: [...history, ...structuredClone(originalUser)] };
 }

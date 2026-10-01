@@ -172,7 +172,7 @@ describe("A+ document extract serialization and disclosure", () => {
       expect(snapshotExtractPart).toBeDefined();
       const snapshotText = snapshotExtractPart?.text ?? "";
       // 2. Inspect providerRequest.input message (the last user message in the input array)
-      const userProviderMsg = [...prepared.providerRequest.input].reverse().find((m) => m.role === "user");
+      const userProviderMsg = prepared.providerRequest.input.find((m) => m.content.some((part) => "text" in part && part.text.includes("<untrusted_document_evidence>")));
       expect(userProviderMsg).toBeDefined();
       const providerInputTextPart = userProviderMsg?.content.find(
         (part): part is { type: "input_text"; text: string } =>

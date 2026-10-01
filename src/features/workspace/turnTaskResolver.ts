@@ -60,7 +60,10 @@ export function resolveTurnTaskContract(input: Input): TurnTaskContract {
     const result = resolveAgentTaskStrategy({ draft: clause, taskMode: input.executionTaskMode === "imageGeneration" && !explicitResearch && /生成|出图|继续|CMF|场景|预览|材质/i.test(clause) ? "imageGeneration" : "chatAnalysis", workIntent: "discussion",
       selectedObjects: selected, workspace: input.workspace });
     const critique = /批评|评价|缺点|不足|弱点|有什么问题|问题在哪/.test(clause) && !/不要|别|无需/.test(clause);
-    if (critique) add("critique", clause);
+    if (critique) {
+      add("critique", clause);
+      if (input.executionTaskMode === "imageGeneration" && /生成|出图/.test(clause) && /后再|然后|再(?=比较|评价|批评|分析|判断)/.test(clause)) visualClauses.push(clause.split(/后再|然后|再(?=比较|评价|批评|分析|判断)/)[0]!);
+    }
     else if (result.kind !== "discussion") add(result.kind, clause);
     if (!critique && (result.kind === "visualDevelopment" || result.kind === "directionPreview" ||
       (result.kind === "discussion" && /生成|出图|继续|CMF|场景|预览|材质/i.test(clause)))) visualClauses.push(clause);
@@ -117,6 +120,11 @@ export function resolveTurnTaskContract(input: Input): TurnTaskContract {
       return [{ tool, origin: tool === "generate_visuals" || (input.executionWorkIntentSource === "userSelected" && ["designDefinition", "conceptDirection", "deliveryPreparation"].includes(kind))
         ? "trustedUi" : "currentUserInstruction" }];
     });
+    const conceptOperation = kind === "conceptDirection" && effectGrants.some((grant) => grant.tool === "create_concept_direction_proposal")
+      ? input.executionWorkIntent === "reviseConceptDirection" ? "revise" : input.executionWorkIntent === "splitConceptDirection" ? "split" : input.executionWorkIntent === "mergeConceptDirections" ? "merge" :
+        /拆分|split/i.test(instruction) ? "split" : /合并|merge/i.test(instruction) ? "merge" : /修订|修改|revise/i.test(instruction) && sourceObjectIds.some((id) => input.workspace.objects[id]?.type === "conceptDirection") ? "revise" : "create" : undefined;
+    const conceptTargets = sourceObjectIds.filter((id) => input.workspace.objects[id]?.type === "conceptDirection");
+    const targetRevisionIds = conceptTargets.flatMap((id) => { const object = input.workspace.objects[id]; return object?.type === "conceptDirection" ? [object.currentRevisionId] : []; });
     const expectedOutputs = [visual ? effectGrants.some((grant) => grant.tool === "generate_visuals") ? "newImages" : "visualProposal" : kind === "comparison" ? "chatTradeoffs" : kind === "critique" ? "chatCritique" : "chatAnswer",
       ...effectGrants.filter((grant) => grant.tool !== "generate_visuals").map((grant) => grant.tool)];
     const targetObjectIds = [...new Set([...sourceObjectIds, ...(visual ? sourceObjectIds.flatMap((id) => {
@@ -130,12 +138,24 @@ export function resolveTurnTaskContract(input: Input): TurnTaskContract {
       referenceObjectIds, excludedObjectIds, includeDefaultReference,
       requiredFacts: sourceObjectIds.length ? ["selectedObjectContent", "currentProjectFacts"] : ["currentProjectFacts"],
       effectGrants, expectedOutputs,
+      ...(conceptOperation ? { conceptOperation, targetRevisionIds } : {}),
+      ...(visual && /(?:生成|出图|画).*(?:后|再|然后).*(?:比较|评价|批评|分析|判断)|(?:比较|评价|批评).*(?:新生成|刚生成)/.test(text) && !/(?:不要|无需|不用|别).{0,12}(?:比较|评价|批评|分析|判断)/.test(text) ? { observeGeneratedImages: true } : {}),
       ...(expectedVisuals ? { expectedVisualCount: expectedVisuals.totalItems, ...(expectedVisuals.requestedPreviewCount ? { requestedPreviewCount: expectedVisuals.requestedPreviewCount } : {}) } : {}),
       ...(narrow?.blocked ? { scopeBlockedReason: narrow.blocked } : {}) };
   });
-  return { version: 1, userGoal: input.draft, primaryFocus: focus.kind, execution: baseAuthority.execution, activities,
+  return { version: 1, readContractVersion: 1, userGoal: input.draft, primaryFocus: focus.kind, execution: baseAuthority.execution, activities,
     completionConditions: activities.flatMap((activity) => activity.expectedOutputs.map((output) => `${activity.id}:${output}${output === "newImages" ? `:${activity.expectedVisualCount}` : ""}`)),
-    requiredReads: resolveRequiredAgentReadRequirements(text, { hasSelectedObject: selectedIds.length > 0 }) };
+    requiredReads: [...resolveRequiredAgentReadRequirements(text, { hasSelectedObject: selectedIds.length > 0 }),
+      ...selected.flatMap((object): import("@/shared/turnTaskContract").RequiredAgentReadRequirement[] => {
+        if (object.type === "file" && /全文|完整|整份|通读|deep read/i.test(text)) return [{ tool: "read_workspace_source", kind: "document", objectId: object.id }];
+        if (object.type !== "conceptDirection" && object.type !== "designDefinition") return [];
+        const revisions = object.type === "conceptDirection" ? input.workspace.directionRevisions : input.workspace.designDefinitionRevisions;
+        const current = revisions[object.currentRevisionId];
+        const previous = /上一版|前一版/.test(text) ? current?.previousRevisionId : undefined;
+        const explicit = object.revisionIds.find((id) => text.includes(id));
+        if (!previous && !explicit && !/当前.*(?:revision|修订|版本)|指定.*(?:revision|修订|版本)/i.test(text)) return [];
+        return [{ tool: "read_workspace_source", kind: "object", objectId: object.id, revisionId: explicit ?? previous ?? object.currentRevisionId }];
+      })] };
 }
 
 function resolveVisualScope(text: string, selected: readonly MorphoObject[]): { ids: string[]; blocked?: string } | undefined {

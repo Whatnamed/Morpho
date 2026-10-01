@@ -1,3 +1,4 @@
+import { readAgentWorkspaceSource, sourceReceipt } from "./agentSourceReads";
 import { createProjectionTaskScope } from "@/domain/morpho/continuityAuthority";
 import type { MorphoObject, MorphoWorkspace, ProjectMemoryKey, StageRecordKey } from "@/domain/morpho/types";
 import { buildSemanticPatchAuthorization } from "@/domain/morpho/conversationSemanticPatch";
@@ -37,7 +38,6 @@ import {
 } from "./agentMemoryUpdateGuard";
 import { buildReadSelectedContextResult } from "./agentReadContextResult";
 import {
-  completeRequiredAgentRead,
   validateRequiredAgentReadCall
 } from "./agentTaskStrategy";
 import {
@@ -167,6 +167,13 @@ export type AgentToolExecutorRegistry = {
 };
 
 export const AGENT_TOOL_EXECUTORS: AgentToolExecutorRegistry = {
+  read_workspace_source: async (input) => {
+    const result = await readAgentWorkspaceSource({ workspace: input.readWorkspace(), contract: input.authorityProfile.taskContract,
+      args: input.parsed.args, callId: input.callId, readableObjectIds: input.context.objectIds, generatedObjectIds: input.runtimeState.effectReceipts.filter((receipt) => receipt.tool === "generate_visuals").flatMap((receipt) => receipt.objectIds),
+      deliveryTarget: input.deliverySectionContext ? { deliveryObjectId: input.deliverySectionContext.deliveryObjectId, sectionId: input.deliverySectionContext.sectionId } : undefined, signal: input.signal });
+    if (result.images) input.runtimeState.observationMessages.push(...result.images);
+    return { provenance: { kind: "untrustedLocalEvidence", grantsAuthority: false }, receipt: result.receipt, text: result.text };
+  },
   read_selected_context: executeReadSelectedContext,
   read_project_memory: executeReadProjectMemory,
   read_stage_record: executeReadStageRecord,
@@ -190,7 +197,7 @@ export async function executeAgentTool(
     input.parsed.name === "generate_visuals" ? input.parsed.args.items.some((item) => Boolean(item.visualBranchId)) :
     input.parsed.name === "request_confirmation" && input.parsed.args.visualPlan?.items.some((item) => Boolean(item.visualBranchId))
   );
-  const blockReason = getAgentToolAuthorizationBlockReason(input.authorityProfile, input.parsed, needsBranchCheck ? input.readWorkspace() : undefined);
+  const blockReason = getAgentToolAuthorizationBlockReason(input.authorityProfile, input.parsed, needsBranchCheck || input.parsed.name === "create_concept_direction_proposal" ? input.readWorkspace() : undefined);
   if (blockReason) {
     const error = new Error(blockReason) as Error & { code: string };
     error.code = "agent_tool_not_authorized";
@@ -205,7 +212,7 @@ function executeReadSelectedContext(
     parsed: Extract<MorphoAgentToolArguments, { name: "read_selected_context" }>;
   }
 ) {
-  return buildReadSelectedContextResult(input.context, input.providerTaskContext);
+  return { ...buildReadSelectedContextResult(input.context, input.providerTaskContext), snapshotOnly: true, coverage: "summary" };
 }
 
 function executeReadProjectMemory(
@@ -218,9 +225,7 @@ function executeReadProjectMemory(
     "read_project_memory",
     input.parsed.args
   );
-  if (!coverage.satisfied) {
-    throw new Error(coverage.reason);
-  }
+  void coverage;
   const current = reconcileProjectMemory(input.readWorkspace());
   const scope = createProjectionTaskScope(current, { taskKind: input.context.kind, directObjectIds: input.context.objectIds,
     directRevisionIds: input.context.directionRevisions.map((revision) => revision.id), directBranchIds: input.context.visualBranches.map((branch) => branch.id),
@@ -255,11 +260,9 @@ function executeReadProjectMemory(
       };
     })
   };
-  input.runtimeState.requiredReadState = completeRequiredAgentRead(
-    input.runtimeState.requiredReadState,
-    "read_project_memory"
-  );
-  return result;
+  return { ...result, receipts: result.documents.map((document) => ({ ...sourceReceipt(current, current.project.id, "memory", `${input.callId}:${document.key}`),
+    status: "full" as const, keys: [document.key], revisionId: document.revision?.id, fingerprint: document.revision?.id ?? "empty" })) };
+
 }
 
 function executeReadStageRecord(
@@ -272,9 +275,7 @@ function executeReadStageRecord(
     "read_stage_record",
     input.parsed.args
   );
-  if (!coverage.satisfied) {
-    throw new Error(coverage.reason);
-  }
+  void coverage;
   const current = reconcileProjectMemory(input.readWorkspace());
   const scope = createProjectionTaskScope(current, { taskKind: input.context.kind, directObjectIds: input.context.objectIds,
     directRevisionIds: input.context.directionRevisions.map((revision) => revision.id), directBranchIds: input.context.visualBranches.map((branch) => branch.id),
@@ -298,11 +299,9 @@ function executeReadStageRecord(
         : undefined
     }))
   };
-  input.runtimeState.requiredReadState = completeRequiredAgentRead(
-    input.runtimeState.requiredReadState,
-    "read_stage_record"
-  );
-  return result;
+  return { ...result, receipts: result.records.map((record) => ({ ...sourceReceipt(current, current.project.id, "stage", `${input.callId}:${record.stage}`),
+    status: "full" as const, keys: [record.stage], revisionId: record.revision?.id, fingerprint: record.revision?.id ?? "empty" })) };
+
 }
 
 function executeSearchProjectConversation(
@@ -315,18 +314,14 @@ function executeSearchProjectConversation(
     "search_project_conversation",
     input.parsed.args
   );
-  if (!coverage.satisfied) {
-    throw new Error(coverage.reason);
-  }
+  void coverage;
   const result = {
     provenance: { kind: "untrustedLocalEvidence" as const, grantsAuthority: false as const },
     ...searchProjectConversation(input.readWorkspace(), input.parsed.args)
   };
-  input.runtimeState.requiredReadState = completeRequiredAgentRead(
-    input.runtimeState.requiredReadState,
-    "search_project_conversation"
-  );
-  return result;
+  return { ...result, receipt: { ...sourceReceipt(input.readWorkspace(), input.readWorkspace().project.id, "conversation", input.callId),
+    status: "full" as const, query: { mode: input.parsed.args.mode, keyword: input.parsed.args.keyword } } };
+
 }
 
 function executeReviseSelectedProposalDraft(
@@ -533,6 +528,9 @@ function executeCreateConceptDirectionProposal(
   }
 ) {
   const args = input.parsed.args;
+  const mode = args.applicationMode ?? "create";
+  const workIntent = mode === "revise" ? "reviseConceptDirection" : mode === "split" ? "splitConceptDirection" : mode === "merge" ? "mergeConceptDirections" : "createConceptDirections";
+
   const existingOperation = input.readWorkspace().operations[input.stableOperationId];
   const existingProposalId = existingOperation?.proposalIds[0];
   const existingProposal = existingProposalId
@@ -540,9 +538,9 @@ function executeCreateConceptDirectionProposal(
     : undefined;
   if (existingProposal?.type === "conceptDirection") {
     return {
-      status: "applied",
+      status: existingProposal.status === "applied" ? "applied" : "blocked",
       proposalId: existingProposal.id,
-      directionIds: [],
+      directionIds: input.readWorkspace().projectContinuity.recordEntries.find((entry) => entry.dedupeKey === `conceptDirectionApplied:${existingProposal.id}`)?.sourceRefs.filter((ref) => ref.kind === "object" && input.readWorkspace().objects[ref.id]?.type === "conceptDirection").map((ref) => ref.id) ?? [],
       recovered: true
     };
   }
@@ -557,7 +555,7 @@ function executeCreateConceptDirectionProposal(
       type: "conceptDirection",
       userInput: input.draft,
       selectedObjectIds: input.context.objectIds,
-      workIntent: "createConceptDirections"
+      workIntent
     });
     const basedOnDefinitionId = current.workingState.currentDesignDefinitionId;
     const basedOnDefinitionObject = basedOnDefinitionId
@@ -566,7 +564,8 @@ function executeCreateConceptDirectionProposal(
     const result = recordAndApplyConceptDirectionProposal(created.workspace, {
       proposalId: `${input.stableOperationId}-proposal`,
       operationId,
-      workIntent: "createConceptDirections",
+      workIntent,
+      applicationMode: mode, targetDirectionId: args.targetDirectionId, parentDirectionIds: args.parentDirectionIds,
       title: args.title,
       summary: args.summary,
       directions: args.directions,
@@ -592,7 +591,7 @@ function executeCreateConceptDirectionProposal(
     }
   }
   return {
-    status: placed.status === "updated" ? "applied" : "created",
+    status: placed.status === "updated" ? "applied" : "blocked",
     proposalId: placed.proposal.id,
     directionIds:
       placed.status === "updated"

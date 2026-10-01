@@ -1,3 +1,5 @@
+import type { AgentReadReceipt, AgentEffectReceipt } from "@/shared/agentReadCoverage";
+import type { APlusAgentProviderMessage } from "@/shared/agentTurnJournalProtocol";
 import type { ConversationMessageForContext } from "@/domain/morpho/conversationCompaction";
 import type {
   ConversationSummaryRevision,
@@ -20,6 +22,9 @@ export type AgentTurnConversationContext = {
 };
 
 export type AgentTurnRuntimeState = {
+  readReceipts: AgentReadReceipt[];
+  effectReceipts: AgentEffectReceipt[];
+  observationMessages: APlusAgentProviderMessage[];
   conversationContext: AgentTurnConversationContext;
   conversationInput: unknown[];
   readonly turnContinuationItems: unknown[];
@@ -59,6 +64,7 @@ export function createAgentTurnRuntimeState(input: {
   agentWorkLedger: AgentTurnWorkLedger;
 }): AgentTurnRuntimeState {
   return {
+    readReceipts: [], effectReceipts: [], observationMessages: [],
     conversationContext: input.conversationContext,
     conversationInput: input.conversationInput,
     turnContinuationItems: [],

@@ -33,6 +33,8 @@ function buildToolSpecificActivityDescriptor(
         label: count > 0 ? `读取当前选择的 ${count} 个对象` : "读取当前选择的对象"
       };
     }
+    case "read_workspace_source":
+      return { activityKind: "contextRead", label: `读取来源 ${tool.args.objectId}` };
     case "read_project_memory":
       return {
         activityKind: "contextRead",

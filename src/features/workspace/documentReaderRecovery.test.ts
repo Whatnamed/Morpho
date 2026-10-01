@@ -58,6 +58,8 @@ describe("document reader recovery", () => {
         fileName: "brief.md",
         text: "# Brief\n\nNightrail cabin notes",
         charCount: 30,
+        availableCharCount: 30,
+        contentHash: expect.any(String),
         pageCount: undefined,
         truncated: false
       }

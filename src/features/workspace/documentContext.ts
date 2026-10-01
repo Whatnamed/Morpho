@@ -1,3 +1,4 @@
+import { hashProductValue } from "@/shared/agentProductHash";
 import type { BlobStore } from "@/infrastructure/assets/localAssetWorkflow";
 import type { MorphoObjectId, MorphoWorkspace } from "@/domain/morpho/types";
 
@@ -7,6 +8,8 @@ export type AiDocumentExtract = {
   fileName?: string;
   text: string;
   charCount: number;
+  availableCharCount?: number;
+  contentHash?: string;
   pageCount?: number;
   truncated: boolean;
   contextTruncated?: boolean;
@@ -67,8 +70,8 @@ export async function collectDocumentExtractsForAi(
       continue;
     }
 
-    const rawText = (await blob.text()).trim();
-    if (!rawText) {
+    const rawText = await blob.text();
+    if (!rawText.trim()) {
       skipped.push({ objectId, reason: "解析文本为空。" });
       continue;
     }
@@ -84,6 +87,8 @@ export async function collectDocumentExtractsForAi(
       fileName: object.fileName,
       text,
       charCount: object.extractedCharCount ?? rawText.length,
+      availableCharCount: rawText.length,
+      contentHash: hashProductValue(rawText),
       pageCount: object.extractedPageCount,
       truncated: collectorTruncated || parserTruncated,
       ...(collectorTruncated ? { contextTruncated: true } : {}),

@@ -25,7 +25,7 @@ import {
 
 describe("agent conversation context", () => {
   it("defines an effect and registry boundary for every server-registered tool", () => {
-    const tools = buildMorphoAgentTools(true);
+    const tools = buildMorphoAgentTools(true, true);
     const functionTools = tools.filter((tool) => tool.type === "function");
     const registeredNames = functionTools.map((tool) => tool.name).sort();
     const effectNames = Object.keys(MORPHO_AGENT_TOOL_EFFECT_MATRIX).sort();

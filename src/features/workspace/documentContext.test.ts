@@ -52,6 +52,8 @@ describe("AI document extract context", () => {
         fileName: "brief.txt",
         text: "真实资料进入 Morpho",
         charCount: 18,
+        availableCharCount: 13,
+        contentHash: expect.any(String),
         pageCount: 1,
         truncated: false
       }

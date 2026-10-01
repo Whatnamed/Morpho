@@ -1,3 +1,4 @@
+import { normalizeAgentTaskFulfillment, isAgentReadReceipt } from "@/shared/agentReadCoverage";
 import type {
   AgentActivityKind,
   AgentTaskStrategyKind,
@@ -1037,12 +1038,14 @@ function validateAiMessage(value: unknown, path: string, add: WorkspaceContractI
   optionalEnum(item.taskStrategy, `${path}.taskStrategy`, AGENT_TASK_STRATEGIES, add);
   optional(item.agentTrace, `${path}.agentTrace`, add, validateAgentTrace);
   optionalEnum(item.agentTurnOutcome, `${path}.agentTurnOutcome`, AGENT_TURN_OUTCOMES, add);
+  if (item.taskFulfillment !== undefined && !normalizeAgentTaskFulfillment(item.taskFulfillment)) add(`${path}.taskFulfillment`, "Invalid task fulfillment");
   optionalString(item.agentTurnOutcomeSummary, `${path}.agentTurnOutcomeSummary`, add);
   optionalString(item.error, `${path}.error`, add);
 }
 
 function validateProviderInputSnapshot(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
   const item = record(value, path, add); if (!item) return;
+  if (item.coverage !== undefined && (!Array.isArray(item.coverage) || item.coverage.length > 4096 || !item.coverage.every(isAgentReadReceipt))) add(`${path}.coverage`, "Invalid input coverage");
   if (item.schemaVersion !== 1) add(`${path}.schemaVersion`, "Expected schemaVersion 1.");
   string(item.promptContractVersion, `${path}.promptContractVersion`, add);
   array(item.textParts, `${path}.textParts`, add, (raw, partPath, issue) => {

@@ -1,3 +1,5 @@
+import { isAgentReadReceipt, isAgentEffectReceipt, type AgentReadReceipt, type AgentEffectReceipt } from "@/shared/agentReadCoverage";
+import { isReadRequirement } from "@/shared/turnTaskContract";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import type {
   AiTaskMode,
@@ -36,6 +38,9 @@ const MAX_PROVIDER_PAYLOAD_BYTES = 32 * 1024 * 1024;
 export const A_PLUS_TURN_RECOVERY_RECORD_VERSION = 2 as const;
 
 export type APlusTurnRecoveryFacts = Readonly<{
+  readReceipts?: readonly AgentReadReceipt[];
+  effectReceipts?: readonly AgentEffectReceipt[];
+  observationMessages?: readonly import("@/shared/agentTurnJournalProtocol").APlusAgentProviderMessage[];
   requiredReadState: Readonly<{
     requiredTools: readonly RequiredAgentReadToolName[];
     requirements: readonly RequiredAgentReadRequirement[];
@@ -58,6 +63,8 @@ export type APlusTurnRecoveryFacts = Readonly<{
 }>;
 
 export type APlusTurnRecoveryRuntime = Readonly<{
+  pendingReadIds?: readonly string[];
+  pendingReadStepSequence?: number;
   sourceSnapshots?: readonly import("@/domain/operations/types").SourceSemanticSnapshot[];
   input: Readonly<{
     draft: string;
@@ -717,17 +724,22 @@ function isRecoveryRuntime(value: unknown): value is APlusTurnRecoveryRuntime {
     Array.isArray(value.documentExtractObjectIds) &&
     value.documentExtractObjectIds.every(isIdentifier) &&
     typeof value.allowStructuredComparison === "boolean" &&
+    (value.pendingReadStepSequence === undefined || Number.isSafeInteger(value.pendingReadStepSequence) && Number(value.pendingReadStepSequence) > 0 && Number(value.pendingReadStepSequence) <= 10000) &&
+    (value.pendingReadIds === undefined || Array.isArray(value.pendingReadIds) && value.pendingReadIds.length <= 4096 && value.pendingReadIds.every((id) => typeof id === "string" && id.length <= 2000)) &&
     isRecoveryFacts(value.facts);
 }
 
 function isRecoveryFacts(value: unknown): value is APlusTurnRecoveryFacts {
   if (!isRecord(value) || !isRecord(value.requiredReadState)) return false;
   const reads = value.requiredReadState;
-  return Array.isArray(reads.requiredTools) &&
+  return (value.readReceipts === undefined || Array.isArray(value.readReceipts) && value.readReceipts.length <= 4096 && value.readReceipts.every(isAgentReadReceipt)) &&
+    (value.effectReceipts === undefined || Array.isArray(value.effectReceipts) && value.effectReceipts.length <= 1024 && value.effectReceipts.every(isAgentEffectReceipt)) &&
+    (value.observationMessages === undefined || Array.isArray(value.observationMessages) && value.observationMessages.length <= 64 && value.observationMessages.every((message) => isRecord(message) && message.role === "user" && Array.isArray(message.content) && message.content.length <= 5 && message.content.every((part) => isRecord(part) && (part.type === "input_text" && typeof part.text === "string" || part.type === "input_image" && typeof part.image_url === "string")))) &&
+    Array.isArray(reads.requiredTools) &&
     reads.requiredTools.every((tool) =>
       tool === "read_project_memory" ||
       tool === "read_stage_record" ||
-      tool === "search_project_conversation"
+      tool === "search_project_conversation" || tool === "read_workspace_source"
     ) &&
     Array.isArray(reads.requirements) &&
     reads.requirements.every(isRecoveryReadRequirement) &&
@@ -756,18 +768,7 @@ function isRecoveryFacts(value: unknown): value is APlusTurnRecoveryFacts {
     typeof value.hasAgentToolResult === "boolean";
 }
 
-function isRecoveryReadRequirement(value: unknown): value is RequiredAgentReadRequirement {
-  if (!isRecord(value) || typeof value.tool !== "string") return false;
-  if (value.tool === "read_project_memory") {
-    return Array.isArray(value.requiredKeys) && value.requiredKeys.every(isIdentifier);
-  }
-  if (value.tool === "read_stage_record") {
-    return Array.isArray(value.requiredStages) && value.requiredStages.every(isIdentifier);
-  }
-  return value.tool === "search_project_conversation" &&
-    (value.requiredMode === "earliest" || value.requiredMode === "latest" || value.requiredMode === "keyword") &&
-    (value.keyword === undefined || typeof value.keyword === "string");
-}
+function isRecoveryReadRequirement(value: unknown): value is RequiredAgentReadRequirement { return isReadRequirement(value); }
 
 function isRecoveryCitation(value: unknown): value is ProviderCitation {
   return isRecord(value) &&

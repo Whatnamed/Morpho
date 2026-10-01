@@ -752,17 +752,22 @@ function applyConfirmation(
       return { workspace: nextWorkspace, result: { status: "applied", clearDraft: true } };
     }
     case "agentCreateConceptDirectionProposal": {
+      const mode = confirmation.args.applicationMode ?? "create";
+      const target = confirmation.args.targetDirectionId ? workspace.objects[confirmation.args.targetDirectionId] : undefined;
+      if (mode === "revise" && (target?.type !== "conceptDirection" || target.currentRevisionId !== confirmation.args.targetRevisionId)) return { workspace, result: { status: "blocked", reason: "原方向 revision 已变化，请重新提出修订。" } };
+      const workIntent = mode === "revise" ? "reviseConceptDirection" : mode === "split" ? "splitConceptDirection" : mode === "merge" ? "mergeConceptDirections" : "createConceptDirections";
       const operationId = `operation-conceptDirection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const created = createArtifactProposalOperation(workspace, {
         operationId,
         type: "conceptDirection",
         userInput: confirmation.draft,
         selectedObjectIds: confirmation.sourceObjectIds,
-        workIntent: "createConceptDirections"
+        workIntent
       });
       const placed = recordAndApplyConceptDirectionProposal(created.workspace, {
         operationId,
-        workIntent: "createConceptDirections",
+        workIntent,
+        applicationMode: mode, targetDirectionId: confirmation.args.targetDirectionId, parentDirectionIds: confirmation.args.parentDirectionIds,
         title: confirmation.args.title,
         summary: confirmation.args.summary,
         directions: confirmation.args.directions,

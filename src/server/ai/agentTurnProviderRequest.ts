@@ -31,7 +31,7 @@ import {
   type DesignMethodPackId
 } from "@/shared/designMethodPack";
 import { estimateProviderInputTokens } from "@/shared/providerInputBudget";
-import { canonicalTurnTaskMessage, getTurnAllowedTools, getTurnConfirmationActions, isTurnTaskContract, TURN_READ_TOOLS, type TurnTaskContract } from "@/shared/turnTaskContract";
+import { canonicalTurnTaskMessage, getTurnAllowedTools, getTurnConfirmationActions, isTurnTaskContract, type TurnTaskContract } from "@/shared/turnTaskContract";
 import { resolveDesignMethodPackIds } from "@/shared/designMethodPack";
 
 import type {
@@ -54,7 +54,7 @@ const MAX_FUNCTION_OUTPUT_CHARS = 120_000;
 const MAX_FUNCTION_ARGUMENT_DEPTH = 12;
 const IMAGE_DATA_URL = /^data:image\/(png|jpeg|webp|gif);base64,([A-Za-z0-9+/=]+)$/;
 const REGISTERED_TOOL_NAMES = new Set(
-  buildMorphoAgentTools(true).flatMap((tool) =>
+  buildMorphoAgentTools(true, true).flatMap((tool) =>
     tool.type === "function" ? [tool.name] : []
   )
 );
@@ -190,11 +190,11 @@ export function buildAPlusAgentProviderContract(input: {
   webSearchEnabled: boolean;
 }): APlusAgentProviderContract {
   const contract = input.request.taskContract;
-  const allowedNames = contract ? getTurnAllowedTools(contract) : [...TURN_READ_TOOLS];
+  const allowedNames = contract ? getTurnAllowedTools(contract) : ["read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation"];
   if (contract && allowedNames.includes("search_web_evidence") && !input.webSearchEnabled) {
     throw new APlusAgentProviderRequestError("本轮已授权联网，但服务端尚未启用该能力。");
   }
-  const tools = buildMorphoAgentTools(true).filter((tool) => tool.type === "function" && allowedNames.some((name) => name === tool.name)).map((tool) => {
+  const tools = buildMorphoAgentTools(true, contract?.readContractVersion === 1).filter((tool) => tool.type === "function" && allowedNames.some((name) => name === tool.name)).map((tool) => {
     if (tool.type !== "function" || tool.name !== "request_confirmation" || !contract) return tool;
     const properties = tool.parameters.properties as Record<string, unknown>;
     return { ...tool, parameters: { ...tool.parameters, properties: { ...properties,

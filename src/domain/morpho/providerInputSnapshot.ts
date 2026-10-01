@@ -1,3 +1,4 @@
+import { isAgentReadReceipt, type AgentReadReceipt } from "@/shared/agentReadCoverage";
 import type {
   ProviderInputCacheBoundaryReason,
   ProviderInputSnapshot,
@@ -15,6 +16,7 @@ type ProviderInputTextContent = {
 type ProviderInputContent = ProviderInputTextContent | { type: "input_image"; image_url: string };
 
 export function createProviderInputSnapshot(input: {
+  coverage?: readonly AgentReadReceipt[];
   message: { content: readonly ProviderInputContent[] };
   promptContractVersion: string;
   attachmentRefs?: readonly ProviderInputSnapshotAttachmentRef[];
@@ -32,6 +34,7 @@ export function createProviderInputSnapshot(input: {
 
   return {
     schemaVersion: 1,
+    ...(input.coverage ? { coverage: structuredClone([...input.coverage]) } : {}),
     promptContractVersion: input.promptContractVersion,
     textParts,
     attachmentRefs,
@@ -54,6 +57,7 @@ export function normalizeProviderInputSnapshot(value: unknown): ProviderInputSna
     : undefined;
   return {
     schemaVersion: 1,
+    ...(Array.isArray(value.coverage) && value.coverage.length <= 4096 && value.coverage.every(isAgentReadReceipt) ? { coverage: structuredClone(value.coverage) } : {}),
     promptContractVersion: value.promptContractVersion,
     textParts,
     attachmentRefs,

@@ -374,3 +374,26 @@ describe("A+ Provider Tool boundary", () => {
     ])).toThrow("无效或重复");
   });
 });
+
+
+describe("P2B additive tool contract compatibility", () => {
+  it("preserves the old P2A tool schema unless readContractVersion is explicitly enabled", () => {
+    const contract: import("@/shared/turnTaskContract").TurnTaskContract = { version: 1, userGoal: "create a concept", primaryFocus: "conceptDirection", completionConditions: [], requiredReads: [], execution: { taskMode: "chatAnalysis", taskModeSource: "userSelected", workIntent: "createConceptDirections", workIntentSource: "userSelected" }, activities: [{ id: "concept", kind: "conceptDirection", instruction: "create", targetObjectIds: [], sourceObjectIds: [], referenceObjectIds: [], excludedObjectIds: [], includeDefaultReference: false, requiredFacts: [], expectedOutputs: ["create_concept_direction_proposal"], effectGrants: [{ tool: "create_concept_direction_proposal", origin: "currentUserInstruction" }] }] };
+    const request = { input: [{ role: "user", content: [{ type: "input_text", text: "frozen input" }] }], promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION, mode: "auto", capabilityIntent: { comparisonAnalysis: false, webSearch: false }, taskContract: contract };
+    const parsed = parseAPlusAgentProviderRequest(request);
+    if (parsed.status !== "ok") throw new Error(parsed.reason);
+    const legacy = buildAPlusAgentProviderContract({ localProjectId: "project-test", request: parsed.value, webSearchEnabled: false }).request.tools;
+    expect(legacy?.some((tool) => tool.type === "function" && tool.name === "read_workspace_source")).toBe(false);
+    const oldConcept = legacy?.find((tool) => tool.type === "function" && tool.name === "create_concept_direction_proposal");
+    if (oldConcept?.type !== "function") throw new Error("concept schema");
+    expect(oldConcept.parameters.properties).not.toHaveProperty("applicationMode");
+    const current = parseAPlusAgentProviderRequest({ ...request, taskContract: { ...contract, readContractVersion: 1 } });
+    if (current.status !== "ok") throw new Error(current.reason);
+    const newTools = buildAPlusAgentProviderContract({ localProjectId: "project-test", request: current.value, webSearchEnabled: false }).request.tools;
+    expect(newTools?.some((tool) => tool.type === "function" && tool.name === "read_workspace_source")).toBe(true);
+    const newConcept = newTools?.find((tool) => tool.type === "function" && tool.name === "create_concept_direction_proposal");
+    if (newConcept?.type !== "function") throw new Error("concept schema");
+    expect(newConcept.parameters.properties).toHaveProperty("applicationMode");
+    expect(request.input).toEqual(parsed.value.input);
+  });
+});

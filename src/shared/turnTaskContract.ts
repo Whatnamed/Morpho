@@ -4,13 +4,14 @@ import { isMorphoAgentToolName, type MorphoAgentToolName, type RequestConfirmati
 import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
 
 export type ExecutionModeSource = "userSelected" | "autoRecommended";
-export type RequiredAgentReadToolName = "read_project_memory" | "read_stage_record" | "search_project_conversation";
+export type RequiredAgentReadToolName = "read_project_memory" | "read_stage_record" | "search_project_conversation" | "read_workspace_source";
 export type RequiredAgentReadRequirement =
+  | { tool: "read_workspace_source"; kind: "object" | "document" | "image" | "delivery"; objectId: string; revisionId?: string; sectionId?: string; start?: number; end?: number }
   | { tool: "read_project_memory"; requiredKeys: ProjectMemoryKey[] }
   | { tool: "read_stage_record"; requiredStages: StageRecordKey[] }
   | { tool: "search_project_conversation"; requiredMode: "earliest" | "latest" | "keyword"; keyword?: string };
 
-export const TURN_READ_TOOLS = ["read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation"] as const;
+export const TURN_READ_TOOLS = ["read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation", "read_workspace_source"] as const;
 export type TurnTaskActivityKind = AgentTaskStrategyKind | "critique";
 export type TurnEffectGrant = Readonly<{
   tool: MorphoAgentToolName;
@@ -32,6 +33,9 @@ export type TurnTaskActivity = Readonly<{
   expectedVisualCount?: number;
   requestedPreviewCount?: number;
   scopeBlockedReason?: string;
+  observeGeneratedImages?: boolean;
+  conceptOperation?: "create" | "revise" | "split" | "merge";
+  targetRevisionIds?: readonly string[];
 }>;
 
 /** Turn-local intent and authority; not Project Truth, a planner, or a task database.
@@ -40,6 +44,7 @@ export type TurnTaskActivity = Readonly<{
  */
 export type TurnTaskContract = Readonly<{
   version: 1;
+  readContractVersion?: 1;
   userGoal: string;
   completionConditions: readonly string[];
   primaryFocus: AgentTaskStrategyKind;
@@ -55,7 +60,7 @@ export type TurnTaskContract = Readonly<{
 
 export function getTurnAllowedTools(contract: TurnTaskContract): MorphoAgentToolName[] {
   return [...new Set<MorphoAgentToolName>([
-    ...TURN_READ_TOOLS,
+    ...TURN_READ_TOOLS.filter((tool) => tool !== "read_workspace_source" || contract.readContractVersion === 1),
     ...contract.activities.flatMap((activity) => activity.scopeBlockedReason ? [] : activity.effectGrants.map((grant) => grant.tool))
   ])];
 }
@@ -78,24 +83,27 @@ const stages = ["startAndInput", "exploration", "research", "designDefinition", 
 
 /** Strict bounded parsing also used by Recovery. Unknown fields never become authority. */
 export function isTurnTaskContract(value: unknown): value is TurnTaskContract {
-  if (!record(value) || !keys(value, ["version", "userGoal", "completionConditions", "primaryFocus", "execution", "activities", "requiredReads"]) ||
-    value.version !== 1 || !boundedText(value.userGoal, 24_000) || !textList(value.completionConditions) || !isAgentTaskStrategyKind(value.primaryFocus) ||
+  if (!record(value) || !keys(value, ["version", "readContractVersion", "userGoal", "completionConditions", "primaryFocus", "execution", "activities", "requiredReads"]) ||
+    value.version !== 1 || (value.readContractVersion !== undefined && value.readContractVersion !== 1) || !boundedText(value.userGoal, 24_000) || !textList(value.completionConditions) || !isAgentTaskStrategyKind(value.primaryFocus) ||
     !record(value.execution) || !keys(value.execution, ["taskMode", "taskModeSource", "workIntent", "workIntentSource"]) ||
     !member(value.execution.taskMode, taskModes) || !member(value.execution.workIntent, workIntents) ||
     !member(value.execution.taskModeSource, ["userSelected", "autoRecommended"]) || !member(value.execution.workIntentSource, ["userSelected", "autoRecommended"]) ||
     !Array.isArray(value.activities) || value.activities.length < 1 || value.activities.length > 16 ||
     !value.activities.every(isActivity) || new Set(value.activities.map((activity) => activity.id)).size !== value.activities.length ||
-    !Array.isArray(value.requiredReads) || value.requiredReads.length > 3 || !value.requiredReads.every(isReadRequirement)) return false;
+    !Array.isArray(value.requiredReads) || value.requiredReads.length > 64 || !value.requiredReads.every(isReadRequirement)) return false;
   return true;
 }
 
 function isActivity(value: unknown): value is TurnTaskActivity {
-  if (!record(value) || !keys(value, ["id", "kind", "instruction", "targetObjectIds", "sourceObjectIds", "referenceObjectIds", "excludedObjectIds", "includeDefaultReference", "requiredFacts", "effectGrants", "expectedOutputs", "expectedVisualCount", "requestedPreviewCount", "scopeBlockedReason"]) ||
+  if (!record(value) || !keys(value, ["id", "kind", "instruction", "targetObjectIds", "sourceObjectIds", "referenceObjectIds", "excludedObjectIds", "includeDefaultReference", "requiredFacts", "effectGrants", "expectedOutputs", "expectedVisualCount", "requestedPreviewCount", "scopeBlockedReason", "observeGeneratedImages", "conceptOperation", "targetRevisionIds"]) ||
     !identifier(value.id) || !(value.kind === "critique" || isAgentTaskStrategyKind(value.kind)) || !boundedText(value.instruction, 24_000) ||
     !idList(value.targetObjectIds) || !idList(value.sourceObjectIds) || !idList(value.referenceObjectIds) || !idList(value.excludedObjectIds) || typeof value.includeDefaultReference !== "boolean" ||
     !enumList(value.requiredFacts, ["selectedObjectContent", "currentProjectFacts"], 2) || !textList(value.expectedOutputs) ||
     (value.expectedVisualCount !== undefined && !positiveCount(value.expectedVisualCount)) ||
     (value.requestedPreviewCount !== undefined && !positiveCount(value.requestedPreviewCount)) ||
+    (value.observeGeneratedImages !== undefined && typeof value.observeGeneratedImages !== "boolean") ||
+    (value.conceptOperation !== undefined && !member(value.conceptOperation, ["create", "revise", "split", "merge"])) ||
+    (value.targetRevisionIds !== undefined && !idList(value.targetRevisionIds)) ||
     (value.scopeBlockedReason !== undefined && !boundedText(value.scopeBlockedReason, 500)) || !Array.isArray(value.effectGrants) || value.effectGrants.length > 14) return false;
   const excluded = value.excludedObjectIds;
   if ([...value.targetObjectIds, ...value.sourceObjectIds, ...value.referenceObjectIds].some((id) => excluded.includes(id))) return false;
@@ -106,8 +114,9 @@ function isActivity(value: unknown): value is TurnTaskActivity {
       : grant.confirmationActions === undefined));
 }
 
-function isReadRequirement(value: unknown): boolean {
+export function isReadRequirement(value: unknown): boolean {
   if (!record(value)) return false;
+  if (value.tool === "read_workspace_source") return keys(value, ["tool", "kind", "objectId", "revisionId", "sectionId", "start", "end"]) && member(value.kind, ["object", "document", "image", "delivery"]) && identifier(value.objectId) && (value.revisionId === undefined || identifier(value.revisionId)) && (value.sectionId === undefined || identifier(value.sectionId)) && [value.start, value.end].every((item) => item === undefined || typeof item === "number" && Number.isSafeInteger(item) && item >= 0) && (value.end === undefined || Number(value.end) > Number(value.start ?? 0));
   if (value.tool === "read_project_memory") return keys(value, ["tool", "requiredKeys"]) && enumList(value.requiredKeys, memoryKeys, 7);
   if (value.tool === "read_stage_record") return keys(value, ["tool", "requiredStages"]) && enumList(value.requiredStages, stages, 6);
   return value.tool === "search_project_conversation" && keys(value, ["tool", "requiredMode", "keyword"]) && member(value.requiredMode, ["earliest", "latest", "keyword"]) && (value.keyword === undefined || boundedText(value.keyword, 80));
