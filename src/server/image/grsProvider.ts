@@ -8,6 +8,7 @@ import {
   type ProviderRequestBudget
 } from "../ai/providerResponseBoundary";
 import { visitProviderResponseRecords } from "../ai/providerResponseTraversal";
+import { ExternalEffectJournalError, providerNamespace, type EffectExecution } from "../ai/externalEffectJournal";
 
 export type GrsImageConfig = {
   apiKey: string;
@@ -65,6 +66,10 @@ export type ResolveGrsImageOptions = {
   pollDelayMs?: number;
   overallDeadlineMs?: number;
   signal?: AbortSignal;
+  effect?: EffectExecution;
+  /** Server-owned persisted identity only. This mode contains no generate POST. */
+  resumeTaskId?: string;
+  downloadResult?: boolean;
 };
 
 const DEFAULT_MAX_POLLS = 12;
@@ -109,16 +114,27 @@ export async function resolveGrsImageResult(
     options.signal,
     options.overallDeadlineMs ?? PROVIDER_OVERALL_DEADLINE_MS
   );
-  const observation = { submitted: false, resultKnown: false };
+  const observation = { submitted: Boolean(options.resumeTaskId), resultKnown: false };
   try {
-    return await resolveGrsImageResultWithBudget(config, input, options, budget, observation);
+    const result = await resolveGrsImageResultWithBudget(config, input, options, budget, observation);
+    if (result.status === "cancelled" && options.signal?.aborted) {
+      await options.effect?.cancel();
+      await options.effect?.observe({ kind: "localAbort" });
+    }
+    return result;
   } catch (error) {
+    if (error instanceof ExternalEffectJournalError) return {
+      status: "failed", reason: "External effect could not be durably recorded.", failureCode: "external_execution_state_unknown"
+    };
     if (options.signal?.aborted) {
+      await options.effect?.cancel();
+      await options.effect?.observe({ kind: "localAbort" });
       return { status: "cancelled", reason: "GrsAI image request was cancelled." };
     }
     if (error instanceof ProviderResponseBoundaryError && error.code === "provider_deadline_exceeded") {
       return failedObservation("GrsAI image request exceeded its overall safety deadline.", observation);
     }
+    await options.effect?.observe({ kind: "unknown" });
     return failedObservation("GrsAI image request failed.", observation);
   } finally {
     budget.dispose();
@@ -136,53 +152,62 @@ async function resolveGrsImageResultWithBudget(
   const maxPolls = options.maxPolls ?? DEFAULT_MAX_POLLS;
   const pollDelayMs = options.pollDelayMs ?? DEFAULT_POLL_DELAY_MS;
   const signal = options.signal;
-  const request = createGrsGenerateRequest(config, input);
   budget.throwIfUnavailable();
-  observation.submitted = true;
-  const generateResponse = await safeFetch(fetchImpl, request.url, {
-    method: "POST",
-    headers: request.headers,
-    body: JSON.stringify(request.body),
-    signal: budget.signal
-  }, budget);
-  if (generateResponse.status === "cancelled") return generateResponse;
-
-  if (!generateResponse.response.ok) {
-    observation.resultKnown = ![408, 429].includes(generateResponse.response.status) && generateResponse.response.status < 500;
-    let detail = "";
-    try {
-      const errorBody = await readBoundedResponseText(generateResponse.response, budget);
-      if (errorBody) {
-        try {
-          const parsed = JSON.parse(errorBody) as unknown;
-          detail = extractFailureDetail(parsed) ?? errorBody.substring(0, 200);
-        } catch {
-          detail = errorBody.substring(0, 200);
-        }
-      }
-    } catch (error) {
-      return responseReadFailure("generate", error, !observation.resultKnown, signal);
-    }
-    const reason = detail
-      ? `GrsAI generate returned ${generateResponse.response.status}: ${detail}`
-      : `GrsAI generate returned ${generateResponse.response.status}.`;
-    return {
-      status: "failed",
-      reason,
-      ...(!observation.resultKnown ? { failureCode: "external_execution_state_unknown" as const } : {})
-    };
-  }
-
   let generatePayload: unknown;
-  try {
-    generatePayload = await readJson(generateResponse.response, budget);
-  } catch (error) {
-    return responseReadFailure("generate", error, true, signal);
+  if (options.resumeTaskId) {
+    generatePayload = { id: options.resumeTaskId, status: "running" };
+  } else {
+    const request = createGrsGenerateRequest(config, input);
+    const requestBody = JSON.stringify(request.body);
+    if (options.effect) await options.effect.beforeSubmit(requestBody, providerNamespace("grsai", config));
+    budget.throwIfUnavailable();
+    observation.submitted = true;
+    const generateResponse = await safeFetch(fetchImpl, request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: requestBody,
+      signal: budget.signal
+    }, budget);
+    if (generateResponse.status === "cancelled") return generateResponse;
+
+    if (!generateResponse.response.ok) {
+      observation.resultKnown = ![408, 429].includes(generateResponse.response.status) && generateResponse.response.status < 500;
+      await options.effect?.observe({ kind: observation.resultKnown ? "rejected" : "unknown" });
+      let detail = "";
+      try {
+        const errorBody = await readBoundedResponseText(generateResponse.response, budget);
+        if (errorBody) {
+          try {
+            const parsed = JSON.parse(errorBody) as unknown;
+            detail = extractFailureDetail(parsed) ?? errorBody.substring(0, 200);
+          } catch {
+            detail = errorBody.substring(0, 200);
+          }
+        }
+      } catch (error) {
+        return responseReadFailure("generate", error, !observation.resultKnown, signal);
+      }
+      const reason = detail
+        ? `GrsAI generate returned ${generateResponse.response.status}: ${detail}`
+        : `GrsAI generate returned ${generateResponse.response.status}.`;
+      return {
+        status: "failed",
+        reason,
+        ...(!observation.resultKnown ? { failureCode: "external_execution_state_unknown" as const } : {})
+      };
+    }
+
+    try {
+      generatePayload = await readJson(generateResponse.response, budget);
+    } catch (error) {
+      return responseReadFailure("generate", error, true, signal);
+    }
   }
+  if (!options.resumeTaskId) await observePayload(generatePayload, options.effect);
   observation.resultKnown = Boolean(extractImageUrl(generatePayload)) || isFailureStatus(extractStatus(generatePayload));
   const allowedImageHosts = buildAllowedImageHosts(config);
   budget.throwIfUnavailable();
-  const immediate = await resolvePayload(
+  const immediate = options.downloadResult === false ? { status: "pending" as const } : await resolvePayload(
     fetchImpl,
     generatePayload,
     signal,
@@ -202,6 +227,8 @@ async function resolveGrsImageResultWithBudget(
   const resultUrl = `${config.baseUrl.replace(/\/$/, "")}/v1/api/result?id=${encodeURIComponent(taskId)}`;
   for (let attempt = 0; attempt < maxPolls; attempt += 1) {
     if (signal?.aborted) {
+      await options.effect?.cancel();
+      await options.effect?.observe({ kind: "localAbort" });
       return { status: "cancelled", reason: "GrsAI image request was cancelled." };
     }
 
@@ -227,7 +254,13 @@ async function resolveGrsImageResultWithBudget(
       return responseReadFailure("result", error, true, signal);
     }
     observation.resultKnown = Boolean(extractImageUrl(resultPayload)) || isFailureStatus(extractStatus(resultPayload));
+    const returnedTaskId = extractTaskId(resultPayload);
+    if (returnedTaskId && returnedTaskId !== taskId) {
+      return failedObservation("GrsAI result task identity did not match the known execution.", { submitted: true, resultKnown: false });
+    }
+    await observePayload(resultPayload, options.effect, taskId);
     budget.throwIfUnavailable();
+    if (options.downloadResult === false) return failedObservation("Observation completed without downloading a result.", observation);
     const resolved = await resolvePayload(fetchImpl, resultPayload, signal, budget.deadlineSignal, taskId, allowedImageHosts);
     if (resolved.status !== "pending") {
       return resolved;
@@ -239,6 +272,17 @@ async function resolveGrsImageResultWithBudget(
   }
 
   return failedObservation("GrsAI image task did not finish before the polling limit.", observation);
+}
+
+async function observePayload(payload: unknown, effect: EffectExecution | undefined, knownTaskId?: string): Promise<void> {
+  if (!effect) return;
+  const taskId = knownTaskId ?? extractTaskId(payload);
+  const status = extractStatus(payload);
+  const kind = status === "cancelled" || status === "canceled" ? "cancelled"
+    : isFailureStatus(status) ? "failed"
+    : extractImageUrl(payload) || status === "succeeded" || status === "completed" ? "succeeded"
+    : taskId && status && isPendingStatus(status) ? "running" : "unknown";
+  await effect.observe({ kind, ...(taskId ? { taskId } : {}) });
 }
 
 async function resolvePayload(

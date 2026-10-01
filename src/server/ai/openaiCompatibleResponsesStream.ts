@@ -20,6 +20,7 @@ import {
 } from "./providerResponseBoundary";
 import { visitProviderResponseRecords } from "./providerResponseTraversal";
 import { normalizeSafeExternalNavigationUrl } from "@/shared/externalNavigationPolicy";
+import type { ExternalObservation } from "@/shared/externalEffectProtocol";
 
 type MessagePhase = "commentary" | "final";
 
@@ -72,12 +73,17 @@ export async function parseOpenAiResponsesStream(
     maxEventCount?: number;
     maxStructureDepth?: number;
     maxStructureNodes?: number;
+    onObservation?: (observation: ExternalObservation) => Promise<void>;
   } = {}
 ): Promise<OpenAiCompatibleResponseResult> {
+  const observations: ExternalObservation[] = [];
+  const flushObservations = async () => {
+    for (const observation of observations.splice(0)) await options.onObservation?.(observation);
+  };
   const accumulator = createOpenAiCompatibleResponseAccumulator(options.onEvent, {
     maxStructureDepth: options.maxStructureDepth,
     maxStructureNodes: options.maxStructureNodes
-  });
+  }, (observation) => observations.push(observation));
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   const ownsBudget = !options.budget;
@@ -109,6 +115,7 @@ export async function parseOpenAiResponsesStream(
         }
         pending.append(next.value);
         pending.consumeCompleteFrames(decoder, consumeFrame);
+        await flushObservations();
         if (pending.byteLength > maxPendingBytes) {
           throw new ProviderResponseBoundaryError("provider_response_too_large");
         }
@@ -116,12 +123,14 @@ export async function parseOpenAiResponsesStream(
 
       if (next.done) {
         consumeFrame(pending.consumeRemainder(decoder));
+        await flushObservations();
         const result = accumulator.finish();
         completed = true;
         return result;
       }
     }
   } catch (error) {
+    await flushObservations();
     try {
       void reader.cancel().catch(() => undefined);
     } catch {
@@ -147,7 +156,8 @@ export async function parseOpenAiResponsesStream(
 
 export function createOpenAiCompatibleResponseAccumulator(
   onEvent?: (event: OpenAiCompatibleAgentStreamEvent) => void,
-  limits: { maxStructureDepth?: number; maxStructureNodes?: number } = {}
+  limits: { maxStructureDepth?: number; maxStructureNodes?: number } = {},
+  onObservation?: (observation: ExternalObservation) => void
 ) {
   const itemById = new Map<string, AgentOutputItem>();
   const messagePhaseById = new Map<string, MessagePhase>();
@@ -191,6 +201,7 @@ export function createOpenAiCompatibleResponseAccumulator(
         case "response.in_progress": {
           const response = asRecord(record.response);
           responseId = stringValue(response?.id) ?? responseId;
+          onObservation?.({ kind: "running", ...(responseId ? { responseId } : {}) });
           return;
         }
         case "response.output_item.added": {
@@ -360,6 +371,7 @@ export function createOpenAiCompatibleResponseAccumulator(
         case "response.completed": {
           const response = asRecord(record.response);
           responseId = stringValue(response?.id) ?? responseId;
+          onObservation?.({ kind: "succeeded", ...(responseId ? { responseId } : {}) });
           usage = extractUsage(response?.usage) ?? usage;
           if (itemById.size === 0 && Array.isArray(response?.output)) {
             response.output.forEach((item, index) => {
@@ -397,6 +409,9 @@ export function createOpenAiCompatibleResponseAccumulator(
           return;
         }
         case "response.failed": {
+          const response = asRecord(record.response);
+          responseId = stringValue(response?.id) ?? responseId;
+          onObservation?.({ kind: "failed", ...(responseId ? { responseId } : {}) });
           failed = true;
           return;
         }

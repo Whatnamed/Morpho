@@ -26,6 +26,7 @@ import {
 } from "./providerResponseBoundary";
 import { visitProviderResponseRecords } from "./providerResponseTraversal";
 import { normalizeSafeExternalNavigationUrl } from "@/shared/externalNavigationPolicy";
+import { providerNamespace, type EffectExecution } from "./externalEffectJournal";
 
 type OpenAiCompatibleProviderConfig = Pick<
   OpenAiCompatibleConfig,
@@ -119,6 +120,7 @@ export type { OpenAiCompatibleAgentStreamEvent } from "./openaiCompatibleRespons
 
 type RawResponse = {
   id?: string;
+  status?: string;
   output?: unknown[];
   usage?: unknown;
 };
@@ -146,12 +148,16 @@ export class OpenAiCompatibleProviderError extends Error {
 export async function executeOpenAiCompatibleResponse(
   config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  effect?: EffectExecution,
+  correction?: "imageCompatibility"
 ): Promise<OpenAiCompatibleResponseResult> {
   const budget = createProviderRequestBudget(signal);
   try {
-    return await executeOpenAiCompatibleResponseWithBudget(config, request, budget);
+    return await executeOpenAiCompatibleResponseWithBudget(config, request, budget, effect, correction);
   } catch (error) {
+    if (signal?.aborted) await effect?.cancel();
+    await effect?.observe({ kind: signal?.aborted ? "localAbort" : "unknown" });
     throw translateProviderBoundaryError(error, budget);
   } finally {
     budget.dispose();
@@ -161,55 +167,67 @@ export async function executeOpenAiCompatibleResponse(
 async function executeOpenAiCompatibleResponseWithBudget(
   config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
-  budget: ProviderRequestBudget
+  budget: ProviderRequestBudget,
+  effect?: EffectExecution,
+  correction?: "imageCompatibility"
 ): Promise<OpenAiCompatibleResponseResult> {
-  const response = await fetchProviderResponse(`${config.baseUrl}/responses`, {
+  const namespace = providerNamespace("openai-compatible", config);
+  const requestBody = JSON.stringify(buildProviderRequestBody(config, request));
+  const headers = { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" };
+  if (effect) await effect.beforeSubmit(requestBody, namespace, correction);
+  const response = await fetchProviderResponse(`${namespace.baseUrl}/responses`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(buildProviderRequestBody(config, request))
+    headers,
+    body: requestBody
   }, budget);
 
   if (!response.ok) {
     const diagnostic = await safeReadDiagnostic(response, budget);
+    await effect?.observe({ kind: confirmedHttpRejection(response.status) ? "rejected" : "unknown" });
     if (shouldRetryWithoutUnsupportedPromptCache(config, request, response.status, diagnostic)) {
       budget.throwIfUnavailable();
-      const retry = await fetchProviderResponse(`${config.baseUrl}/responses`, {
+      const correctedBody = JSON.stringify(buildProviderRequestBody(config, withoutPromptCacheFields(request)));
+      await effect?.beforeSubmit(correctedBody, namespace, "cacheCompatibility");
+      const retry = await fetchProviderResponse(`${namespace.baseUrl}/responses`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(buildProviderRequestBody(config, withoutPromptCacheFields(request)))
+        headers,
+        body: correctedBody
       }, budget);
       if (retry.ok) {
+        const raw = await readRawResponse(retry, budget, effect);
+        await observeRawResponse(raw, effect);
         return resultFromRawResponse(
-          await readRawResponse(retry, budget),
+          raw,
           request.diagnostics,
           "unavailable"
         );
       }
       const retryDiagnostic = await safeReadDiagnostic(retry, budget);
+      await effect?.observe({ kind: confirmedHttpRejection(retry.status) ? "rejected" : "unknown" });
       throw new OpenAiCompatibleProviderError(retry.status, retryDiagnostic);
     }
     throw new OpenAiCompatibleProviderError(response.status, diagnostic);
   }
 
-  return resultFromRawResponse(await readRawResponse(response, budget), request.diagnostics);
+  const raw = await readRawResponse(response, budget, effect);
+  await observeRawResponse(raw, effect);
+  return resultFromRawResponse(raw, request.diagnostics);
 }
 
 export async function streamOpenAiCompatibleResponse(
   config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   handlers: OpenAiCompatibleStreamHandlers,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  effect?: EffectExecution,
+  correction?: "imageCompatibility"
 ): Promise<OpenAiCompatibleResponseResult> {
   const budget = createProviderRequestBudget(signal);
   try {
-    return await streamOpenAiCompatibleResponseWithBudget(config, request, handlers, budget);
+    return await streamOpenAiCompatibleResponseWithBudget(config, request, handlers, budget, effect, correction);
   } catch (error) {
+    if (signal?.aborted) await effect?.cancel();
+    await effect?.observe({ kind: signal?.aborted ? "localAbort" : "unknown" });
     throw translateProviderBoundaryError(error, budget);
   } finally {
     budget.dispose();
@@ -220,21 +238,25 @@ async function streamOpenAiCompatibleResponseWithBudget(
   config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   handlers: OpenAiCompatibleStreamHandlers,
-  budget: ProviderRequestBudget
+  budget: ProviderRequestBudget,
+  effect?: EffectExecution,
+  correction?: "cacheCompatibility" | "imageCompatibility"
 ): Promise<OpenAiCompatibleResponseResult> {
-  const response = await fetchProviderResponse(`${config.baseUrl}/responses`, {
+  const namespace = providerNamespace("openai-compatible", config);
+  const requestBody = JSON.stringify({ ...buildProviderRequestBody(config, request), stream: true });
+  const headers = { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" };
+  if (effect) await effect.beforeSubmit(requestBody, namespace, correction);
+  const response = await fetchProviderResponse(`${namespace.baseUrl}/responses`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ ...buildProviderRequestBody(config, request), stream: true })
+    headers,
+    body: requestBody
   }, budget);
 
   if (!response.ok) {
     const diagnostic = await safeReadDiagnostic(response, budget);
+    await effect?.observe({ kind: confirmedHttpRejection(response.status) ? "rejected" : "unknown" });
     if (shouldRetryWithoutUnsupportedPromptCache(config, request, response.status, diagnostic)) {
-      const result = await streamOpenAiCompatibleResponseWithBudget(config, withoutPromptCacheFields(request), handlers, budget);
+      const result = await streamOpenAiCompatibleResponseWithBudget(config, withoutPromptCacheFields(request), handlers, budget, effect, "cacheCompatibility");
       result.providerDiagnostics = { ...result.providerDiagnostics, cacheStatus: "unavailable" };
       return result;
     }
@@ -244,7 +266,8 @@ async function streamOpenAiCompatibleResponseWithBudget(
   const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
   if (!response.body || !contentType.includes("text/event-stream")) {
     if (contentType.includes("application/json")) {
-      const raw = await readRawResponse(response, budget);
+      const raw = await readRawResponse(response, budget, effect);
+      await observeRawResponse(raw, effect);
       if (!isRawResponsesResult(raw)) {
         throw new OpenAiCompatibleProviderError(502, "Responses endpoint returned an incompatible JSON payload.");
       }
@@ -260,6 +283,7 @@ async function streamOpenAiCompatibleResponseWithBudget(
   try {
     const result = await parseOpenAiResponsesStream(response.body, {
       budget,
+      onObservation: effect?.observe,
       onEvent: (event) => {
         handlers.onEvent?.(event);
         if (event.type === "final-delta") {
@@ -296,6 +320,19 @@ async function streamOpenAiCompatibleResponseWithBudget(
   }
 }
 
+function confirmedHttpRejection(status: number): boolean {
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
+async function observeRawResponse(raw: RawResponse, effect?: EffectExecution): Promise<void> {
+  const kind = raw.status === "failed" ? "failed" : raw.status === "cancelled" ? "cancelled"
+    : raw.status === "in_progress" || raw.status === "queued" ? "running"
+    : raw.status === "completed" ? "succeeded"
+    : raw.status || !Array.isArray(raw.output) ? "unknown" : "succeeded";
+  await effect?.observe({ kind, ...(raw.id ? { responseId: raw.id } : {}) });
+  if (kind !== "succeeded") throw new OpenAiCompatibleProviderError(502, "Provider response has no completed execution.", undefined, kind === "unknown" || kind === "running");
+}
+
 async function safeReadDiagnostic(
   response: Response,
   budget: ProviderRequestBudget
@@ -310,7 +347,8 @@ async function safeReadDiagnostic(
 
 async function readRawResponse(
   response: Response,
-  budget: ProviderRequestBudget
+  budget: ProviderRequestBudget,
+  effect?: EffectExecution
 ): Promise<RawResponse> {
   let value: unknown;
   try {
@@ -318,6 +356,10 @@ async function readRawResponse(
   } catch (error) {
     if (error instanceof ProviderResponseBoundaryError || isAbortError(error)) throw error;
     throw new OpenAiCompatibleProviderError(502, "Responses endpoint returned invalid JSON.");
+  }
+  if (isRecord(value) && typeof value.id === "string" && value.id) {
+    // Identity is useful even if the output envelope cannot be applied locally.
+    await effect?.observe({ kind: "unknown", responseId: value.id });
   }
   if (!isRecord(value) || !isRawResponsesResult(value)) {
     throw new OpenAiCompatibleProviderError(502, "Responses endpoint returned an incompatible JSON payload.");

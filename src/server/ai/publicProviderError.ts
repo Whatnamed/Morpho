@@ -1,4 +1,5 @@
 import { OpenAiCompatibleProviderError } from "./openaiCompatibleProvider";
+import { ExternalEffectJournalError } from "./externalEffectJournal";
 
 export type PublicProviderError = Readonly<{
   code: string;
@@ -26,7 +27,7 @@ export const IMAGE_PROVIDER_UNAVAILABLE: PublicProviderError = {
 
 export const IMAGE_PROVIDER_CANCELLED: PublicProviderError = {
   code: "image_cancelled",
-  message: "图像任务已取消。",
+  message: "已停止等待图像结果；外部执行是否取消尚未确认。",
   recoverable: false
 };
 
@@ -61,6 +62,7 @@ export function getPublicTextProviderError(error: unknown): PublicProviderError 
 }
 
 export function getPublicTextProviderFailureCode(error: unknown): string {
+  if (error instanceof ExternalEffectJournalError) return EXTERNAL_EXECUTION_STATE_UNKNOWN.code;
   if (error instanceof OpenAiCompatibleProviderError) {
     if (error.executionStateUnknown) return EXTERNAL_EXECUTION_STATE_UNKNOWN.code;
     if (error.code === "context_limit") return "provider_context_limit";
