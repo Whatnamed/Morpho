@@ -1306,7 +1306,9 @@ looks acceptable; record it as untrusted and say why.
 
 ## P3A execution identity rollout and validation
 
-P3A is `validating`, not accepted/deployed. Apply only the new additive
+P3A implementation is accepted at `ccf4561c8c422d3b5a01c8146e63287023ab6a79` (Vercel commit
+status success); production external-effect migration and runtime validation remain unverified.
+Apply only the new additive
 `supabase/migrations/20261001090000_add_external_effect_observation.sql` through the normal authorized
 forward migration process **before** deploying this code. No production migration was performed by
 the implementation. Do not rerun old cleanup migrations or populate Provider IDs from current data.

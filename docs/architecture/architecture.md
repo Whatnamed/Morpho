@@ -864,7 +864,7 @@ outside this implementation.
 
 The deployable built-in project is `project-morpho-case-study`, generated from the current real editable backup. It preserves the backup's canvas, relations, assets, messages, Agent traces, citations, project continuity, and incomplete state. The old Nightrail structure remains only as a test fixture and as a guarded one-time migration fingerprint.
 
-## P3A Effect Identity / Execution Observation (2026-10-01; validating)
+## P3A Effect Identity / Execution Observation (2026-10-01; accepted implementation `ccf4561c8c422d3b5a01c8146e63287023ab6a79`)
 
 `externalEffectJournal.ts`, `externalEffectObservation.ts` and `externalEffectProtocol.ts` add a
 version-1 execution contract alongside the existing Turn/Request/External Action journals.
