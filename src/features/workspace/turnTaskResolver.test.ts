@@ -25,6 +25,26 @@ function setup(draft: string, overrides: Partial<AgentToolAuthorityInput> = {}) 
 }
 
 describe("Turn Task / scope / authority", () => {
+  it.each([
+    "只针对 A 和 B 做比较；然后只继续 A，生成两张 CMF 图。",
+    "只针对 A 和 B 做比较，不用 A，不使用默认参考；然后生成两张 CMF 图。"
+  ])("owns visual scope independently of adjacent comparison qualifiers: %s", (draft) => {
+    const { images: [a, b], contract } = setup(draft);
+    const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;
+    if (draft.includes("只继续 A")) {
+      expect(visual.sourceObjectIds).toEqual([a!.id]);
+      expect(visual.referenceObjectIds).toEqual([a!.id]);
+      expect(visual.excludedObjectIds).toEqual([b!.id]);
+      expect(visual.includeDefaultReference).toBe(false);
+    } else {
+      expect(visual.sourceObjectIds).toEqual([a!.id, b!.id]);
+      expect(visual.referenceObjectIds).toEqual(expect.arrayContaining([a!.id, b!.id]));
+      expect(visual.excludedObjectIds).toEqual([]);
+      expect(visual.includeDefaultReference).toBe(true);
+      expect(visual.instruction).not.toContain("不用 A");
+    }
+    expect(contract.activities.find((activity) => activity.kind === "comparison")?.sourceObjectIds).toEqual([a!.id, b!.id]);
+  });
   it("keeps compare A+B, CMF A, exclusions, local grants and Provider tools consistent", () => {
     const { workspace, images: [a, b], contract } = setup("比较 A/B，给出取舍；不要保存 Compare；然后只继续 A，生成两张 CMF 图；不要修改主方向。");
     expect(isTurnTaskContract(contract)).toBe(true);

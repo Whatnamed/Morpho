@@ -9,7 +9,11 @@ const pixel = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AA
 type ImageRequest = { input: { referenceObjectIds: string[]; images: string[] } };
 declare global { interface Window { __p2aImageRequests?: ImageRequest[] } }
 
-test("mixed turn compares A+B and persists two CMF images from A only without Compare or primary writes", async ({ page }) => {
+for (const [variant, draft] of [
+  ["representative", "比较 A/B，给出取舍；不要保存 Compare；然后只继续 A，生成两张 CMF 图；不要修改主方向。"],
+  ["comparison scope qualifier", "只针对 A 和 B 做比较；然后只继续 A，生成两张 CMF 图。"]
+] as const) {
+test(`mixed turn compares A+B and persists two CMF images from A only without Compare or primary writes: ${variant}`, async ({ page }) => {
   const seed = await seedProject(page);
   await installAgentMock(page);
   await page.addInitScript((base64: string) => {
@@ -63,7 +67,7 @@ test("mixed turn compares A+B and persists two CMF images from A only without Co
     environmentAndLighting: [], avoid: [], role: "cmfStudy"
   })) }), finalText: "已比较 A/B，并只继续 A 生成两张 CMF 图。" });
   await setAgentRequestScript(page, [{ kind: "stream", chunks: script.first }, { kind: "stream", chunks: script.second }]);
-  await page.locator(".ai-panel textarea").fill("比较 A/B，给出取舍；不要保存 Compare；然后只继续 A，生成两张 CMF 图；不要修改主方向。");
+  await page.locator(".ai-panel textarea").fill(draft);
   await page.getByRole("button", { name: "本轮允许生图", exact: true }).click();
   await page.locator('[aria-label="发送"]').click();
   await expect(page.locator(".ai-panel")).toContainText("已比较 A/B，并只继续 A 生成两张 CMF 图。", { timeout: 30_000 });
@@ -89,3 +93,4 @@ test("mixed turn compares A+B and persists two CMF images from A only without Co
   await expect(page.locator(".ai-panel")).toContainText("已比较 A/B，并只继续 A 生成两张 CMF 图。");
   expect(Object.values((await readStoredWorkspace(page)).objects).filter((object) => !baseline.ids.includes(object.id) && object.type === "image")).toHaveLength(2);
 });
+}

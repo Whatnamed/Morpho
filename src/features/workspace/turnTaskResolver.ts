@@ -36,6 +36,7 @@ export function resolveTurnTaskContract(input: Input): TurnTaskContract {
     kinds.set(kind, instructions);
   };
   const clauses = text.split(/[，,。；;！？!?\n]+/).map((clause) => clause.trim()).filter(Boolean);
+  const visualClauses: string[] = [];
   for (const clause of clauses) {
     // A non-paid explicit activity may coexist with a different UI primary mode.
     // Never infer Paid Image authority here; that remains the send-time UI grant.
@@ -56,19 +57,37 @@ export function resolveTurnTaskContract(input: Input): TurnTaskContract {
       if (!action || !isUserActionExplicitlyDisallowed(text, action)) allowedTools.add(tool);
     }
     const explicitResearch = hasExplicitUserActionRequest(clause, "createResearchAnalysis") || hasExplicitUserActionRequest(clause, "webSearch") || /资料|PDF|材料|文档|竞品|案例|来源|查证|调研/i.test(clause);
-    const result = resolveAgentTaskStrategy({ draft: clause, taskMode: input.executionTaskMode === "imageGeneration" && !explicitResearch ? "imageGeneration" : "chatAnalysis", workIntent: "discussion",
+    const result = resolveAgentTaskStrategy({ draft: clause, taskMode: input.executionTaskMode === "imageGeneration" && !explicitResearch && /生成|出图|继续|CMF|场景|预览|材质/i.test(clause) ? "imageGeneration" : "chatAnalysis", workIntent: "discussion",
       selectedObjects: selected, workspace: input.workspace });
-    if (result.kind !== "discussion") add(result.kind, clause);
-    if (/批评|评价|缺点|不足|弱点|有什么问题|问题在哪/.test(clause) && !/不要|别|无需/.test(clause)) add("critique", clause);
+    const critique = /批评|评价|缺点|不足|弱点|有什么问题|问题在哪/.test(clause) && !/不要|别|无需/.test(clause);
+    if (critique) add("critique", clause);
+    else if (result.kind !== "discussion") add(result.kind, clause);
+    if (!critique && (result.kind === "visualDevelopment" || result.kind === "directionPreview" ||
+      (result.kind === "discussion" && /生成|出图|继续|CMF|场景|预览|材质/i.test(clause)))) visualClauses.push(clause);
   }
   if (isExplicitComparisonRequest(text)) add("comparison", clauses.filter(isExplicitComparisonRequest).join("；"));
   if (focus.kind !== "discussion" && !kinds.has(focus.kind)) add(focus.kind, text);
   const visualKind = selected.some((object) => object.type === "image") ? "visualDevelopment" :
     selected.some((object) => object.type === "conceptDirection") ? "directionPreview" : "visualDevelopment";
-  if (input.executionTaskMode === "imageGeneration") add(visualKind, clauses.filter((clause) => /生成|出图|继续|CMF|场景|预览|材质/i.test(clause)).join("；") || text);
+  // Scope qualifiers without an activity verb belong to their sentence's activity.
+  // A comparison/critique/research clause must never become a visual qualifier.
+  for (const sentence of text.split(/[。；;！？!?\n]+/)) {
+    const parts = sentence.split(/[，,]+/).map((part) => part.trim()).filter(Boolean);
+    if (!parts.some((part) => visualClauses.includes(part))) continue;
+    for (const part of parts) {
+      const kind = resolveAgentTaskStrategy({ draft: part, taskMode: "chatAnalysis", workIntent: "discussion", selectedObjects: selected, workspace: input.workspace }).kind;
+      if (kind === "discussion" && /不用|不使用|不要|排除|默认参考|仅|只/.test(part) && !/批评|评价/.test(part) && !visualClauses.includes(part)) visualClauses.push(part);
+    }
+  }
+  if (input.executionTaskMode === "imageGeneration") {
+    // Replace the classifier's UI-mode fallback with the owned clauses.
+    const simpleVisual = [...kinds.keys()].every((kind) => kind === visualKind);
+    kinds.delete(visualKind);
+    add(visualKind, visualClauses.join("；") || (simpleVisual ? text : "视觉生成（当前 UI 模式）"));
+  }
   for (const tool of allowedTools) {
     if (tool === "request_confirmation") {
-      if (baseAuthority.allowedConfirmationActions.includes("batchGenerateVisuals")) add(visualKind, text);
+      if (baseAuthority.allowedConfirmationActions.includes("batchGenerateVisuals") && !kinds.has(visualKind)) add(visualKind, visualClauses.join("；") || "视觉生成确认");
       if (baseAuthority.allowedConfirmationActions.some((action) => action !== "batchGenerateVisuals")) add("discussion", text);
       continue;
     }
@@ -80,13 +99,13 @@ export function resolveTurnTaskContract(input: Input): TurnTaskContract {
   const activities: TurnTaskActivity[] = [...kinds].map(([kind, instructions], index) => {
     const instruction = instructions.join("；");
     const visual = kind === "visualDevelopment" || kind === "directionPreview";
-    const narrow = visual ? resolveVisualScope(text, selected) : undefined;
+    const narrow = visual ? resolveVisualScope(instruction, selected) : undefined;
     const mentioned = visual ? [] : selected.filter((object) => mentionsObject(instruction, object)).map((object) => object.id);
-    const explicitExclusions = visual ? selected.filter((object) => clauses.some((clause) => /(?:不要|别).{0,8}(?:用|参考|沿用|继续|基于)|不用|不使用|排除/.test(clause) && mentionsObject(clause, object))).map((object) => object.id) : [];
+    const explicitExclusions = visual ? selected.filter((object) => instruction.split(/[，,；;]/).some((clause) => /(?:不要|别).{0,8}(?:用|参考|沿用|继续|基于)|不用|不使用|排除/.test(clause) && mentionsObject(clause, object))).map((object) => object.id) : [];
     const sourceObjectIds = (narrow?.ids ?? (mentioned.length ? mentioned : selectedIds)).filter((id) => !explicitExclusions.includes(id));
     const excludedObjectIds = selectedIds.filter((id) => !sourceObjectIds.includes(id));
     const includeDefaultReference = kind !== "comparison" && (visual ? !narrow : /默认参考|保持.*一致|延续.*默认|reference/i.test(instruction)) &&
-      !/(?:不要|不使用|不用|排除).{0,8}默认参考/.test(text);
+      !/(?:不要|不使用|不用|排除).{0,8}默认参考/.test(instruction);
     const referenceObjectIds = visual ? resolveReferenceScope(input.workspace, sourceObjectIds, includeDefaultReference, Boolean(narrow)).filter((id) => !excludedObjectIds.includes(id)) : [];
     const effectGrants: TurnEffectGrant[] = [...allowedTools].flatMap<TurnEffectGrant>((tool) => {
       if (tool === "request_confirmation") {
