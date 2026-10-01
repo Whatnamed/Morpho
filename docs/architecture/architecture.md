@@ -231,8 +231,8 @@ Implemented server-side state and deployment:
   only in the phase ledger and recovery records.
 - Projects, canvases, files, generated results and backups stay in browser localStorage and IndexedDB.
   P3A additionally registers the exact paid Provider request (which can contain selected text/image
-  input) in a private execution journal, with no credentials or generated-result payload. This is
-  execution identity, not a cloud Workspace or result store; see the P3A contract below.
+  input) in a service-only execution journal, without credentials. P3B adds finite execution-result
+  escrow, separate from long-term browser-local assets and Project Truth; see both contracts below.
 - Vercel is the current production deployment path (`npm run build`). Cloudflare Workers via `@opennextjs/cloudflare` and `wrangler` is a retained opt-in backup path behind the `cf:*` scripts.
 - `.github/workflows/quality.yml` runs lint, typecheck, test, and build on `main` and pull requests, without provider keys or deployment.
 - Export exists as delivery output packages and archive/backup bundles (see the M7 and M8 sections). Project deletion can explicitly reclaim previewed, provably exclusive Blobs; cloud project sync, cloud file storage, multiplayer sync, and object-level or automatic Blob garbage collection remain unimplemented.
@@ -429,7 +429,7 @@ Agent streaming additions:
 - `/api/ai/agent/turns/[turnId]/requests` emits typed SSE while the provider is still running, including provider reasoning summaries, optional commentary, final text deltas, native hosted-tool activity, function-call readiness, citations, usage, context metadata, heartbeat, completion, and post-start errors;
 - normal Agent turns consume that SSE protocol through the Coordinator Host. Compaction is a bounded External Action with its own Journal route and persisted write-ahead descriptor;
 - `src/server/ai/openaiCompatibleResponsesStream.ts` is the isolated Responses compatibility parser. It handles arbitrary byte boundaries, CRLF/multiline SSE data, heartbeats, `[DONE]`, unknown events, cancellation, provider failure, and early disconnect without saving raw SSE into workspace data;
-- `src/server/ai/providerResponseBoundary.ts` bounds buffered JSON to 8 MiB, diagnostic reads to 16 KiB/800 exposed characters, total SSE transport to 32 MiB, and an unfinished SSE frame to 1 MiB. One 15-minute safety budget spans fetch, the narrowly verified prompt-cache compatibility correction, and stream parsing. Explicit caller cancellation remains `AbortError`; deadline/transport/read failures after submission retain their internal boundary codes but publicly converge as `external_execution_state_unknown` when execution cannot be confirmed. No such failure authorizes a second buffered or image-stripping request;
+- `src/server/ai/providerResponseBoundary.ts` bounds buffered JSON to 8 MiB, diagnostic reads to 16 KiB/800 exposed characters, total SSE transport to 32 MiB, and an unfinished SSE frame to 1 MiB. One 240-second safety budget spans fetch, the narrowly verified prompt-cache compatibility correction, and stream parsing. Explicit caller cancellation remains `AbortError`; deadline/transport/read failures after submission retain their internal boundary codes but publicly converge as `external_execution_state_unknown` when execution cannot be confirmed. No such failure authorizes a second buffered or image-stripping request;
 - Responses is the only Agent protocol for all configured OpenAI-compatible endpoints, including AiJWS. Network errors, HTTP 408/429/5xx, and incomplete/disconnected SSE never trigger another `/responses` POST or stream-to-buffered generation. Partial stream activity is retained; `response.failed` remains distinguishable from an unconfirmed transport failure. Morpho never switches to `/chat/completions`. System/user history uses `input_text`, while persisted assistant history uses the Responses-compatible `output_text` content type;
 - Morpho keeps all Agent function tools at `strict: false` for the current compatibility provider because its complex JSON Schema handling returns 502 during valid continuation calls. The existing client-side parser remains the authoritative strict field, type, enum, and business-rule validator before local tool execution;
 - assistant messages may persist `agentTrace` ordered parts. Reasoning stores only provider-returned summaries. Explicit `commentary` and `final_answer` phases are authoritative; unphased Responses text is buffered until turn completion and becomes commentary only when that turn also contains a tool call. Tool activities come from actual provider or local-tool execution. Final text remains in `AiMessage.body`;
@@ -840,7 +840,7 @@ P2A Turn Task ownership (2026-10-01; accepted implementation `02655e829a72aea7bd
   continuation rematerializes only scoped source/reference pixels needed by pending generation or
   later activities, together with authorized observations. Original sources retain request order
   and take precedence over observation read order. Shared Provider bounds cover the whole request:
-  at most four image parts, 8 MiB per image and 24 MiB total. Images that do not fit are omitted;
+  at most four image parts, 2 MiB decoded per image and 2.5 MiB decoded total (P3B ingress also caps the serialized request at 4 MiB). Images that do not fit are omitted;
   indivisible contact sheets containing unrelated members are omitted rather than leaking them.
   Request-local coverage records `requestImageStatus`, `requestStepSequence` and omission reason.
   Omitted coverage projects to unavailable metadata; historical `delivered` remains historical and
@@ -923,9 +923,90 @@ cross-node/account equivalence, retention and reliable cancel are **not guarante
 observed response IDs, but this implementation does not assume OpenAI's GET/retrieve/cancel capabilities
 apply to the relay. Credential rotation or namespace mismatch blocks observation instead of guessing.
 
-No generated Text/Compaction payload, image bytes or result URL is escrowed. Same-task retrieval
+At the accepted P3A boundary, no generated Text/Compaction payload, image bytes or result URL was escrowed. P3B below supersedes that delivery limitation. Same-task retrieval
 still depends on Provider availability; without usable Provider identity/result the result remains
 unavailable. Late success records facts and does not auto-continue a cancelled Turn, promote project
 state or create a new paid operation. P3B result escrow/redelivery store/retention/hosting/local ACK,
 P4/P5 and P2 Task/Fulfillment redesign remain outside this package. No production Journal migration,
 paid Provider call, billing verification or real multi-instance hosting test was performed.
+
+## P3B Result Delivery / Hosting Contract (2026-10-02; validating)
+
+P3B uses the existing privileged Supabase PostgreSQL service.
+`20261001154434_add_external_result_delivery.sql` adds RLS-enabled, browser-revoked
+`external_result` and `external_result_chunk` tables plus the service-role-only
+`operate_external_result` and `cleanup_external_result_payloads` RPCs. No new service,
+Workspace schema version, scheduler, cloud Workspace, Provider guarantee or Project Truth authority.
+
+- An effect owns one immutable result version 1: actor-scoped result ID, effect/kind, SHA-256 of
+  exact complete bytes, byte length, MIME, chunk count and fixed expiry. Prepare/write/publish are
+  restartable only with identical metadata/chunks. PostgreSQL checks complete bytes and SHA-256
+  before publication. Pending/incomplete results are never reported as available. Complete staged
+  chunks can be republished with their stored Journal binding after a lost settlement response.
+- Text escrows the final normalized Provider output and Tool calls; stream activity remains
+  transient. Publication and original Request settlement/Tool claims share a database transaction.
+  The final SSE carries a small resultAvailable manifest; the transport downloads/verifies chunks
+  before delivering providerOutput. Turn queries restore missing envelopes before local execution.
+- Image escrows securely downloaded original Provider bytes, not expiring remote URLs. New A+ and
+  independent Image responses return manifests. Recovery can retrieve a known GrsAI task into
+  escrow using GET only. Result reads precede current config/quota/admission. Expired escrow cannot
+  be resurrected or replaced by another image under the same identity.
+- Compaction escrows a validated Summary and original source digest/endpoints/previous revision;
+  original frozen local source/apply checks remain authoritative. Existing identical revisions
+  survive crashes between Workspace and Recovery writes. Save failures preserve a pending same-
+  result action; they do not start another paid compaction. Edited source/base still blocks apply.
+- Administrative terminal absorption is unchanged. Late result publication never reopens a Turn
+  or grants new Tool claims after closure. A failed administrative Text request with observed
+  Provider success can deliver its saved text without executing its Tool batch. Cancellation
+  continues to suppress automatic new effects; Provider execution and local outcome stay distinct.
+- Authenticated `/api/ai/effects/[effectId]/result?kind=...` GET returns a manifest; chunk GETs
+  return at most 512 KiB. POST accepts only exact resultId/version/hash ACK fields. Routes derive
+  the actor from verified authentication; no browser table/RPC writes or public asset URLs.
+  ACK is a client persistence claim, not server proof of Project Truth, task fulfillment or billing.
+- ACK follows verified local persistence: Text's complete envelope/Tool payload in SHA-verified
+  IndexedDB Recovery plus conversation Workspace flush; Image Blob transaction plus object/asset
+  Workspace flush; Compaction revision plus Workspace flush. HTTP/read/UI success never ACKs.
+  A small durable local ACK outbox retries only the same ACK after loss/reload. Image generation
+  metadata keeps an optional transport receipt for crash dedupe; old images remain receipt-less.
+- Confirmed independent Image writes an exact IndexedDB intent and original local commit draft
+  before POST. Reload makes one bounded result GET per pending identity and saves that same result;
+  it does not resend Provider input or invent a new operation. Cancelled operations do not auto-apply
+  late results. IndexedDB intent bytes expire/clean up on the next project access within a 24h policy.
+
+Capacity contract (UTF-8 bytes, all individual field limits also subject to the serialized cap):
+
+| Boundary | Limit |
+| --- | --- |
+| AI HTTP ingress (A+ Request/Image/Compaction, independent Image/Chat) | 4 MiB |
+| Exact materialized Provider frozen body, including server prompt/JSON escaping | 8 MiB before POST |
+| New local external-action descriptor / Recovery runtime and individually referenced payload | 4 MiB / existing 32 MiB per blob (not a whole-record aggregate cap); metadata 2 MiB |
+| Independent Image local write-ahead intent | 8 MiB including escaped input/commit draft; at most 32 pending intents per project, 24h |
+| Image input (A+ and independent) | 2 MiB decoded each, 2.5 MiB decoded total |
+| Escrow Image / JSON result | 16 MiB / 8 MiB; Text also honors existing 240,000 output characters and bounded Tool calls |
+| Result DB/write/delivery chunk | 512 KiB raw (bounded base64 RPC encoding) |
+| Per owner raw input / escrow including pre-submit reservations | 64 MiB / 128 MiB |
+| Invocation declaration / Provider safety budget / escrow write budget | 300s / 240s / 45s; RPC transport has a 10s timeout |
+
+Result capacity is reserved on new effect registration under a per-owner database lock before paid
+submission, then replaced with actual result size. Exhaustion fails closed. New clients preflight
+serialized input before Fetch; old large already-persisted Image/Compaction descriptors can query
+their original result by GET without retransmitting their body. Recovery's 32 MiB per-blob limit
+supports the accumulated runtime and existing legacy payloads; it does not increase the 4 MiB
+sendable HTTP contract. Escrow JSON is capped at 8 MiB before its local Recovery wrapper. Legacy exact Recovery bytes remain
+readable; no historical identity/result is backfilled.
+
+First raw input is stored once on the logical effect; the ordinary attempt references it through
+parent identity/digest, while verified compatibility corrections keep their changed exact body.
+Raw input expires 24h after initial effect creation; result expires 24h after prepare. Reads/ACK do
+not extend either clock. Cleanup erases expired raw/chunks/binding; compact identity/digest/namespace/
+observation/result-manifest/ACK tombstones remain to prevent paid resubmission. Lazy owner cleanup
+is supplemented by a 15-minute pg_cron job only when pg_cron is already enabled. Otherwise rollout
+must configure an external invocation of the service-only maintenance RPC. Offline local intent
+cleanup runs on project access. Access expiry is enforced independently of physical cleanup.
+
+Current code declares a conservative Vercel Fluid 300s contract and keeps ingress/chunk responses
+below the documented 4.5 MB function payload ceiling. The production plan, Fluid configuration,
+database migration/grants, cleanup scheduling, real DB concurrency and Provider/hosting retention
+are unverified. Process termination before full escrow publication can still lose Text/Compaction
+not retrievable from the relay; incomplete escrow is explicitly unavailable. No exactly-once paid
+execution, durable background completion, P2 fulfillment or long-term cloud assets are promised.

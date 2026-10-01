@@ -1310,3 +1310,33 @@ accept durable cancel intent after a terminal Turn; confirmed Provider terminals
 terminals without identity do not create new intent or identity. Intent persistence precedes
 instance-local abort and fails closed. No Turn reopening, Provider cancel/retry, schema change or
 suppression of late success is introduced.
+
+## 2026-10-02: P3B bounded result escrow and local persistence ACK
+
+Decision: retain P3A execution identities/attempts/observations and add an immutable, finite result
+manifest and bounded PostgreSQL byte chunks using the existing service-only Supabase boundary.
+Do not add a new object service or background runtime. Serialize Text result publication with its
+original Journal settlement and Tool claims; keep Image and Summary output recoverable independently
+of administrative terminal state. Return small manifests and verify SHA-256 after chunk retrieval.
+
+Reason: Provider success, server publication, delivery and true local save are separate facts.
+Lost transport/ACK must repeat the same result or ACK, never generate again. Partial storage and
+expired results must remain unavailable instead of claiming replayability. ACK occurs after actual
+asset/Workspace or Recovery/conversation/Summary persistence and stays separate from P2 fulfillment.
+Existing object/request/revision identities dedupe local consumption. Confirmed independent Image
+stores a bounded write-ahead intent/commit draft and restores results by GET on reload.
+
+Storage choice: finite SQL chunks let hashing/completeness and Journal/Tool claim publication share
+one database transaction without assuming a production Storage bucket, signed URL lifetime or new
+hosting capability. This trades database storage/I/O for a bounded implementation; the 64 MiB raw /
+128 MiB result per-owner caps and pre-submit reservation prevent unbounded payload accumulation.
+4 MiB ingress, decoded image limits, 512 KiB delivery chunks, 300s invocation declaration and a
+240s Provider plus 45s escrow budget define the conservative application contract. Actual hosting
+and database behavior are a separate deployment gate, not established by local mocks.
+
+Retention: 24h raw input (ordinary attempt no longer duplicates first body), 24h result payload,
+fixed non-extending clocks, service-only cleanup, optional existing pg_cron integration and required
+external maintenance when it is absent. Keep small immutable identity/result tombstones to preserve
+P3S stop-loss after expiry. Never reconstruct legacy identity/authority or mutate current project
+truth from delivery metadata. Production migration/paid calls/hosting/cleanup acceptance remain
+unverified; P3B stays validating and P4 is not started.

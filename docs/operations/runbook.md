@@ -620,9 +620,9 @@ Interpret recovery states as follows:
 - a Search replay that returns `202 running` is polled only for a short bounded window by repeating
   the exact same Action ID, identity, and request body. This is a Journal query/replay, not a new
   Search. If it remains running, surface `external_action_running`; never allocate a recovery ID.
-- `awaitingNextRequest`: resume only when the browser Recovery Record still has the matching Tool
-  payload. Missing payload ends locally as `providerContinuationPayloadUnavailable`; it does not
-  rerun Provider.
+- `awaitingNextRequest`: recover the matching complete Tool envelope from local Recovery or P3B
+  result escrow. Pending publication stays query-only; expired/unavailable legacy payload cannot
+  rerun Provider. The local envelope/Workspace persistence boundary precedes ACK and Tool execution.
 - external terminal status: observe it through the client reducer. It does not decide the local Tool
   result, Workspace persistence, pending confirmation, or Overall Local Agent Turn Outcome.
 
@@ -1330,7 +1330,7 @@ Observe `/api/ai/effects/<effectId>?kind=image|text|compaction`. A known GrsAI t
 its exact saved endpoint/credential namespace; `result=image` permits secure same-task retrieval.
 POST to this resource records only cancel intent. `cancelRequestedAt`, `localAbortObservedAt` and
 trusted Provider `executionState` are separate. Neither abort nor administrative `externallyCancelled`
-is proof of Provider cancellation/non-billing/refund. No result payload/URL is stored; text/compaction
+is proof of Provider cancellation/non-billing/refund. At the P3A boundary no result payload/URL was stored; text/compaction
 response identity has no guaranteed relay retrieval. Namespace mismatch/credential rotation leaves
 observations unresolved instead of changing hosts or recreating the execution.
 
@@ -1351,3 +1351,78 @@ document retrieval timed out, so existing JSON submission is retained. Idempoten
 lookup, cross-node/account scope, reliable cancel and retention remain unguaranteed. AiJWS response
 IDs do not imply the relay supports OpenAI retrieval. These are validation limits, not a reason to
 resume uncertain POSTs or start P3B result escrow/retention/hosting/local ACK work.
+
+## P3B rollout and same-result delivery (validating, 2026-10-02)
+
+P3B is implemented on `codex/p3b-result-delivery` from
+`6a2d220bd308783867f53628935246ff66b1935e`. No production DB migration or paid Provider call was
+performed. Deploying this code requires the accepted P3A migration and then the forward-only
+`20261001154434_add_external_result_delivery.sql` migration through a separately authorized
+release procedure. Missing service credentials/result RPC blocks new paid admission. Preserve
+in-flight Recovery/Journal records; do not reapply historical runtime cleanup or backfill identities.
+
+Before authorizing rollout, check real PostgreSQL compatibility, table/RPC grants, the Vercel
+Fluid/invocation configuration (300s declaration, 240s Provider and 45s escrow budget), database
+capacity/I/O, and physical cleanup scheduling. The official
+[Vercel limits](https://vercel.com/docs/functions/limitations) document a 4.5 MB request/response
+payload ceiling and Fluid plan-specific duration limits; repository config does not prove active
+production settings. P3B sends 4 MiB maximum requests and 512 KiB raw result chunks. Large input
+must be reduced explicitly; there is no hidden compression, asset upload pipeline or new Provider
+submission fallback. Materialized Provider input has an independent 8 MiB cap before POST.
+Recovery retains its existing 32 MiB per-blob runtime/legacy capacity (metadata 2 MiB), not an
+aggregate whole-record quota. It does not authorize sending bodies above 4 MiB. Existing large
+Image/Compaction recovery uses original-identity result GET; new external-action descriptors are
+bounded before send. Independent Image intents are at most 8 MiB including escaped input/draft,
+32 pending per project, and cleaned on project access after their fixed 24h lifetime.
+
+Run the existing local temporary PostgreSQL engine without production credentials:
+
+```powershell
+node scripts/verify-external-effect-journal.mjs temp/p3a-sql-check/node_modules/@electric-sql/pglite/dist/index.js supabase/migrations/20261001154434_add_external_result_delivery.sql
+node scripts/verify-external-result-delivery.mjs temp/p3a-sql-check/node_modules/@electric-sql/pglite/dist/index.js
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd test
+npm.cmd run build
+npm.cmd run test:e2e
+git diff --check
+```
+
+These tests establish deterministic local schema/RPC/client boundaries, not production PostgREST,
+independent database-session concurrency, Provider billing, result retention or hosting reliability.
+Do not add live flags or run a production migration as part of these commands.
+
+Operational interpretation:
+
+- `/api/ai/effects/[effectId]/result?kind=image|text|compaction` GET retrieves the existing
+  manifest; chunk/resultId GET retrieves bounded bytes. These reads do not re-admit paid work.
+  Known GrsAI tasks can be downloaded into escrow once; Text/Compaction with no captured result
+  remain unavailable because relay retrieval is unproven.
+- `external_result_unavailable` / incomplete / store deadline means publication is not proved.
+  Complete staged chunks can retry original publication. Never change effect/request/action IDs
+  to compensate automatically. `external_result_expired` (410) is permanent for that result;
+  reads/ACK never extend its lifetime or recreate it from the Provider.
+- Result identity/version/hash binds redelivery. ACK POST takes exactly resultId/version/hash and
+  represents the client's durable save claim. It does not update Provider observation, Tool outcome,
+  Project Truth, P2 fulfillment, quota/refund or local Overall Outcome. Repeated ACK is idempotent.
+- Local Image transaction/Workspace failures keep the same action/result recoverable. Text saves
+  the complete envelope in verified IndexedDB Recovery and flushes conversation before ACK.
+  Summary applies only to its frozen source/base; an existing same revision survives reload.
+  A durable local ACK outbox repeats only the same ACK when its response is lost.
+- Confirmed independent Image intents keep the original request/local commit draft in IndexedDB;
+  reload performs bounded GET retrieval. Cancellation stops automatic local apply. No new Provider
+  request is made by independent recovery. Local intent bytes expire and are erased on project access.
+
+Raw input (effect + changed correction bodies) has a fixed 24h retention from initial registration;
+ordinary attempts no longer duplicate the first body. Result/binding/chunks have a fixed 24h lifetime
+from prepare. User-isolated raw/result limits are 64/128 MiB; worst-case result space is reserved
+before paid POST and replaced with actual bytes. Capacity exhaustion fails closed. Compact identity,
+digests, observations, manifests and ACK timestamps remain as stop-loss tombstones.
+
+The migration schedules `morpho-external-payload-cleanup` every 15 minutes only when pg_cron
+is already enabled. Check the actual job/last-run result during rollout. Otherwise configure a
+trusted external schedule calling `public.cleanup_external_result_payloads()` at that cadence.
+Only service_role can invoke it; no browser endpoint exposes global cleanup. Lazy owner cleanup
+also runs during reads/registration. Expired access is immediate, while physical deletion requires
+the next cleanup run; verify both and database backup retention separately before production release.
+No cleanup schedule, production capability, billing or full recovery guarantee has been verified here.
