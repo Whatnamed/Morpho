@@ -711,9 +711,9 @@ Text Agent:
 - Image child Actions are serial. A restored descriptor is consumed only after its matching child has completed local handling, after which the next child writes and flushes its own descriptor before send.
 - The client Lifecycle reducer alone derives `completed`, `partiallyCompleted`, `pendingConfirmation`, `cancelled`, or `failed` from Server status plus local Tool, confirmation, and persistence facts. The server never accepts or stores that Overall Local Agent Turn Outcome.
 - Context pressure is classified from both tokens and Provider Item count. A continuation can perform at most two additional compactions, and only a strict token or Item reduction permits another Provider request; the server and client both fail closed above 1,024 Items. Provider and local tool-batch handling share `MAX_AGENT_FUNCTION_CALLS = 64`; a 65-call response is rejected before execution or continuation signing.
-- Explicit history, memory, and progress questions declare required `search_project_conversation`, `read_project_memory`, and/or `read_stage_record` reads in the Task Contract. Existing Tool calls validate and record those reads; final required-read fulfillment enforcement remains a P2B gap, not a P2A completion claim.
+- Explicit history, memory, and progress questions declare required `search_project_conversation`, `read_project_memory`, and/or `read_stage_record` reads in the Task Contract. P2B evaluates exact target/key/query/range receipts in the production Runner, permits a reminder within existing legal continuations, and reports terminal missing coverage as unverified without another paid request.
 - New turns resolve a turn-local Task Contract with a primary strategy and independent activities. The primary strategy is a compatibility/display hint; it does not cancel activities or own their effect scopes. The versioned Prompt Registry composes all activity policies and the bounded Method selection.
-- The stable System prefix carries a compact design-partner persona (respect existing work, maturity-adapted depth, evidence vs inference, real design variables, visual output as a design tool, user decision authority) under Prompt Contract `morpho-agent-v3.6-2026-08-17`.
+- The stable System prefix carries a compact design-partner persona (respect existing work, maturity-adapted depth, evidence vs inference, real design variables, visual output as a design tool, user decision authority) under Prompt Contract `morpho-agent-v3.8-2026-10-01`.
 - Task strategy policy is delivered as a server-owned canonical System item: the client sends `strategy` + `strategyAnchorMessageId`; the server validates the kind and materializes the canonical strategy message after the Runtime item. The comparison policy states the chat-only default: a persisted Compare record requires an explicit save intent.
 - `capabilityIntent.webSearch` (current-turn user authority) survives every A+ request copy path (Coordinator copy, active-request restore, recovery export/restore, exact retry, continuation); recovery shape validation is fail-closed on the optional bit. The server still requires global web-search enabled AND current-turn user authority before exposing `search_web_evidence`.
 - Design Method Packs (`src/shared/designMethodPack.ts`) are a lightweight runtime-owned professional method layer: the client resolves 0–3 pack ids deterministically from strategy and draft; the server validates the ids against the fixed registry and materializes the pack text as a second trusted System item. Packs (research synthesis, design definition, concept divergence/refinement, critique, reference interpretation, form/CMF/scenario development, comparison, delivery narrative) are short judgment principles, never process gates; ordinary discussion gets none.
@@ -789,6 +789,61 @@ P2A Turn Task ownership (2026-10-01; accepted implementation `02655e829a72aea7bd
 - Project Memory contains source-driven current projections and revision history; it is not a second fact source and is not exposed as user-managed files.
 - Delivery section generation creates a pending draft from frozen section references. Applying that draft remains the explicit write boundary for narrative, captions, gaps, decisions, and continuity events.
 
+
+### P2B input, bounded reads and structural fulfillment (2026-10-01)
+
+- Keep the accepted P2A Task Contract and one A+ Runner. New contracts opt into additive
+  `readContractVersion: 1`; absence preserves the P2A Provider tool names, descriptions and schemas.
+  Workspace schema stays 18 and Recovery stays v2. Optional snapshot `coverage`, Recovery receipts,
+  pending read IDs/step sequence, observation payloads and assistant `taskFulfillment` normalize
+  idempotently. Legacy coverage and fulfillment remain absent/unknown; nothing reconstructs old
+  reads, grants or outcomes from current Workspace state.
+- Preparation serializes scoped task context into the actual request and stores its text in the
+  immutable ProviderInputSnapshot. Coverage records object/incarnation/revision, P1B semantic
+  fingerprint, actual content hash, text representation and UTF-16 half-open ranges. Summaries,
+  partial extracts, unavailable sources and pixels remain different. Document extraction preserves
+  stored offsets and records available text length independently of parser-reported length.
+  The old combined-message last-96 cut is removed. The current turn, latest Project/Runtime frames
+  and current Summary frame are retained, with old frame omissions disclosed; eligible uncompressed
+  history remains intact within existing server item/token limits.
+- `read_workspace_source` reads scoped current objects or owned revisions, document extract ranges,
+  the authorized Delivery chapter, or one image through the existing attachment packer. Text reads
+  are at most 8,000 characters and report the remaining range. `read_selected_context` explicitly
+  remains a preparation summary snapshot. Source/currentness queries stay with P1B; there is no
+  parallel project read database.
+- Required-read checks use real serialized receipts, not Tool-name counts. Recovery binds pending
+  receipt IDs to the next request sequence; the Runner marks them delivered only after matching
+  Provider output is observed. Range unions require the same identity/revision/content. Exact keys,
+  query mode/keyword and explicit revision targets are checked. A complete initial revision can
+  satisfy its requirement without a redundant Tool call. Failed, missing, stale, partial or
+  unavailable material does not become complete coverage. A bounded reminder uses an already legal
+  Tool continuation; zero-Tool terminal responses never start an extra paid repair.
+- New continuations retain Tool results and refresh scoped Workspace context without changing grants
+  or frozen domain baselines. Successful compaction rebuilds the next request from the new Summary
+  and uncovered conversation tail. Submitted Coordinator requests and exact legacy in-flight actions
+  retain their original body/identity; refresh is query/replay of that request, not reconstruction.
+- Concept create/revise/split/merge call the existing domain proposal application. A revision binds
+  the original object/current revision; split/merge bind the complete authorized parent set and
+  original revisions. Confirmation uses the same operation arguments and checks the revision before
+  apply. Domain validation determines the result; a blocked proposal is not a completed revision.
+- Delivery preparation sends the actual section and allowed stable reference snapshots, with bounded
+  coverage and subsequent section reads. Draft validation stays bound to that target. This adds no
+  stale-draft/apply-baseline, reference-refresh or handoff semantics.
+- Explicit generate-then-compare/critique tasks can read newly created image pixels. Observation uses
+  read-only receipts and at most four observation image messages per request; omitted observations
+  remain unverified. It adds no paid authority, automatic Compare write, adoption or engineering
+  validation. Ordinary generation adds no observation obligation, and completing the authorized
+  image count prevents a second batch being submitted as an observation follow-up.
+- `agentTaskFulfillment.ts` evaluates explicit read obligations and actual effect receipts against
+  Workspace results: saved image object/asset counts, correct Concept revision/lineage and Delivery
+  target drafts. It persists `fulfilled / partial / blocked / awaitingUser / notPerformed / unknown`
+  separately from Provider/Runtime outcome. Provider prose does not certify a Workspace write;
+  unfinished structural obligations produce an honest final notice and keep successful effects.
+  The evaluator does not grade design quality or decide user-owned project state.
+
+Validation and package acceptance live in the Program Map. P3A/P3B execution observation and result
+escrow, P4 full visual identity/provenance, P5 Delivery applicability/handoff and P6 UI/history remain
+outside this implementation.
 
 ## Built-In Case Study
 

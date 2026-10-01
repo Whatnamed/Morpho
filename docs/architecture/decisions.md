@@ -1263,3 +1263,23 @@ the exception is bounded to matching identity, body/hash and saved Image Operati
 new child submission. Unsupported old Prompt Contracts stop before a new Provider request with an
 explicit compatibility notice, preserving already recovered effects rather than upgrading or
 reinterpreting the old task. No new execution-observation architecture or P2B fulfillment is added.
+
+
+## 2026-10-01 — P2B receipt-based input coverage and deterministic fulfillment
+
+Materialize bounded reads inside the accepted P2A task scope and existing A+ Runner. Add source-
+level coverage with identity, revision, actual content hashes, ranges and pixel representation;
+consume the P1B currentness queries rather than a new read/Truth store. `read_selected_context`
+remains a preparation snapshot, while `read_workspace_source` performs bounded current reads.
+Read receipts become delivered only when their exact request sequence has produced an observed
+Provider output. New continuations may refresh context and consume new pixels; an active request
+and legacy in-flight action keep their frozen identity/body. Terminal missing reads cannot justify
+another paid request.
+
+Use an additive `readContractVersion` opt-in to preserve older P2A Tool schemas under the existing
+Prompt Contract. Workspace schema 18 and Recovery v2 stay unchanged. Optional receipts, input
+coverage and fulfillment round-trip without fabricating historical reads or outcomes. Connect
+existing Concept operations rather than adding a Concept model. Keep structural fulfillment
+separate from execution outcome and evaluate only real receipts plus Workspace effects, preserving
+partial work. No planner, workflow engine, Critic/second Agent, Journal migration, provider change,
+result escrow, full visual lineage or Delivery handoff redesign is introduced.
