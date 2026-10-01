@@ -1,3 +1,7 @@
+import { evaluateAgentTaskFulfillment, taskFulfillmentNotice } from "./agentTaskFulfillment";
+import { requirementCovered } from "./agentSourceReads";
+import { advanceRequiredAgentReadState, buildRequiredAgentReadReminder } from "./agentTaskStrategy";
+import { buildTurnTaskContexts, buildProviderTaskContext, buildProviderComparisonTaskContext } from "./taskContext";
 import { buildConversationCompactionPlan } from "@/domain/morpho/conversationCompaction";
 import type { AgentTurnOutcome, AiMessage } from "@/domain/morpho/types";
 import type {
@@ -32,6 +36,7 @@ import { createAgentTrace } from "./agentMessageTrace";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
 import {
   prepareAgentTurnProductAPlus,
+  rebuildAgentProviderConversation,
   createEmptyAgentTurnRecoveryFacts,
   restorePreparedAgentTurnProductAPlus,
   snapshotAgentTurnRuntimeFacts,
@@ -168,7 +173,7 @@ export async function runMorphoAgentTurn(
       showAgentTurnRecoveryPending(session.host.ui);
       return;
     }
-    const started = await coordinator.startInitialRequest(prepared.providerRequest);
+    const started = await coordinator.startInitialRequest(session.recovery.metadata.runtime.providerBaseRequest);
     if (await reconcileRequestResult(session, started, true) !== "usable") return;
     await driveSessionSerialized(session);
   } catch (error) {
@@ -798,9 +803,7 @@ async function driveSession(session: APlusSession): Promise<void> {
         showAgentTurnRecoveryPending(session.host.ui);
         return;
       }
-      const continuationRequest = continuationProviderRequest(
-        session.recovery.metadata.runtime
-      );
+      const continuationRequest = await freshContinuationProviderRequest(session);
       const continued = await session.coordinator.startContinuation(continuationRequest);
       if (await reconcileRequestResult(session, continued, true) !== "usable") return;
       continue;
@@ -818,7 +821,7 @@ async function driveSession(session: APlusSession): Promise<void> {
         return;
       }
       const continued = await session.coordinator.startContinuation(
-        continuationProviderRequest(session.recovery.metadata.runtime)
+        await freshContinuationProviderRequest(session)
       );
       if (await reconcileRequestResult(session, continued, true) !== "usable") return;
       continue;
@@ -870,12 +873,17 @@ async function reconcileRequestResult(
 ): Promise<RequestReconciliationResult> {
   syncRecoveryRuntimeFacts(session);
   await session.recovery.flush();
-  if (result.status === "ok") return "usable";
+  if (result.status === "ok") {
+    markDeliveredReads(session);
+    syncRecoveryRuntimeFacts(session);
+    await session.recovery.flush();
+    return "usable";
+  }
   if (result.code === "request_not_observed" && result.recoverable && allowExactRetry) {
     if (await stopUnsupportedLegacyContinuation(session)) return "failed";
     const retried = await session.coordinator.retryActiveRequest();
     await session.recovery.flush();
-    if (retried.status === "ok") return "usable";
+    if (retried.status === "ok") return reconcileRequestResult(session, retried, false);
     return reconcileRequestResult(session, retried, false);
   }
   if (result.code === "server_turn_not_found") {
@@ -985,6 +993,12 @@ async function recordCompactionResult(
       }
     } : { pendingExternalAction: undefined })
   }));
+  if (result.status === "applied") {
+    const runtime = session.recovery.metadata.runtime;
+    const rebuilt = rebuildAgentProviderConversation({ workspace: session.host.readWorkspace(), base: runtime.providerBaseRequest,
+      userMessageId: session.prepared.userMessageId, limits: session.turnInput.readConversationTokenLimits() });
+    session.recovery.updateMetadata((current) => ({ ...current, runtime: { ...current.runtime, providerBaseRequest: rebuilt } }));
+  }
   await session.recovery.flush();
 }
 
@@ -1109,13 +1123,19 @@ async function finalizeSession(session: APlusSession): Promise<void> {
   }
   if (!lifecycle || lifecycle.phase !== "terminal") return;
   const terminal = lifecycle;
+  markDeliveredReads(session);
   const outcome = mapOverallOutcome(terminal.outcome.kind);
   const completedAt = new Date(session.host.now()).toISOString();
   session.host.commitWorkspace((current) => {
     const assistant = current.ai.messages.find(
       (message) => message.id === session.prepared.assistantMessageId
     );
-    const body = terminalAssistantBody(assistant, terminal);
+    const fulfillment = evaluateAgentTaskFulfillment({ contract: session.recovery.metadata.runtime.providerBaseRequest.taskContract,
+      workspace: current, reads: session.prepared.runtimeState.readReceipts, effects: session.prepared.runtimeState.effectReceipts,
+      providerCompleted: terminal.serverExecutionStatus === "externallyCompleted" && Boolean(session.coordinator.getProviderOutputSnapshot()?.outputText.trim() || assistant?.body.trim()) });
+    const notice = terminal.serverExecutionStatus === "externallyCompleted" ? taskFulfillmentNotice(fulfillment) : "";
+    const originalBody = terminalAssistantBody(assistant, terminal);
+    const body = notice && !originalBody.includes(notice) ? `${originalBody}\n\n${notice}`.trim() : originalBody;
     let workspace = finalizeAgentTurn(current, {
       agentTurnId: session.prepared.localAgentTurnId,
       userMessageId: session.prepared.userMessageId,
@@ -1127,6 +1147,7 @@ async function finalizeSession(session: APlusSession): Promise<void> {
       summary: terminal.outcome.reasons.join("、"),
       completedAt
     });
+    workspace = { ...workspace, ai: { ...workspace.ai, messages: workspace.ai.messages.map((message) => message.id === session.prepared.assistantMessageId ? { ...message, taskFulfillment: fulfillment } : message) } };
     if (session.prepared.runtimeState.collectedCitations.length > 0) {
       workspace = storeMessageCitations(workspace, {
         messageId: session.prepared.assistantMessageId,
@@ -1360,6 +1381,8 @@ function buildRecoveryRuntime(
         ? { conversationTokenLimits: input.readConversationTokenLimits() }
         : {})
     },
+    pendingReadStepSequence: 1,
+    pendingReadIds: prepared.runtimeState.readReceipts.map((receipt) => receipt.id),
     providerBaseRequest: cloneProviderRequest(prepared.providerRequest),
     sourceSnapshots: prepared.context.sourceSnapshots?.map((snapshot) => ({ ...snapshot })),
     continuationItems: [],
@@ -1374,6 +1397,52 @@ function buildRecoveryRuntime(
     allowStructuredComparison: prepared.allowStructuredComparison,
     facts: snapshotAgentTurnRuntimeFacts(prepared.runtimeState)
   };
+}
+
+function markDeliveredReads(session: APlusSession): void {
+  // Called only after Coordinator observes the exact submitted request. An old
+  // active request is never rebuilt; its receipts were already frozen in Recovery.
+  const output = session.coordinator.getProviderOutputSnapshot();
+  if (!output || output.stepSequence !== session.recovery.metadata.runtime.pendingReadStepSequence || output.requestId !== session.coordinator.getServerSnapshot()?.latestRequestId) return;
+  const ids = new Set(session.recovery.metadata.runtime.pendingReadIds ?? []);
+  session.prepared.runtimeState.readReceipts.forEach((receipt) => { if (ids.has(receipt.id)) receipt.delivered = true; });
+  const state = session.prepared.runtimeState.requiredReadState;
+  for (const tool of state.requiredTools) {
+    const requirements = state.requirements.filter((requirement) => requirement.tool === tool);
+    if (requirements.every((requirement) => requirementCovered(requirement, session.prepared.runtimeState.readReceipts, session.host.readWorkspace()))) {
+      state.completedTools.add(tool); state.failedTools.delete(tool);
+    } else state.completedTools.delete(tool);
+  }
+}
+
+async function freshContinuationProviderRequest(session: APlusSession): Promise<APlusAgentProviderRequest> {
+  const runtime = session.recovery.metadata.runtime;
+  const base = continuationProviderRequest(runtime);
+  if (!base.taskContract) return base;
+  const workspace = session.host.readWorkspace();
+  const contexts = buildTurnTaskContexts(workspace, base.taskContract);
+  // Refresh local adapters only for the next request, preserving the frozen
+  // source baseline that domain writes validate against.
+  for (const [id, context] of Object.entries(contexts.activityContexts)) {
+    context.sourceSnapshots = session.prepared.activityContexts[id]?.sourceSnapshots;
+    (session.prepared.activityContexts as Record<string, typeof context>)[id] = context;
+  }
+  const state = session.prepared.runtimeState;
+  const anticipated = { ...state.requiredReadState, completedTools: new Set(state.requiredReadState.completedTools) };
+  const nextReceipts = state.readReceipts.map((receipt) => ({ ...receipt, delivered: true }));
+  for (const tool of anticipated.requiredTools) if (anticipated.requirements.filter((requirement) => requirement.tool === tool).every((requirement) => requirementCovered(requirement, nextReceipts, workspace))) anticipated.completedTools.add(tool);
+  const advanced = advanceRequiredAgentReadState(anticipated);
+  state.requiredReadState = { ...advanced.state, completedTools: state.requiredReadState.completedTools };
+  const reminder = advanced.action === "remind" ? `${buildRequiredAgentReadReminder(advanced.missingTools)}\n${JSON.stringify(base.taskContract.requiredReads.filter((requirement) => !requirementCovered(requirement, state.readReceipts, workspace)))}` : "";
+  const fresh = { role: "user" as const, content: [{ type: "input_text" as const, text: `<morpho_fresh_context>\n${JSON.stringify(Object.entries(contexts.activityContexts).map(([id, context]) => ({ activityId: id, context: context.kind === "comparison" ? buildProviderComparisonTaskContext(context) : buildProviderTaskContext(context) })))}\n${reminder}\n</morpho_fresh_context>` }] };
+  const retainedInput = base.input.filter((message) => !message.content.some((part) => "text" in part && (part.text.startsWith("<morpho_fresh_context>") || part.text.startsWith("只读观察 "))))
+    .map((message) => state.observationMessages.length ? { ...message, content: message.content.filter((part) => part.type !== "input_image") } : message);
+  const request = { ...base, input: [...retainedInput, fresh, ...state.observationMessages.slice(-4)] };
+  // Persist the newly built body before submission. Coordinator owns exact
+  // replay after submission; recovery never reconstructs that active body.
+  session.recovery.updateMetadata((metadata) => ({ ...metadata, runtime: { ...metadata.runtime, pendingReadStepSequence: (session.coordinator.getServerSnapshot()?.latestStepSequence ?? 0) + 1, pendingReadIds: state.readReceipts.filter((receipt) => !receipt.delivered && (receipt.kind !== "image" || state.observationMessages.slice(-4).some((message) => message.content.some((part) => "text" in part && part.text.startsWith(`只读观察 ${receipt.objectId}；`))))).map((receipt) => receipt.id), providerBaseRequest: { ...request, continuationItems: undefined }, facts: snapshotAgentTurnRuntimeFacts(state) } }));
+  if (!await session.recovery.flush()) throw new Error("新 continuation 读取回执无法持久化。");
+  return request;
 }
 
 function continuationProviderRequest(runtime: APlusTurnRecoveryRuntime): APlusAgentProviderRequest {

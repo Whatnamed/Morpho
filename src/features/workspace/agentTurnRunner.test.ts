@@ -1,3 +1,5 @@
+import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
+import * as imageAttachments from "./aiAttachments";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeWorkspaceVisualGenerationPlan } from "./workspaceVisualGenerationExecution";
 import { resolveGenerationSettings } from "./imageGenerationSettings";
@@ -43,6 +45,7 @@ const LOCAL_PROJECT_ID = createTestWorkspace().project.id;
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
 });
 
@@ -605,7 +608,8 @@ describe("A+ Agent turn runner", () => {
 
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
     expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({
-      body: "好的，我会注意预算。",
+      body: expect.stringContaining("好的，我会注意预算。"),
+      taskFulfillment: { status: "partial" },
       agentTurnOutcome: "success"
     });
     const reminderText = (message: APlusAgentProviderMessage) =>
@@ -1316,6 +1320,8 @@ type Script =
       externalErrorMessage?: string;
     }>;
 
+type ScriptEntry = Script | ((input: Parameters<AgentTurnCoordinatorHost["executeExternalRequest"]>[0]) => Script);
+
 class CoordinatorHostFake implements AgentTurnCoordinatorHost {
   readonly executions: Array<Parameters<AgentTurnCoordinatorHost["executeExternalRequest"]>[0]> = [];
   cancelCalls = 0;
@@ -1325,13 +1331,13 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
   private index = 0;
   private snapshot: AgentTurnJournalSnapshot = snapshotFor("created", null, 0, 0);
 
-  private readonly scripts: Script[];
+  private readonly scripts: ScriptEntry[];
 
-  constructor(scripts: readonly Script[]) {
+  constructor(scripts: readonly ScriptEntry[]) {
     this.scripts = [...scripts];
   }
 
-  appendScripts(scripts: readonly Script[]): void {
+  appendScripts(scripts: readonly ScriptEntry[]): void {
     this.scripts.push(...scripts);
   }
 
@@ -1358,7 +1364,8 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
     observer: (event: AgentTurnRequestStreamEvent) => void
   ): Promise<AgentTurnCoordinatorExecutionHandshake> {
     this.executions.push(structuredClone(input));
-    const script = this.scripts[this.index++];
+    const entry = this.scripts[this.index++];
+    const script = typeof entry === "function" ? entry(input) : entry;
     if (!script) throw new Error("Unexpected A+ execution.");
     if (script.status === "transportFailure") throw new Error("headers unavailable");
     return {
@@ -1461,7 +1468,7 @@ class MemoryRecoveryStore implements AgentTurnRecoveryStore {
 }
 
 function createFixture(
-  scripts: readonly Script[],
+  scripts: readonly ScriptEntry[],
   options: {
     persistenceStates?: WorkspacePersistenceState[];
     visualGenerationResult?: Readonly<{
@@ -1703,3 +1710,211 @@ function memorySkipToolCall(callId: string): APlusToolCall {
     })
   };
 }
+
+
+describe("P2B Runner structural fulfillment", () => {
+  it("reports omitted reads unverified at terminal and never starts a paid repair", async () => {
+    const fixture = createFixture([{ status: "externallyCompleted", outputText: "已核实当前设计原则。" }]);
+    fixture.input.draft = "请读取项目记忆，告诉我当前设计原则";
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(latestAssistant(fixture.fake.getWorkspace())).toMatchObject({ agentTurnOutcome: "success", taskFulfillment: { status: "partial", obligations: expect.arrayContaining([expect.objectContaining({ id: "read:0", status: "blocked" })]) } });
+    expect(latestAssistant(fixture.fake.getWorkspace())?.body).toContain("尚未完整核实");
+  });
+
+  it("reminds for a missing read during a legal continuation, then completes exact keys", async () => {
+    const fixture = createFixture([
+      { status: "awaitingNextRequest", outputText: "当前原则已经核实。", toolCalls: [{ callId: "summary-only", name: "read_selected_context", argumentsText: "{}" }] },
+      { status: "awaitingNextRequest", toolCalls: [{ callId: "brief-read", name: "read_project_memory", argumentsText: JSON.stringify({ keys: ["designBrief"] }) }] },
+      { status: "externallyCompleted", outputText: "已根据真实项目记忆回答。" }
+    ]);
+    fixture.input.draft = "请读取当前设计原则";
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(JSON.stringify(fixture.coordinatorHost.executions[1]!.providerRequest.input)).toContain("下一步先调用");
+    expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment).toMatchObject({ status: "fulfilled", reads: expect.arrayContaining([expect.objectContaining({ kind: "memory", keys: ["designBrief"], delivered: true })]) });
+  });
+
+  it("does not count a narrow memory read as covering another required key", async () => {
+    const fixture = createFixture([
+      { status: "awaitingNextRequest", toolCalls: [{ callId: "wrong-keys", name: "read_project_memory", argumentsText: JSON.stringify({ keys: ["projectOverview"] }) }] },
+      { status: "externallyCompleted", outputText: "已核实原则。" }
+    ]);
+    fixture.input.draft = "读取当前设计原则";
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.status).toBe("partial");
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+  });
+
+  it("reads the actual document in successive ranges after an initially truncated extract", async () => {
+    const fixture = createFixture([]);
+    const file = Object.values(fixture.fake.getWorkspace().objects).find((object) => object.type === "file")!;
+    if (file.type !== "file") throw new Error("file");
+    file.parseStatus = "parsed"; file.extractedAssetId = "p2b-text"; file.extractedCharCount = 9000;
+    fixture.fake.getWorkspace().assets[file.extractedAssetId] = { id: file.extractedAssetId, storageKey: "p2b-text", sourceType: "documentExtract", mimeType: "text/plain", fileName: "text.txt", size: 9000, createdAt: "2026-10-01T00:00:00Z" };
+    vi.spyOn(indexedDbBlobStore, "get").mockResolvedValue(new Blob(["文".repeat(9000)]));
+    fixture.input.selectedObjects = [file]; fixture.input.selectedObjectIds = [file.id]; fixture.input.draft = "通读整份文档后回答";
+    fixture.coordinatorHost.appendScripts([
+      { status: "awaitingNextRequest", toolCalls: [{ callId: "range-1", name: "read_workspace_source", argumentsText: JSON.stringify({ kind: "document", objectId: file.id, start: 2200, length: 6800 }) }] },
+      { status: "externallyCompleted", outputText: "已读完整文档。" }
+    ]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const fulfillment = latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment;
+    expect(fulfillment?.status).toBe("fulfilled");
+    expect(fulfillment?.reads).toEqual(expect.arrayContaining([expect.objectContaining({ source: "request", status: "partial", range: { start: 0, end: 2200, total: 9000, nextStart: 2200 } }), expect.objectContaining({ source: "tool", range: { start: 2200, end: 9000, total: 9000 }, delivered: true })]));
+  });
+
+  it.each(["revise", "split", "merge"] as const)("executes Concept %s through existing domain semantics", async (mode) => {
+    const fixture = createFixture([]);
+    const directions = Object.values(fixture.fake.getWorkspace().objects).filter((object) => object.type === "conceptDirection").slice(0, mode === "merge" ? 2 : 1);
+    const direction = directions[0]!;
+    if (direction.type !== "conceptDirection") throw new Error("direction");
+    const beforeRevision = direction.currentRevisionId;
+    fixture.input.selectedObjects = directions; fixture.input.selectedObjectIds = directions.map((object) => object.id);
+    fixture.input.draft = mode === "revise" ? `修订 ${direction.title}` : mode === "split" ? `拆分 ${direction.title}` : "合并这两个方向";
+    fixture.input.workIntent = fixture.input.recommendedWorkIntent = mode === "revise" ? "reviseConceptDirection" : mode === "split" ? "splitConceptDirection" : "mergeConceptDirections";
+    const args = { applicationMode: mode, ...(mode === "revise" ? { targetDirectionId: direction.id, targetRevisionId: beforeRevision } : { parentDirectionIds: directions.map((object) => object.id) }), title: "改进", summary: "改进", directions: Array.from({ length: mode === "split" ? 2 : 1 }, (_, index) => ({ title: `新方向${index}`, summary: "新摘要", conceptStatement: "concept", keywords: [], strategy: "strategy", differentiators: [], visualSignals: [], risks: [], openQuestions: [] })) };
+    fixture.coordinatorHost.appendScripts([{ status: "awaitingNextRequest", toolCalls: [{ callId: "concept", name: "create_concept_direction_proposal", argumentsText: JSON.stringify(args) }] }, { status: "externallyCompleted", outputText: "已完成方向操作。" }]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const workspace = fixture.fake.getWorkspace();
+    const fulfillment = latestAssistant(workspace)?.taskFulfillment;
+    expect(fulfillment?.status, JSON.stringify(fulfillment)).toBe("fulfilled");
+    if (mode === "revise") {
+      const revised = workspace.objects[direction.id];
+      expect(revised).toMatchObject({ id: direction.id, incarnationId: direction.incarnationId });
+      if (revised?.type !== "conceptDirection") throw new Error("revised");
+      expect(workspace.directionRevisions[revised.currentRevisionId]?.previousRevisionId).toBe(beforeRevision);
+      expect(Object.keys(workspace.objects)).toHaveLength(Object.keys(createTestWorkspace().objects).length);
+    } else expect(workspace.directionLineage.filter((record) => record.kind === (mode === "split" ? "splitFromDirection" : "mergedFromDirection"))).toHaveLength(2);
+  });
+
+  it("rejects unrelated create when the contract requires revise", async () => {
+    const fixture = createFixture([]);
+    const direction = Object.values(fixture.fake.getWorkspace().objects).find((object) => object.type === "conceptDirection")!;
+    fixture.input.selectedObjects = [direction]; fixture.input.selectedObjectIds = [direction.id]; fixture.input.draft = `修订 ${direction.title}`;
+    fixture.input.workIntent = fixture.input.recommendedWorkIntent = "reviseConceptDirection";
+    const before = structuredClone(direction);
+    fixture.coordinatorHost.appendScripts([{ status: "awaitingNextRequest", toolCalls: [{ callId: "wrong-create", name: "create_concept_direction_proposal", argumentsText: JSON.stringify({ title: "无关 B", summary: "无关", directions: [] }) }] }, { status: "externallyCompleted", outputText: "已修订。" }]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.fake.getWorkspace().objects[direction.id]).toEqual(before);
+    expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.status).not.toBe("fulfilled");
+  });
+
+  it.each([0, 1, 2])("checks %i/2 actual image objects and preserved assets", async (count) => {
+    const fixture = createFixture(count ? [{ status: "awaitingNextRequest", toolCalls: [visualToolCall("images")] }, { status: "externallyCompleted", outputText: "已经生成两张。" }] : [{ status: "externallyCompleted", outputText: "已经生成两张。" }]);
+    fixture.input.taskMode = fixture.input.recommendedTaskMode = "imageGeneration"; fixture.input.draft = "生成 2 张图";
+    const host = hostWithGeneratedImages(fixture, count);
+    await runMorphoAgentTurn(fixture.input, host, fixture.dependencies);
+    expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.status).toBe(count === 0 ? "notPerformed" : count === 1 ? "partial" : "fulfilled");
+    expect(Object.values(fixture.fake.getWorkspace().objects).filter((object) => object.id.startsWith("p2b-generated"))).toHaveLength(count);
+  });
+
+  it("observes new pixels only when explicitly requested and does not grant a second generation", async () => {
+    const fixture = createFixture([
+      { status: "awaitingNextRequest", toolCalls: [visualToolCall("images")] },
+      { status: "awaitingNextRequest", toolCalls: [{ callId: "observe", name: "read_workspace_source", argumentsText: JSON.stringify({ kind: "image", objectId: "p2b-generated-0" }) }] },
+      { status: "externallyCompleted", outputText: "已评价图像。" }
+    ]);
+    fixture.input.taskMode = fixture.input.recommendedTaskMode = "imageGeneration"; fixture.input.draft = "生成 2 张图后再评价新生成的图";
+    vi.spyOn(imageAttachments, "collectAiProviderImageAttachments").mockResolvedValue({ attachments: [{ id: "pixels", kind: "image", objectId: "p2b-generated-0", mimeType: "image/png", dataUrl: "data:image/png;base64,aGVsbG8=", representation: "single", status: "ready" }], entries: [{ objectId: "p2b-generated-0", representation: "single", attachmentId: "pixels", status: "ready" }], skippedObjectIds: [] });
+    const host = hostWithGeneratedImages(fixture, 2);
+    await runMorphoAgentTurn(fixture.input, host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions[2]!.providerRequest.input.some((message) => message.content.some((part) => part.type === "input_image"))).toBe(true);
+    expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.reads).toEqual(expect.arrayContaining([expect.objectContaining({ objectId: "p2b-generated-0", representation: "pixels", delivered: true })]));
+    expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.status).toBe("partial"); // second image still unread
+    expect(fixture.coordinatorHost.executions[2]!.providerRequest.taskContract).toEqual(fixture.coordinatorHost.executions[0]!.providerRequest.taskContract);
+  });
+
+  it("retains all uncompressed history past the former 96-message slice", async () => {
+    const fixture = createFixture([{ status: "externallyCompleted", outputText: "回答" }]);
+    fixture.fake.commitWorkspace((workspace) => ({ workspace: { ...workspace, ai: { ...workspace.ai, messages: Array.from({ length: 130 }, (_, index) => ({ id: `history-${index}`, role: index % 2 ? "assistant" as const : "user" as const, body: `uncompressed-${index}`, status: "done" as const })) } }, value: undefined }));
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const body = JSON.stringify(fixture.coordinatorHost.executions[0]!.providerRequest.input);
+    expect(body).toContain("uncompressed-0"); expect(body).toContain("uncompressed-129");
+  });
+});
+
+function hostWithGeneratedImages(fixture: ReturnType<typeof createFixture>, count: number): AgentTurnHost {
+  return { ...fixture.host, executeVisualGenerationPlan: async () => {
+    const ids = Array.from({ length: count }, (_, index) => `p2b-generated-${index}`);
+    fixture.fake.commitWorkspace((workspace) => {
+      const objects = { ...workspace.objects }; const assets = { ...workspace.assets };
+      const base = Object.values(objects).find((object) => object.type === "image")!;
+      if (base.type !== "image") throw new Error("image fixture");
+      for (const id of ids) {
+        objects[id] = { ...base, id, incarnationId: `identity-${id}`, assetId: `asset-${id}`, title: id };
+        assets[`asset-${id}`] = { id: `asset-${id}`, storageKey: `blob-${id}`, sourceType: "aiGeneratedImage", mimeType: "image/png", fileName: `${id}.png`, size: 10, createdAt: "2026-10-01T00:00:00Z" };
+      }
+      return { workspace: { ...workspace, objects, assets }, value: undefined };
+    });
+    return { workspace: fixture.fake.getWorkspace(), createdObjectIds: ids, failedItems: count < 2 ? [{ reason: "fixture failure" }] : [] };
+  } };
+}
+
+
+describe("P2B request materialization and Recovery", () => {
+  it("lets the Provider choose Delivery references from its actual section input", async () => {
+    const fixture = createFixture([]);
+    const delivery = Object.values(fixture.fake.getWorkspace().objects).find((object) => object.type === "delivery")!;
+    if (delivery.type !== "delivery") throw new Error("delivery");
+    const section = delivery.sections.find((section) => section.referenceIds.length)!;
+    fixture.input.pendingDeliveryDraftTarget = { deliveryObjectId: delivery.id, sectionId: section.id };
+    fixture.input.draft = "准备该交付章节草稿";
+    fixture.coordinatorHost.appendScripts([(request) => {
+      const text = request.providerRequest.input.flatMap((message) => message.content).find((part) => "text" in part && part.text.startsWith("<untrusted_delivery_section>"));
+      if (!text || !("text" in text)) throw new Error("Model cannot know reference IDs without section input");
+      const received = JSON.parse(text.text.split("\n")[1]!) as { sectionId: string; references: Array<{ referenceId: string }> };
+      expect(received.sectionId).toBe(section.id);
+      expect(received.references.map((reference) => reference.referenceId)).toEqual(section.referenceIds);
+      return { status: "awaitingNextRequest", toolCalls: [deliveryToolCall("received-target", received.references[0]!.referenceId)] };
+    }, { status: "externallyCompleted", outputText: "草稿已准备" }]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.status).toBe("fulfilled");
+    expect(Object.values(fixture.fake.getWorkspace().deliverySectionDrafts)[0]).toMatchObject({ deliveryObjectId: delivery.id, sectionId: section.id });
+  });
+
+  it("keeps an in-flight continuation frozen while a later legal request reads fresh state", async () => {
+    const fixture = createFixture([
+      { status: "awaitingNextRequest", toolCalls: [{ callId: "read-first", name: "read_selected_context", argumentsText: "{}" }] },
+      { status: "providerRunning", toolCalls: [{ callId: "read-next", name: "read_selected_context", argumentsText: "{}" }] },
+      { status: "externallyCompleted", outputText: "完成" }
+    ]);
+    const direction = Object.values(fixture.fake.getWorkspace().objects).find((object) => object.type === "conceptDirection")!;
+    if (direction.type !== "conceptDirection") throw new Error("direction");
+    fixture.input.selectedObjectIds = [direction.id]; fixture.input.selectedObjects = [direction];
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const frozen = structuredClone(fixture.store.record!.coordinator.activeRequest);
+    fixture.fake.getWorkspace().directionRevisions[direction.currentRevisionId]!.summary = "latest-after-submission-marker";
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, fixture.host, fixture.dependencies)).toBe("pending");
+    expect(fixture.store.record!.coordinator.activeRequest).toEqual(frozen);
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+    fixture.coordinatorHost.setJournalStatus("awaitingNextRequest");
+    await resumeMorphoAgentTurn(LOCAL_PROJECT_ID, fixture.host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions).toHaveLength(3);
+    expect(JSON.stringify(fixture.coordinatorHost.executions[2]!.providerRequest.input)).toContain("latest-after-submission-marker");
+    expect(JSON.stringify(fixture.coordinatorHost.executions[1]!.providerRequest.input)).not.toContain("latest-after-submission-marker");
+  });
+
+  it("does not repeat a required revision read already present in the exact initial body", async () => {
+    const fixture = createFixture([{ status: "externallyCompleted", outputText: "根据指定 revision 回答" }]);
+    const direction = Object.values(fixture.fake.getWorkspace().objects).find((object) => object.type === "conceptDirection")!;
+    if (direction.type !== "conceptDirection") throw new Error("direction");
+    fixture.input.selectedObjectIds = [direction.id]; fixture.input.selectedObjects = [direction];
+    fixture.input.draft = `请基于指定 revision ${direction.currentRevisionId} 回答`;
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions[0]!.providerRequest.taskContract?.requiredReads).toContainEqual({ tool: "read_workspace_source", kind: "object", objectId: direction.id, revisionId: direction.currentRevisionId });
+    expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.status).toBe("fulfilled");
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+  });
+
+  it("refuses a second paid batch after successful image observation", async () => {
+    const fixture = createFixture([{ status: "awaitingNextRequest", toolCalls: [visualToolCall("first-images")] }, { status: "awaitingNextRequest", toolCalls: [visualToolCall("another-images")] }, { status: "externallyCompleted", outputText: "完成" }]);
+    fixture.input.taskMode = fixture.input.recommendedTaskMode = "imageGeneration"; fixture.input.draft = "生成两张图后再评价";
+    const host = hostWithGeneratedImages(fixture, 2);
+    const generate = vi.spyOn(host, "executeVisualGenerationPlan");
+    await runMorphoAgentTurn(fixture.input, host, fixture.dependencies);
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(fixture.coordinatorHost.executions[2]!.providerRequest.continuationItems)).toContain("agent_tool_not_authorized");
+    expect(Object.values(fixture.fake.getWorkspace().objects).filter((object) => object.id.startsWith("p2b-generated"))).toHaveLength(2);
+  });
+});
