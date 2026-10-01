@@ -1283,3 +1283,23 @@ existing Concept operations rather than adding a Concept model. Keep structural 
 separate from execution outcome and evaluate only real receipts plus Workspace effects, preserving
 partial work. No planner, workflow engine, Critic/second Agent, Journal migration, provider change,
 result escrow, full visual lineage or Delivery handoff redesign is introduced.
+
+## 2026-10-01: P3A Separates Logical Effects, POST Attempts and Provider Observations
+
+Decision: add a private, versioned execution journal with service-role-only observation writes beside
+existing administrative A+ journals. Freeze each logical effect's exact first Provider request;
+record each POST attempt separately and capture known task/response identity before further I/O.
+Persist cancel intent independently of local abort and trusted Provider cancellation. Preserve
+unknowns and accept late success without reopening terminal Turns or repeating paid generation.
+
+Reason: a route execution grant is not Provider running evidence; refresh, response loss, download
+failure and server replacement otherwise lose task identity or collapse uncertainty into a false
+terminal. Confirmed Image and independent Chat also need stable logical effect identity.
+
+Boundary: retain P3S ambiguous-POST stop-loss and bounded verified compatibility corrections only.
+GrsAI resumes the same known task through its documented GET endpoint on the exact credential/endpoint
+namespace. AiJWS retrieve/idempotency/cancel, Provider retention and cross-node scope are not assumed.
+The first request and correction bodies can contain selected project input and are private execution
+records, not cloud Workspace synchronization. No legacy backfill or old Journal cleanup replay; no
+result escrow/store/hosting/retention/ACK (P3B), scheduler/worker or exactly-once claim. Migration is
+additive/idempotent and has only local SQL-engine evidence, not production application/acceptance.

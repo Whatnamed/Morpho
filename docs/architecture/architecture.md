@@ -229,7 +229,10 @@ Implemented server-side state and deployment:
   lives in `supabase/migrations/`. Phase C cleanup is complete: the retired Runtime B lease table
   and RPC contract have been removed. Historical migration names and acceptance evidence remain
   only in the phase ledger and recovery records.
-- Supabase stores no project content. Projects, canvases, files, images, and backups stay in browser localStorage and IndexedDB.
+- Projects, canvases, files, generated results and backups stay in browser localStorage and IndexedDB.
+  P3A additionally registers the exact paid Provider request (which can contain selected text/image
+  input) in a private execution journal, with no credentials or generated-result payload. This is
+  execution identity, not a cloud Workspace or result store; see the P3A contract below.
 - Vercel is the current production deployment path (`npm run build`). Cloudflare Workers via `@opennextjs/cloudflare` and `wrangler` is a retained opt-in backup path behind the `cf:*` scripts.
 - `.github/workflows/quality.yml` runs lint, typecheck, test, and build on `main` and pull requests, without provider keys or deployment.
 - Export exists as delivery output packages and archive/backup bundles (see the M7 and M8 sections). Project deletion can explicitly reclaim previewed, provably exclusive Blobs; cloud project sync, cloud file storage, multiplayer sync, and object-level or automatic Blob garbage collection remain unimplemented.
@@ -703,7 +706,11 @@ Text Agent:
 - The fixed Morpho policy is a 256,000-token window, 204,800 prepare threshold, 230,400 compact threshold, and 16,000 target uncompressed tail. Production does not read context-threshold environment variables; only the non-production localStorage override is available for low-threshold browser acceptance.
 - A valid summary revision is applied atomically with source range, count, hash, previous revision, and boundary metadata. Failed summary validation leaves the prior boundary unchanged. A provider context-limit error may trigger one client summary/retry after the server's replay-safe tool-output retry.
 - P3S stops ambiguous paid submissions for shared Text/Compaction and GrsAI adapters, including independent Chat/Image routes. GrsAI sends one generate POST on the primary host; network errors, 408/429/5xx, response loss, and observation expiry cannot resubmit on that host or a fallback host. Known-task GET polling and secure same-result downloads remain unchanged. Configured fallback hosts remain eligible result-download hosts, not automatic generation destinations.
-- A+ Text, Compaction, and Image settle uncertainty as `externallyFailed` with bounded `failureCode: external_execution_state_unknown`; this is an administrative terminal state, not proof that the Provider failed. Public errors use the same code and `recoverable: false`, explain that execution cannot be confirmed and automatic retries have stopped, without denying an earlier legitimate compatibility correction, and do not invite automatic paid reruns. Exact Journal query/replay and settlement retries remain available; Compaction produces no fabricated summary and preserves raw chat. No task registry, escrow, ACK, queue, worker, webhook, schema change, or exactly-once guarantee is introduced.
+- A+ Text, Compaction, and Image retain their administrative Journal statuses and bounded
+  `failureCode: external_execution_state_unknown`; `externallyFailed` is not proof of Provider
+  failure. P3A adds separate execution observations without reopening a terminal Turn or authorizing
+  paid retry. Public unknown errors remain non-retryable; Compaction preserves raw chat and creates
+  no fabricated summary. No result escrow, ACK, queue, worker, webhook or exactly-once guarantee is introduced.
 - Provider continuation uses exact `function_call` / `function_call_output` items from the local Tool Batch. The server validates their bounded syntax and registered Tool names but deliberately does not attest local Tool truth or Workspace effects.
 - Provider Requests and Search/Image/Compaction Actions use stable IDs plus server-computed Body hashes. Exact replays are idempotent; identity, hash, sequence, binding, limit, and terminal-state conflicts do not execute externally.
 - When explicitly enabled for a compatible relay, Agent, independent Chat, and Compaction add an opaque server-generated Provider Prompt Cache Hint partitioned by authenticated user, local project where applicable, model, Prompt Contract, Tool Profile, and stable system prefix. The hint and optional supported retention are included in the exact external Request/Action Hash. They are performance routing hints only; disabled mode preserves the original request, cache miss never changes correctness, and a `400` retries once only when the diagnostic explicitly rejects an optional cache field actually sent, removing only optional cache fields and preserving stream mode. Generic unknown-field errors do not authorize another POST.
@@ -856,3 +863,64 @@ outside this implementation.
 ## Built-In Case Study
 
 The deployable built-in project is `project-morpho-case-study`, generated from the current real editable backup. It preserves the backup's canvas, relations, assets, messages, Agent traces, citations, project continuity, and incomplete state. The old Nightrail structure remains only as a test fixture and as a guarded one-time migration fingerprint.
+
+## P3A Effect Identity / Execution Observation (2026-10-01; validating)
+
+`externalEffectJournal.ts`, `externalEffectObservation.ts` and `externalEffectProtocol.ts` add a
+version-1 execution contract alongside the existing Turn/Request/External Action journals.
+`20261001090000_add_external_effect_observation.sql` creates private effect, attempt and observation
+tables and one service-role-only `operate_external_effect` RPC. Existing Journal SQL/rows, Workspace
+schema 18 and Recovery v2 are unchanged; no historical identity is invented or cleanup rerun.
+
+- Logical effect identity is deterministic within the authenticated owner: A+ Turn/project/kind/
+  Request sequence or Action ID; independent confirmed Image uses its persisted `clientRequestId`;
+  independent Chat uses `X-Morpho-Effect-Key`. A fresh independent paid request without a stable key
+  is rejected. This Morpho identity is not a Provider idempotency key.
+  Fresh independent Image registration also requires `X-Morpho-Effect-Contract: 1`; a legacy
+  independent request with a stable ID but no registry/contract marker stays unknown and cannot
+  be mistaken for a never-executed new effect. Known registry identities remain queryable.
+- The logical effect freezes the first exact Provider JSON request and SHA-256 digest, without
+  Authorization headers. Each actual POST attempt has its own UUID and exact body/digest. Namespace
+  records Provider family, exact base URL and a one-way credential configuration fingerprint. It
+  asserts neither account equivalence nor shared cross-node task scope. Model/config changes never
+  redirect known tasks or rebuild recovery requests.
+- Effect registration and attempt acquisition precede POST. An existing effect never grants an
+  ambiguous resubmission. Only P3S's verified cache/image compatibility rejection can admit a bounded
+  correction attempt; the logical frozen request remains unchanged. No transient retry/fallback is restored.
+- Adapters durably record task/response IDs as soon as observed, before further polling/download or
+  stream reads. `unknown`, `running`, `succeeded`, `failed`, `cancelled` are Provider facts, independent
+  of administrative closure/local outcome. Admission, task identity alone, transport loss, query 404,
+  deadlines and local abort are not running/failure/cancellation evidence. Known running survives
+  query errors. Confirmed terminals resist unknown/stale running observations; late success is
+  admissible after failure/cancel and success cannot be downgraded.
+- Cancel intent and local abort observation have separate durable timestamps. Pre-registration
+  cancellation creates a tombstone that blocks submit; cancellation checks before submit remain
+  subject to the ordinary check/send race. Post-submit abort does not prove Provider cancellation,
+  refund or non-execution. Only a trusted Provider cancellation observation sets `cancelled`.
+- Authenticated `/api/ai/effects/[effectId]?kind=...` GET reads/observes and can retrieve a known Image
+  task's same result via `result=image`; POST records only cancel intent. Browser roles cannot call
+  the observation RPC or mutate tables. Routes derive the actor from verified authentication.
+  GrsAI observation uses one bounded GET on the exact namespace, never generate or fallback.
+- A+ Image same-Action replay and independent Image same-key replay read the execution registry
+  before current request/config/hash rebuilding or new quota/admission. Known tasks resume GET and
+  secure download; unknown without a task stays unknown. Image Recovery retains the optional
+  snapshot and frozen body; existing client-request/object dedupe prevents duplicate local effects.
+  Turn query retains optional text observations without fabricating missing output or Tool payload.
+- Legacy replay without registry identity follows the old Journal query/replay boundary. It does
+  not register/reexecute a historical effect. Missing migration or privileged configuration fails
+  new submissions closed; old read-only Turn query remains available. New registry records are not
+  coupled to legacy Turn cleanup, so observation does not depend on reopening a terminal Turn.
+
+Provider capability evidence: repository GrsAI task GET and secure retrieval code plus the public
+[task-query documentation](https://qmy27nhsd9.apifox.cn/452409577e0) verified on 2026-10-01. Generate
+page retrieval timed out; existing `replyType=json` is retained. Stable idempotency, client-key lookup,
+cross-node/account equivalence, retention and reliable cancel are **not guaranteed**. AiJWS exposes
+observed response IDs, but this implementation does not assume OpenAI's GET/retrieve/cancel capabilities
+apply to the relay. Credential rotation or namespace mismatch blocks observation instead of guessing.
+
+No generated Text/Compaction payload, image bytes or result URL is escrowed. Same-task retrieval
+still depends on Provider availability; without usable Provider identity/result the result remains
+unavailable. Late success records facts and does not auto-continue a cancelled Turn, promote project
+state or create a new paid operation. P3B result escrow/redelivery store/retention/hosting/local ACK,
+P4/P5 and P2 Task/Fulfillment redesign remain outside this package. No production Journal migration,
+paid Provider call, billing verification or real multi-instance hosting test was performed.

@@ -88,11 +88,12 @@ The two `NEXT_PUBLIC_SUPABASE_*` values are public browser configuration, not se
 `SUPABASE_SECRET_KEY` is a server-only Supabase Secret Key for every A+ Provider settlement path.
 It must never be placed in `NEXT_PUBLIC_*`, browser code, client logs, or a
 committed `.env` file. Morpho uses it only through the cookie-free privileged server client and the
-service-role-only verified-authority RPC; it is not a general browser database credential. Supabase
-stores account identity, tester eligibility, AI daily-quota state, and the minimal A+ Server Turn /
-Request / External Action Journals. It does not store projects, canvases, files, images, chat bodies,
-project memory, or the overall local Turn Outcome; projects and backups remain local in browser
-localStorage / IndexedDB and are not cloud-synced.
+service-role-only verified-authority RPCs; it is not a general browser database credential. Supabase
+stores account identity, tester eligibility, AI daily-quota state and A+ journals. P3A adds private
+frozen paid Provider requests (including selected text/image input), attempt identity and execution
+observations. It stores no generated results, full Workspace, project memory, backups or overall
+local Turn Outcome. Projects and backups remain local in browser localStorage / IndexedDB and are
+not cloud-synced. Authorization headers and API keys never enter frozen requests.
 
 With `MORPHO_AUTH_REQUIRED=true`, missing public Supabase configuration fails closed: `/login` renders the configuration error with no variable values, while `/` and `/projects/*` redirect to `/login` instead of rendering protected content. `/api/ai/*` retains its 503 configuration failure behavior. Set `MORPHO_AUTH_REQUIRED=false` only for explicit local authentication bypass.
 
@@ -130,7 +131,7 @@ Paid submission stop-loss (P3S):
 - Text and Compaction do not resend `/responses` after network errors, HTTP 408/429/5xx, lost/unreadable responses, or safety deadlines. A disconnected/incomplete SSE stream preserves partial observations and never starts a buffered generation.
 - GrsAI sends one `/v1/api/generate` POST on the configured primary host. Ambiguous submission does not retry that host or submit to a fallback host. Existing known-task GET `/v1/api/result?id=...` polling and secure downloads remain allowed, as do Journal acquisition/replay, exact local replay/dedupe, settlement retries, read-only Search retries, and local persistence retries.
 - A `400` cache compatibility correction is allowed once only when its diagnostic explicitly identifies an optional cache field actually sent as unsupported. It removes only optional cache fields; generic `unknown field` / unrelated field errors do not qualify. Independent Chat retains image-to-text compatibility only after confirmed 400/413/415/422 rejection with `executionStateUnknown === false` and an image-specific diagnostic; bare `unsupported` or `bad gateway` do not qualify, nor do 408/429/5xx or execution uncertainty.
-- Unknown execution uses public code and A+ Journal `failureCode: external_execution_state_unknown` with `recoverable: false`. Public copy states that execution cannot be confirmed and automatic retries have stopped; it does not deny an earlier legitimate compatibility correction. The row may be `externallyFailed`, but this does not establish Provider failure or billing state. Query/exact replay does not grant a second paid execution. No task registry/result escrow or exactly-once guarantee is implied.
+- Unknown execution uses public code and A+ Journal `failureCode: external_execution_state_unknown` with `recoverable: false`. Public copy states that execution cannot be confirmed and automatic retries have stopped; it does not deny an earlier legitimate compatibility correction. The row may be `externallyFailed`, but this does not establish Provider failure or billing state. Query/exact replay does not grant a second paid execution. P3A adds the separate task/response observation contract below; no result escrow or exactly-once guarantee is implied.
 - Deterministic adapter, route, Journal, and Runner regressions use mocks/fakes. P3S verification needs no live paid Provider call or production migration; future Provider reconciliation/retention contracts belong to P3A/P3B.
 
 Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`.
@@ -1302,3 +1303,49 @@ npm run measure:perf -- --target=renderConversation
 A measurement that fails the trust gate is reported as untrusted and must not be
 cited as evidence for any optimization. Do not tune the harness until the number
 looks acceptable; record it as untrusted and say why.
+
+## P3A execution identity rollout and validation
+
+P3A is `validating`, not accepted/deployed. Apply only the new additive
+`supabase/migrations/20261001090000_add_external_effect_observation.sql` through the normal authorized
+forward migration process **before** deploying this code. No production migration was performed by
+the implementation. Do not rerun old cleanup migrations or populate Provider IDs from current data.
+Missing migration or `SUPABASE_SECRET_KEY` blocks new paid submissions; legacy Turn queries remain
+available. Old runtime deployments may finish their already admitted actions but create no invented
+new identity. Preserve existing in-flight Journal/Recovery rows during rollout.
+
+The service-role-only RPC verifies effect kind, immutable request/namespace and attempt identity;
+server routes pass the authenticated owner. Browser roles have no table or RPC observation writes.
+A+ identities derive from existing Turn/project/Request or Action IDs. Confirmed independent Image
+uses its persisted client request ID; independent callers may use `X-Morpho-Effect-Key`. Independent
+Chat requires that header. Reusing the key queries the existing effect, never regenerates it; a key
+change describes a new explicit operation, not recovery. No new environment variables are required.
+New independent Image producers send `X-Morpho-Effect-Contract: 1`. If an old independent request
+has no registry entry and no contract marker, it remains unknown instead of registering/resubmitting
+a possibly historical effect. Existing registry identities can still be queried without that marker.
+
+Observe `/api/ai/effects/<effectId>?kind=image|text|compaction`. A known GrsAI task is queried by GET on
+its exact saved endpoint/credential namespace; `result=image` permits secure same-task retrieval.
+POST to this resource records only cancel intent. `cancelRequestedAt`, `localAbortObservedAt` and
+trusted Provider `executionState` are separate. Neither abort nor administrative `externallyCancelled`
+is proof of Provider cancellation/non-billing/refund. No result payload/URL is stored; text/compaction
+response identity has no guaranteed relay retrieval. Namespace mismatch/credential rotation leaves
+observations unresolved instead of changing hosts or recreating the execution.
+
+Local SQL verification (temporary test engine only, no project dependency or production access):
+
+```powershell
+npm.cmd install --prefix temp/p3a-sql-check --no-save --package-lock=false @electric-sql/pglite
+node scripts/verify-external-effect-journal.mjs temp/p3a-sql-check/node_modules/@electric-sql/pglite/dist/index.js
+```
+
+This verifies migration reapplication, actual RPC state transitions, grant restrictions, duplicate
+observations, owner separation, immutable requests, compatibility attempts, unknown/cancel/late
+success and untouched legacy fixtures. It does not verify a production Supabase deployment,
+PostgREST, real concurrent database sessions or Provider/hosting/billing behavior. Adapter/Route/
+Recovery/Runner tests and the Chromium reload fault use fakes for external services. Public GrsAI
+[task-query documentation](https://qmy27nhsd9.apifox.cn/452409577e0) confirms the GET/task shape; generate
+document retrieval timed out, so existing JSON submission is retained. Idempotency, client-key
+lookup, cross-node/account scope, reliable cancel and retention remain unguaranteed. AiJWS response
+IDs do not imply the relay supports OpenAI retrieval. These are validation limits, not a reason to
+resume uncertain POSTs or start P3B result escrow/retention/hosting/local ACK work.
