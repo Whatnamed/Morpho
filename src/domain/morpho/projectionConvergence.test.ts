@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
 import { applyConversationSemanticPatch, buildProjectContinuityContext, deriveProjectMemoryViews, setConversationSemanticEntryManualState } from "./projectContinuity";
 import { buildAgentDefaultMemoryContext, getCurrentProjectMemoryRevision, getCurrentStageRecordRevision, getProjectMemoryHistory, reconcileProjectMemory } from "./projectMemory";
-import { createInitialWorkspace, hideObject, migrateWorkspaceToCurrentSchema, setConceptDirectionStatus } from "./workspace";
+import { createBlankWorkspace, createInitialWorkspace, hideObject, migrateWorkspaceToCurrentSchema, setConceptDirectionStatus } from "./workspace";
+import { recordDesignDefinitionProposal, applyDesignDefinitionProposal } from "../operations/operations";
 import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
 import { createEditableProjectBackupManifest, validateEditableProjectBackupManifest } from "./projectArchive";
 import { compileImagePrompt } from "../operations/imagePromptCompiler";
@@ -32,6 +33,62 @@ function imagePrompt(workspace: MorphoWorkspace, targetDirectionId: string): str
 }
 
 describe("P1B-2 projection consumer convergence", () => {
+  it.each(["object", "revision"] as const)("keeps a %s-bound Definition A fact valid while default consumers follow effective Definition B", (binding) => {
+    const applyDefinition = (workspace: MorphoWorkspace, title: string) => {
+      const proposed = recordDesignDefinitionProposal(workspace, { proposalId: title, workIntent: "createDesignDefinition", title, summary: title, projectGoal: title, targetUsers: [], primaryScenarios: [], coreProblem: title, designPrinciples: [], constraints: [], avoidDirections: [], opportunities: [], openQuestions: [], sourceObjectIds: [], citations: [] });
+      const applied = applyDesignDefinitionProposal(proposed.workspace, proposed.proposal.id);
+      if (applied.status !== "updated") throw new Error("Definition application failed");
+      return applied.workspace;
+    };
+    let workspace = applyDefinition(createBlankWorkspace("definition-scope-review"), "Definition A");
+    const definitionA = Object.values(workspace.objects).find((object) => object.type === "designDefinition" && object.isCurrentEffective);
+    if (definitionA?.type !== "designDefinition") throw new Error("Missing Definition A");
+    const quote = "仅定义 A 使用紫色连接节点";
+    const createdAt = "2026-10-01T00:00:00.000Z";
+    workspace = { ...workspace, ai: { ...workspace.ai, messages: [...workspace.ai.messages, { id: "definition-scope-user", role: "user", body: quote, createdAt }] } };
+    const objectIds = binding === "object" ? [definitionA.id] : [];
+    const revisionIds = binding === "revision" ? [definitionA.currentRevisionId] : [];
+    const patch = applyConversationSemanticPatch(workspace, buildSemanticPatchAuthorization({ taskMode: "chatAnalysis", draft: quote, userMessageId: "definition-scope-user", userMessageCreatedAt: createdAt, currentFocusArea: "designDefinition", objectIds, revisionIds, decisionIds: [] }), [{ kind: "preference", scope: "designDefinition", evidenceQuote: quote, relatedObjectIds: objectIds, relatedRevisionIds: revisionIds, relatedDecisionIds: [] }]);
+    expect(patch.rejected).toEqual([]);
+    workspace = patch.workspace;
+    const entryId = patch.entries[0]!.id;
+    const originalFact = workspace.projectContinuity.recordEntries.find((entry) => entry.id === entryId)!;
+    const originalRevision = workspace.designDefinitionRevisions[definitionA.currentRevisionId]!;
+    const contains = (value: unknown) => JSON.stringify(value).includes(quote);
+    expect(contains(buildAgentDefaultMemoryContext(workspace, "visualDevelopment"))).toBe(true);
+    expect(imagePrompt(workspace, A)).toContain(quote);
+
+    const switched = applyDefinition(workspace, "Definition B");
+    expect(switched.objects[definitionA.id]).toMatchObject({ isCurrentEffective: false, currentRevisionId: definitionA.currentRevisionId });
+    expect(switched.designDefinitionRevisions[definitionA.currentRevisionId]).toEqual(originalRevision);
+    expect(originalRevision.isCurrent).toBe(true); // Object-current, not project-current.
+    expect(switched.projectContinuity.recordEntries.find((entry) => entry.id === entryId)).toEqual(originalFact);
+    expect(originalFact.validity).toBe("current");
+    expect(originalFact.supersededByEntryId).toBeUndefined();
+    for (const kind of ["designDefinition", "conceptDirection", "directionPreview", "visualDevelopment"] as const) {
+      expect(contains(buildAgentDefaultMemoryContext(switched, kind))).toBe(false);
+      const context = buildProjectContinuityContext(switched, { taskKind: kind, selectedObjectIds: [] });
+      expect(contains(context.relevantProjectMemoryViews)).toBe(false);
+      expect(contains(context.relevantStageRecords)).toBe(false);
+      expect(contains(context.currentStageRecords)).toBe(false);
+    }
+    expect(imagePrompt(switched, B)).not.toContain(quote);
+    const taskContext = buildTaskContext(switched, { kind: "visualDevelopment", draft: "继续当前定义", selectedObjectIds: [] });
+    expect(contains(taskContext.projectContinuity)).toBe(false);
+    expect(switched.projectMemory.revisions).toMatchObject(workspace.projectMemory.revisions);
+
+    for (const selection of [{ directObjectIds: [definitionA.id] }, { directRevisionIds: [definitionA.currentRevisionId] }]) {
+      expect(contains(buildAgentDefaultMemoryContext(switched, "visualDevelopment", selection))).toBe(true);
+      const context = buildProjectContinuityContext(switched, { taskKind: "general", selectedObjectIds: [], ...selection, includeHistorical: true });
+      expect(contains(context.relevantStageRecords)).toBe(true);
+      expect(contains(context.relevantProjectMemoryViews)).toBe(true);
+    }
+    expect(contains(buildTaskContext(switched, { kind: "general", draft: "回看定义 A", selectedObjectIds: [definitionA.id] }).projectContinuity)).toBe(true);
+    const restored = reconcileProjectMemory({ ...switched, objects: Object.fromEntries(Object.entries(switched.objects).map(([id, object]) => [id, object.type === "designDefinition" ? { ...object, isCurrentEffective: id === definitionA.id } : object])) });
+    expect(contains(buildAgentDefaultMemoryContext(restored, "visualDevelopment"))).toBe(true);
+    expect(imagePrompt(restored, A)).toContain(quote);
+    expect(restored.projectContinuity.recordEntries.find((entry) => entry.id === entryId)).toEqual(originalFact);
+  });
   it("preserves item identity and scope across Memory, views, Stage, Context and final image prompts", () => {
     const workspace = withPreference(); // No React setter or persistence hook.
     const revision = getCurrentProjectMemoryRevision(workspace.projectMemory, "userPreferences")!;

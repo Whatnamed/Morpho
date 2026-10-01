@@ -1,5 +1,6 @@
 import type { ContinuityRecordEntry, ContinuitySourceRef, ContinuityValidity, CurrentProjectFocus, MorphoWorkspace } from "./types";
 import { resolveSource } from "./sourceResolution";
+import { resolveCurrentDesignDefinition } from "./currentDesignDefinition";
 import { classifyDecisionRecord } from "./decisionRecords";
 
 export type SemanticEntryTaskScope = {
@@ -10,6 +11,8 @@ export type SemanticEntryTaskScope = {
   directDecisionIds: readonly string[];
   targetDirectionIds: readonly string[];
   targetRevisionIds?: readonly string[];
+  definitionObjectIds?: readonly string[];
+  definitionRevisionIds?: readonly string[];
 };
 
 export type ContinuityEntryEligibility = {
@@ -292,10 +295,10 @@ export function isSemanticEntryScopeRelevantToTaskContext(
 
   const hasDirectMatch = hasTypedDirectSourceMatch(entry, taskScope);
   if (scope === "designDefinition") {
-    if (hasDirectMatch) {
-      return true;
-    }
-    return taskScope.taskKind === "designDefinition" || taskScope.taskKind === "conceptDirection" || taskScope.taskKind === "directionPreview" || taskScope.taskKind === "visualDevelopment";
+    return entry.sourceRefs.some((ref) =>
+      (ref.kind === "object" && (taskScope.definitionObjectIds ?? []).includes(ref.id)) ||
+      (ref.kind === "revision" && (taskScope.definitionRevisionIds ?? []).includes(ref.id))
+    );
   }
 
   if (scope === "direction") {
@@ -351,7 +354,27 @@ function isVisualScopedTask(taskKind: SemanticEntryTaskScope["taskKind"]): boole
 /** Scope query over existing targets; does not grant Tool or effect authority. */
 export function createProjectionTaskScope(workspace: MorphoWorkspace, input: Partial<SemanticEntryTaskScope> & Pick<SemanticEntryTaskScope, "taskKind">): SemanticEntryTaskScope {
   const targetDirectionIds = input.targetDirectionIds ?? [];
+  const definitionObjectIds = new Set<string>();
+  const definitionRevisionIds = new Set<string>();
+  const addDefinition = (objectId: string, revisionId?: string) => {
+    const object = workspace.objects[objectId];
+    if (object?.type !== "designDefinition" || object.visibility !== "active") return;
+    const revision = workspace.designDefinitionRevisions[revisionId ?? object.currentRevisionId];
+    if (!revision || revision.designDefinitionId !== object.id) return;
+    definitionObjectIds.add(object.id);
+    definitionRevisionIds.add(revision.id);
+  };
+  for (const id of input.directObjectIds ?? []) addDefinition(id);
+  for (const id of input.directRevisionIds ?? []) {
+    const revision = workspace.designDefinitionRevisions[id];
+    if (revision) addDefinition(revision.designDefinitionId, id);
+  }
+  if (["designDefinition", "conceptDirection", "directionPreview", "visualDevelopment"].includes(input.taskKind)) {
+    const current = resolveCurrentDesignDefinition(workspace);
+    if (current?.availability === "available") addDefinition(current.object.id, current.revision.id);
+  }
   return { directObjectIds: [], directRevisionIds: [], directBranchIds: [], directDecisionIds: [], ...input, targetDirectionIds,
+    definitionObjectIds: [...definitionObjectIds], definitionRevisionIds: [...definitionRevisionIds],
     targetRevisionIds: targetDirectionIds.flatMap((id) => {
       const object = workspace.objects[id];
       return object?.type === "conceptDirection" ? [object.currentRevisionId] : [];
