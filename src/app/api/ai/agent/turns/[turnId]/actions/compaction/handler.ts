@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createEffectExecution, externalEffectId, type EffectIdentity, type EffectExecution } from "@/server/ai/externalEffectJournal";
 
 import { parseConversationSummaryPayload } from "@/domain/morpho/conversationCompaction";
 import {
@@ -33,6 +34,7 @@ export type AgentTurnCompactionActionDependencies = Readonly<{
   settle: typeof settleAgentTurnExternalAction;
   loadConfig: () => OpenAiCompatibleConfigResult;
   execute: typeof executeOpenAiCompatibleResponse;
+  createEffect?: (identity: EffectIdentity) => EffectExecution;
   waitForSettlementRetry?: (delayMs: number) => Promise<void>;
 }>;
 
@@ -41,7 +43,8 @@ const defaultDependencies: AgentTurnCompactionActionDependencies = {
   acquire: acquireAgentTurnExternalAction,
   settle: settleAgentTurnExternalAction,
   loadConfig: () => loadOpenAiCompatibleConfig(process.env),
-  execute: executeOpenAiCompatibleResponse
+  execute: executeOpenAiCompatibleResponse,
+  createEffect: createEffectExecution
 };
 
 export function createAgentTurnCompactionActionPostHandler(
@@ -130,7 +133,12 @@ export function createAgentTurnCompactionActionPostHandler(
     if (!acquired.executionGranted) return compactionReplayResponse(acquired);
 
     try {
-      const result = await dependencies.execute(config.config, providerRequest, request.signal);
+      const result = await dependencies.execute(config.config, providerRequest, request.signal,
+        dependencies.createEffect?.({
+          actorUserId: auth.userId,
+          effectId: externalEffectId("a-plus", turnId, body.localProjectId, "compaction", body.actionId),
+          kind: "compaction"
+        }));
       if (result.functionCalls.length > 0) throw new Error("Compaction Provider returned Tool Calls.");
       const summary = parseConversationSummaryPayload(result.outputText);
       if (summary.status !== "ok") throw new Error(summary.reason);
@@ -154,7 +162,7 @@ export function createAgentTurnCompactionActionPostHandler(
       if (settled.status === "denied") return journalDeniedResponse(settled);
       return NextResponse.json(
         {
-          error: cancelled ? "Compaction 已取消。" : unknown ? EXTERNAL_EXECUTION_STATE_UNKNOWN.message : "Compaction Provider 输出无效或执行失败。",
+          error: cancelled ? "已停止等待压缩结果；外部执行是否取消尚未确认。" : unknown ? EXTERNAL_EXECUTION_STATE_UNKNOWN.message : "Compaction Provider 输出无效或执行失败。",
           code: cancelled ? "compaction_cancelled" : failureCode,
           recoverable: false,
           action: settled.snapshot

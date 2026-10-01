@@ -48,6 +48,7 @@ import {
 } from "./pendingImageGenerationSlots";
 import { planDirectionPreviewPlacements, planVisualDevelopmentPlacements } from "./visualPreviewLayout";
 import { readErrorResponse } from "./httpPayload";
+import { isExternalEffectSnapshot } from "@/shared/externalEffectProtocol";
 import type { SaveLocalAssetResult } from "@/infrastructure/assets/localAssetWorkflow";
 
 export type ImageTaskState =
@@ -395,9 +396,7 @@ async function executeVisualGenerationItem(
     ? await buildAPlusImageChildActionId(context.externalAction.actionId, item.id)
     : undefined;
   ports.assertCurrentSession(context.session);
-  const existingObjectId = context.externalAction
-    ? findAPlusImageResultObjectId(context.workspaceAtPlanCommit, itemClientRequestId)
-    : undefined;
+  const existingObjectId = findAPlusImageResultObjectId(context.workspaceAtPlanCommit, itemClientRequestId);
   if (existingObjectId) {
     state.completedCount += 1;
     publishVisualGenerationProgress(context, state, input, ports);
@@ -512,7 +511,7 @@ async function executeVisualGenerationItem(
         })
       : await ports.fetch("/api/ai/image", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Morpho-Effect-Contract": "1" },
           body: imageRequestBody,
           signal: input.signal
         });
@@ -528,11 +527,14 @@ async function executeVisualGenerationItem(
       if (!context.externalAction || !aPlusActionId) {
         throw new Error("图像任务仍在执行，但缺少 A+ Action 身份，无法安全恢复。");
       }
+      const body: unknown = await imageResponse.json().catch(() => undefined);
+      const effect = isWorkspaceRecord(body) && isExternalEffectSnapshot(body.effect) ? body.effect : undefined;
       throw await createAPlusExternalActionRunningError({
         actionId: aPlusActionId,
         actionKind: "image",
         requestBody: imageRequestBody,
-        message: "图像任务仍在服务器执行；本地只进行同身份查询，不重复生成。"
+        message: "图像任务仍在服务器执行；本地只进行同身份查询，不重复生成。",
+        ...(effect ? { externalEffect: effect } : {})
       });
     }
     if (imageResponseKind === "jsonError") {
@@ -619,7 +621,7 @@ async function applyVisualGenerationItemResult(
   } else if (result.status === "ok") {
     try {
       ports.assertCurrentSession(context.session);
-      const createdObjectId = ports.commitWorkspace(context.session, (current) => {
+      const commitResult = ports.commitWorkspace(context.session, (current) => {
         const committed = applyImageGenerationResultCommit(current, {
           status: "succeeded",
           operationId: context.operationId,
@@ -662,8 +664,12 @@ async function applyVisualGenerationItemResult(
           ),
           canvasSize: context.plannedImageSize
         });
-        return { workspace: committed.workspace, value: committed.createdObjectId };
+        return { workspace: committed.workspace, value: committed };
       });
+      const createdObjectId = commitResult.createdObjectId;
+      if (commitResult.reusedExisting && !commitResult.workspace.assets[result.asset.id]) {
+        await deleteProvisionalAsset(result.asset.storageKey, ports);
+      }
       if (createdObjectId) {
         state.createdObjectIds.push(createdObjectId);
       }

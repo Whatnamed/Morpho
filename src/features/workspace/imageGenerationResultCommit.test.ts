@@ -64,6 +64,25 @@ function generation(operationId: string, title: string): ImageGenerationMetadata
 }
 
 describe("image generation result commits", () => {
+  it("commits duplicate observations of the same client execution once against the latest Workspace", () => {
+    const operationId = "operation-deduplicate-observation";
+    const created = createImageGenerationOperation(createInitialWorkspace(), {
+      operationId, clientRequestId: "stable-request", prompt: "图像", selectedObjectIds: [], imagePixels: false,
+      modelId: "nano-banana-fast", modelLabel: "nano-banana-fast", aspectRatio: "16:9", referenceObjectIds: []
+    });
+    const result = {
+      status: "succeeded" as const, operationId, providerTaskId: "same-task", asset: generatedAsset("first-observation"),
+      generation: { ...generation(operationId, "原始结果"), clientRequestId: "stable-child-request" },
+      sourceObjectIds: [], title: "原始结果", summary: "已观察", role: "conceptImage" as const
+    };
+    const first = applyImageGenerationResultCommit(created.workspace, result);
+    const second = applyImageGenerationResultCommit(first.workspace, { ...result, asset: generatedAsset("second-observation") });
+    expect(second.createdObjectId).toBe(first.createdObjectId);
+    expect(second.reusedExisting).toBe(true);
+    expect(second.workspace).toBe(first.workspace);
+    expect(second.workspace.assets["second-observation"]).toBeUndefined();
+    expect(second.workspace.canvas.instances).toHaveLength(first.workspace.canvas.instances.length);
+  });
   it("keeps external workspace changes while reverse-settled images retain their planned frames", () => {
     const operationId = "operation-image-commit-race";
     const created = createImageGenerationOperation(createInitialWorkspace(), {

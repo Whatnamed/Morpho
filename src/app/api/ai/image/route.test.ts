@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "./route";
 
+const observeExistingMock = vi.hoisted(() => vi.fn<() => Promise<Response | undefined>>(async () => undefined));
+vi.mock("@/server/ai/externalEffectObservation", () => ({ existingImageEffectResponse: observeExistingMock }));
+
 const loadGrsImageConfigMock = vi.hoisted(() =>
   vi.fn<() => unknown>(() => ({
     status: "ok",
@@ -34,7 +37,21 @@ vi.mock("@/server/image/grsProvider", () => ({
 }));
 
 describe("AI image route auth guard", () => {
+  it("rejects a new paid request with no stable key and reuses known effects before reserving quota", async () => {
+    const make = (clientRequestId?: string) => new Request("http://localhost/api/ai/image", { method: "POST",
+      body: JSON.stringify({ prompt: "test", images: [], ...(clientRequestId ? { clientRequestId } : {}) }) });
+    expect((await POST(make())).status).toBe(400);
+    expect(guardAiRouteMock).not.toHaveBeenCalled();
+    observeExistingMock.mockResolvedValueOnce(Response.json({ effect: { executionState: "running" } }, { status: 202 }));
+    expect((await POST(make("stable-confirmed-image"))).status).toBe(202);
+    expect(guardAiRouteMock).not.toHaveBeenCalled();
+    expect(resolveGrsImageResultMock).not.toHaveBeenCalled();
+    expect((await POST(make("legacy-in-flight-image"))).status).toBe(409);
+    expect(guardAiRouteMock).not.toHaveBeenCalled();
+    expect(resolveGrsImageResultMock).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
+    observeExistingMock.mockReset().mockResolvedValue(undefined);
     requireAiRouteUserMock.mockReset();
     requireAiRouteUserMock.mockResolvedValue({ status: "allowed", userId: "user-a" });
     guardAiRouteMock.mockReset();
@@ -68,7 +85,7 @@ describe("AI image route auth guard", () => {
 
     const response = await POST(
       new Request("http://localhost/api/ai/image", {
-        method: "POST",
+        method: "POST", headers: { "X-Morpho-Effect-Key": "image-test", "X-Morpho-Effect-Contract": "1" },
         body: JSON.stringify({ prompt: "生成柔光轨道产品图", images: [], aspectRatio: "1:1" })
       })
     );
@@ -92,7 +109,7 @@ describe("AI image route auth guard", () => {
 
     const response = await POST(
       new Request("http://localhost/api/ai/image", {
-        method: "POST",
+        method: "POST", headers: { "X-Morpho-Effect-Key": "image-test", "X-Morpho-Effect-Contract": "1" },
         body: "{not-json"
       })
     );
@@ -113,7 +130,7 @@ describe("AI image route auth guard", () => {
 
     const response = await POST(
       new Request("http://localhost/api/ai/image", {
-        method: "POST",
+        method: "POST", headers: { "X-Morpho-Effect-Key": "image-test", "X-Morpho-Effect-Contract": "1" },
         body: JSON.stringify({
           prompt: "生成柔光轨道产品图",
           images: [],
@@ -146,7 +163,7 @@ describe("AI image route auth guard", () => {
 
     const response = await POST(
       new Request("http://localhost/api/ai/image", {
-        method: "POST",
+        method: "POST", headers: { "X-Morpho-Effect-Key": "image-test", "X-Morpho-Effect-Contract": "1" },
         body: JSON.stringify({ prompt: "生成柔光轨道产品图", images: [], aspectRatio: "1:1" })
       })
     );
@@ -163,7 +180,7 @@ describe("AI image route auth guard", () => {
   });
   it("exposes a stable unknown submission envelope without resubmitting or leaking diagnostics", async () => {
     resolveGrsImageResultMock.mockResolvedValueOnce({ status: "failed", reason: "private-host secret-key", failureCode: "external_execution_state_unknown" });
-    const response = await POST(new Request("http://localhost/api/ai/image", { method: "POST", body: JSON.stringify({ prompt: "test", images: [] }) }));
+    const response = await POST(new Request("http://localhost/api/ai/image", { method: "POST", headers: { "X-Morpho-Effect-Key": "image-test", "X-Morpho-Effect-Contract": "1" }, body: JSON.stringify({ prompt: "test", images: [] }) }));
     const body = await response.text();
     expect(response.status).toBe(502);
     expect(JSON.parse(body)).toEqual({ code: "external_execution_state_unknown", error: "无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。", recoverable: false });

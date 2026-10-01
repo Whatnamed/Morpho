@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createEffectExecution, externalEffectId, externalEffectJournal, type EffectExecution } from "@/server/ai/externalEffectJournal";
 
 import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import {
@@ -56,6 +57,24 @@ export async function POST(request: Request) {
     );
   }
 
+  const clientKey = request.headers.get("X-Morpho-Effect-Key");
+  if (!clientKey || !/^[A-Za-z0-9._:-]{1,160}$/.test(clientKey)) {
+    return NextResponse.json({ code: "effect_identity_required", recoverable: false }, { status: 400 });
+  }
+  const effectIdentity = { actorUserId: authenticated.userId,
+    effectId: externalEffectId("chat", clientKey), kind: "text" as const };
+  try {
+    const existing = await externalEffectJournal.call("read", effectIdentity);
+    if (existing.snapshot) {
+      const state = existing.snapshot.executionState;
+      const codes = { unknown: "external_execution_state_unknown", running: "external_execution_running",
+        succeeded: "external_action_result_unavailable", failed: "provider_execution_failed", cancelled: "provider_cancelled" };
+      return NextResponse.json({ effect: existing.snapshot, code: codes[state], recoverable: false },
+        { status: state === "running" ? 202 : 409 });
+    }
+  } catch {
+    return NextResponse.json({ code: "effect_observation_unavailable", recoverable: false }, { status: 503 });
+  }
   const access = await guardAiRoute("text");
   if (access.status === "denied") {
     return aiAccessDeniedResponse(access);
@@ -75,12 +94,14 @@ export async function POST(request: Request) {
       providerRequest,
       originalRequest: validated.value,
       userId: access.userId,
-      signal: request.signal
+      signal: request.signal,
+      effect: createEffectExecution(effectIdentity)
     }),
     {
       headers: {
         "Content-Type": "application/x-ndjson; charset=utf-8",
-        "Cache-Control": "no-store"
+        "Cache-Control": "no-store",
+        "X-Morpho-Effect-Id": effectIdentity.effectId
       }
     }
   );
@@ -156,6 +177,7 @@ function createNdjsonChatStream(input: {
   originalRequest: AiRouteRequest;
   userId: string;
   signal: AbortSignal;
+  effect: EffectExecution;
 }): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
 
@@ -187,7 +209,9 @@ function createNdjsonChatStream(input: {
               citations.push(...newCitations);
             }
           },
-          input.signal
+          input.signal,
+          input.effect,
+          leadingWarning ? "imageCompatibility" : undefined
         );
 
         const allCitations = dedupeCitations([...citations, ...result.citations]);

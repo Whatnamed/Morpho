@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { externalEffectId, externalEffectJournal, type EffectIdentity } from "@/server/ai/externalEffectJournal";
 
 import { readAgentTurnJournal, type ReadAgentTurnJournalResult } from "@/server/ai/agentTurnJournal";
 import { requestAgentTurnExternalCancellation } from "@/server/ai/agentTurnExternalCancellation";
@@ -28,12 +29,14 @@ export type AgentTurnCancellationRouteDependencies = Readonly<{
     requestId: string;
     stepSequence: number;
   }) => boolean;
+  persistCancel?: (identity: EffectIdentity) => Promise<void>;
 }>;
 
 const defaultDependencies: AgentTurnCancellationRouteDependencies = {
   authenticate: requireAiRouteUser,
   readTurn: readAgentTurnJournal,
-  cancelExternal: requestAgentTurnExternalCancellation
+  cancelExternal: requestAgentTurnExternalCancellation,
+  persistCancel: async (identity) => { await externalEffectJournal.call("cancel", identity); }
 };
 
 export function createAgentTurnCancellationPostHandler(
@@ -93,6 +96,16 @@ export function createAgentTurnCancellationPostHandler(
         observed: false,
         status: journal.snapshot.status
       });
+    }
+    try {
+      await dependencies.persistCancel?.({
+        actorUserId: auth.userId,
+        effectId: externalEffectId("a-plus", turnId, parsed.value.localProjectId,
+          "text", parsed.value.requestId, parsed.value.stepSequence as number),
+        kind: "text"
+      });
+    } catch {
+      return NextResponse.json({ code: "cancel_intent_unavailable", recoverable: false }, { status: 503 });
     }
     const observed = dependencies.cancelExternal({
       serverTurnId: turnId,

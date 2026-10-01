@@ -1,5 +1,6 @@
 import type { APlusExternalRequestIdentity } from "./agentToolBatchAPlus";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
+import type { ExternalEffectSnapshot } from "@/shared/externalEffectProtocol";
 
 export type APlusExternalActionKind = "webSearch" | "image" | "compaction";
 
@@ -38,6 +39,7 @@ export type APlusExternalActionDescriptor = Readonly<{
   requestBody: string;
   requestHash: string;
   compactionApplyBoundary?: APlusCompactionApplyBoundary;
+  externalEffect?: ExternalEffectSnapshot;
 }>;
 
 export type APlusRestoredImageActionDescriptor = Readonly<
@@ -98,13 +100,15 @@ export async function createAPlusExternalActionRunningError(input: Readonly<{
   actionKind: APlusExternalActionKind;
   requestBody: string;
   message: string;
+  externalEffect?: ExternalEffectSnapshot;
 }>): Promise<APlusExternalActionRunningError> {
   return new APlusExternalActionRunningError(
     {
       actionId: input.actionId,
       actionKind: input.actionKind,
       requestBody: input.requestBody,
-      requestHash: await hashAPlusExternalActionBody(input.requestBody)
+      requestHash: await hashAPlusExternalActionBody(input.requestBody),
+      ...(input.externalEffect ? { externalEffect: input.externalEffect } : {})
     },
     input.message
   );

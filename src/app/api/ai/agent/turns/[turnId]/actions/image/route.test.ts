@@ -7,6 +7,24 @@ import { createAgentTurnImageActionPostHandler } from "./handler";
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ image action route", () => {
+  it("observes an existing effect before rebuilding current config, hashes, claims or paid admission", async () => {
+    const acquire = vi.fn();
+    const generate = vi.fn();
+    const loadConfig = vi.fn(() => { throw new Error("config changed"); });
+    const observeExisting = vi.fn(async () => new Response(new Blob(["original-result"]), { headers: { "Content-Type": "image/png" } }));
+    const handler = createAgentTurnImageActionPostHandler({
+      authenticate: async () => ({ status: "allowed", userId: "user-a" }),
+      acquire, generate, loadConfig, settle: vi.fn(), observeExisting
+    });
+    const response = await handler(new Request("http://morpho.test", { method: "POST", body: JSON.stringify({
+      localProjectId: "project-test", requestId: "request-1", stepSequence: 1, actionId: "img:child-1", claimCallId: "call-image-1", input: {}
+    }) }), { params: Promise.resolve({ turnId: TURN_ID }) });
+    expect(await response.text()).toBe("original-result");
+    expect(acquire).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+    expect(loadConfig).not.toHaveBeenCalled();
+    expect(observeExisting).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "user-a", kind: "image" }), expect.any(AbortSignal));
+  });
   it("accepts the normal minimal image payload without hashing undefined optionals", async () => {
     const acquire = vi.fn(async () => ({
       status: "ok" as const,

@@ -772,6 +772,7 @@ async function driveSession(session: APlusSession): Promise<void> {
             callId: batch.externalAction!.callId,
             requestBody: batch.externalAction!.requestBody,
             requestHash: batch.externalAction!.requestHash,
+            ...(batch.externalAction!.externalEffect ? { externalEffect: batch.externalAction!.externalEffect } : {}),
             lastObservedAt: new Date(session.host.now()).toISOString()
           }
         }));
@@ -1030,6 +1031,7 @@ async function persistExternalActionIntent(
       ...(callId ? { callId } : {}),
       requestBody: action.requestBody,
       requestHash: action.requestHash,
+      ...(action.externalEffect ? { externalEffect: action.externalEffect } : {}),
       ...(action.compactionApplyBoundary
         ? { compactionApplyBoundary: action.compactionApplyBoundary }
         : {}),

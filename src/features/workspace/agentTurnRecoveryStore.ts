@@ -1,5 +1,6 @@
 import { isAgentReadReceipt, isAgentEffectReceipt, type AgentReadReceipt, type AgentEffectReceipt } from "@/shared/agentReadCoverage";
 import { isReadRequirement } from "@/shared/turnTaskContract";
+import { isExternalEffectSnapshot, type ExternalEffectSnapshot } from "@/shared/externalEffectProtocol";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import type {
   AiTaskMode,
@@ -120,6 +121,7 @@ export type APlusTurnRecoveryMetadata = Readonly<{
     requestBody: string;
     requestHash: string;
     compactionApplyBoundary?: APlusCompactionApplyBoundary;
+    externalEffect?: ExternalEffectSnapshot;
     lastObservedAt: string;
   }>;
   toolExecutionIntents?: readonly Readonly<{
@@ -612,6 +614,7 @@ function isPersistedExternalActionMetadata(value: unknown): boolean {
     isIdentifier(value.actionId) &&
     (value.actionKind === "webSearch" || value.actionKind === "image" || value.actionKind === "compaction") &&
     (value.callId === undefined || isIdentifier(value.callId)) &&
+    (value.externalEffect === undefined || isExternalEffectSnapshot(value.externalEffect)) &&
     typeof value.requestHash === "string" &&
     /^[0-9a-f]{64}$/.test(value.requestHash) &&
     (applyBoundary === undefined || (

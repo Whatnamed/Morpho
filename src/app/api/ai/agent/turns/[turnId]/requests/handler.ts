@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createEffectExecution, externalEffectId, type EffectIdentity, type EffectExecution } from "@/server/ai/externalEffectJournal";
 
 import {
   acquireAgentTurnRequest,
@@ -53,6 +54,7 @@ export type AgentTurnRequestRouteDependencies = Readonly<{
   acquireRequest: typeof acquireAgentTurnRequest;
   settleRequest: typeof settleAgentTurnRequest;
   streamProvider: typeof streamOpenAiCompatibleResponse;
+  createEffect?: (identity: EffectIdentity) => EffectExecution;
   waitForSettlementRetry?: (delayMs: number) => Promise<void>;
 }>;
 
@@ -64,7 +66,8 @@ const defaultDependencies: AgentTurnRequestRouteDependencies = {
   checkPrivilegedSettlement: checkAgentTurnSettlementAvailability,
   acquireRequest: acquireAgentTurnRequest,
   settleRequest: settleAgentTurnRequest,
-  streamProvider: streamOpenAiCompatibleResponse
+  streamProvider: streamOpenAiCompatibleResponse,
+  createEffect: createEffectExecution
 };
 
 export function createAgentTurnRequestPostHandler(
@@ -255,7 +258,13 @@ function createProviderStreamResponse(input: {
             input.config,
             input.providerRequest,
             handlers,
-            abortController.signal
+            abortController.signal,
+            input.dependencies.createEffect?.({
+              actorUserId: input.identity.actorUserId,
+              effectId: externalEffectId("a-plus", input.identity.serverTurnId, input.identity.localProjectId,
+                "text", input.identity.requestId, input.identity.stepSequence),
+              kind: "text"
+            })
           );
           const toolCalls = normalizeAPlusProviderToolCalls(result.functionCalls);
           const toolCallIds = toolCalls.map((call) => call.callId);
@@ -308,7 +317,7 @@ function createProviderStreamResponse(input: {
             requestId: input.identity.requestId,
             stepSequence: input.identity.stepSequence,
             code: cancelled ? "provider_cancelled" : failureCode ?? "provider_execution_failed",
-            message: cancelled ? "模型请求已取消。" : publicError?.message ?? "文本 AI 服务暂时不可用，请稍后重试。",
+            message: cancelled ? "已停止等待模型结果；外部执行是否取消尚未确认。" : publicError?.message ?? "文本 AI 服务暂时不可用，请稍后重试。",
             recoverable: cancelled ? false : publicError?.recoverable ?? true
           });
           if (settled.status === "ok") {

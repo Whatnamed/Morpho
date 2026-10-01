@@ -38,6 +38,7 @@ export type ImageGenerationResultCommit =
 export type ApplyImageGenerationResultCommit = {
   workspace: MorphoWorkspace;
   createdObjectId?: string;
+  reusedExisting?: boolean;
 };
 
 export function applyImageGenerationResultCommit(
@@ -54,6 +55,19 @@ export function applyImageGenerationResultCommit(
     };
   }
 
+  const existing = result.generation.clientRequestId && Object.values(workspace.objects).find((object) =>
+    object.type === "image" && object.generation?.clientRequestId === result.generation.clientRequestId);
+  if (existing) {
+    const operation = workspace.operations[result.operationId];
+    const recorded = operation?.type === "imageGeneration" && operation.imageGeneration?.resultObjectIds?.includes(existing.id);
+    return {
+      workspace: recorded ? workspace : recordImageGenerationOperationResult(workspace, {
+        operationId: result.operationId, providerTaskId: result.providerTaskId, resultObjectId: existing.id
+      }),
+      createdObjectId: existing.id,
+      reusedExisting: true
+    };
+  }
   const generated = createGeneratedImageFromAsset(workspace, {
     asset: result.asset,
     generation: result.generation,

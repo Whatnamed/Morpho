@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "./route";
+import type { ExternalEffectSnapshot } from "@/shared/externalEffectProtocol";
+
+const readEffectMock = vi.hoisted(() => vi.fn<() => Promise<{ snapshot: ExternalEffectSnapshot | null; executionGranted: boolean }>>(
+  async () => ({ snapshot: null, executionGranted: false })));
+vi.mock("@/server/ai/externalEffectJournal", async () => ({
+  ...await vi.importActual<typeof import("@/server/ai/externalEffectJournal")>("@/server/ai/externalEffectJournal"),
+  externalEffectJournal: { call: readEffectMock }
+}));
 
 const loadOpenAiCompatibleConfigMock = vi.hoisted(() => vi.fn());
 
@@ -26,7 +34,24 @@ vi.mock("@/server/ai/openaiCompatibleProvider", async () => ({
 }));
 
 describe("AI chat route", () => {
+  it("replays honest known execution states without paid execution or another quota reservation", async () => {
+    const codes = { unknown: "external_execution_state_unknown", running: "external_execution_running",
+      succeeded: "external_action_result_unavailable", failed: "provider_execution_failed", cancelled: "provider_cancelled" };
+    for (const state of Object.keys(codes) as Array<keyof typeof codes>) {
+      readEffectMock.mockResolvedValueOnce({ executionGranted: false, snapshot: {
+        version: 1, effectId: `effect:${"a".repeat(64)}`, kind: "text", requestDigest: "b".repeat(64),
+        namespace: null, executionState: state, cancelRequestedAt: null, localAbortObservedAt: null,
+        attemptId: null, taskId: null, responseId: null
+      } });
+      const response = await POST(makeRequest({ draft: "same operation", messages: [], objectSummaries: [], attachments: [] }));
+      expect(response.status).toBe(state === "running" ? 202 : 409);
+      expect(await response.json()).toMatchObject({ code: codes[state], effect: { executionState: state } });
+    }
+    expect(streamOpenAiCompatibleResponseMock).not.toHaveBeenCalled();
+    expect(guardAiRouteMock).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
+    readEffectMock.mockReset().mockResolvedValue({ snapshot: null, executionGranted: false });
     loadOpenAiCompatibleConfigMock.mockReset();
     loadOpenAiCompatibleConfigMock.mockReturnValue({
       status: "ok",
@@ -160,7 +185,9 @@ describe("AI chat route", () => {
         promptCacheRetention: "24h"
       }),
       expect.any(Object),
-      expect.any(AbortSignal)
+      expect.any(AbortSignal),
+      expect.any(Object),
+      undefined
     );
   });
 
@@ -327,6 +354,7 @@ describe("AI chat route", () => {
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/api/ai/chat", {
     method: "POST",
+    headers: { "X-Morpho-Effect-Key": "chat-test" },
     body: JSON.stringify(body)
   });
 }

@@ -23,6 +23,24 @@ import {
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ local Recovery Store", () => {
+  it("preserves additive execution observation across refresh without enriching legacy records", async () => {
+    const fixture = createFixture();
+    const original = recoveryRecord("frozen Provider body");
+    const externalEffect: import("@/shared/externalEffectProtocol").ExternalEffectSnapshot = {
+      version: 1, effectId: `effect:${"a".repeat(64)}`, kind: "text", requestDigest: "b".repeat(64),
+      namespace: { provider: "openai-compatible", baseUrl: "https://provider.test/v1", credentialScope: "c".repeat(64) },
+      executionState: "succeeded", attemptId: TURN_ID, taskId: null, responseId: "response-late",
+      cancelRequestedAt: "2026-10-01T00:00:00Z", localAbortObservedAt: "2026-10-01T00:00:01Z"
+    };
+    const record = { ...original, coordinator: { ...original.coordinator,
+      serverSnapshot: { ...original.coordinator.serverSnapshot, externalEffect } } };
+    await fixture.store.save(record);
+    expect(await fixture.store.load("project-test")).toMatchObject({ status: "ok", record: { coordinator: { serverSnapshot: { externalEffect } } } });
+    await fixture.store.save(original);
+    const legacy = await fixture.store.load("project-test");
+    if (legacy.status !== "ok") throw new Error("Legacy record must remain readable");
+    expect(legacy.record.coordinator.serverSnapshot.externalEffect).toBeUndefined();
+  });
   it("restores the original Proposal baseline instead of recapturing changed workspace sources", () => {
     const workspace = createBlankWorkspace("project-test");
     workspace.objects.source = { id: "source", type: "text", title: "资料", summary: "资料", body: "原始输入", createdBy: "user", visibility: "active" };

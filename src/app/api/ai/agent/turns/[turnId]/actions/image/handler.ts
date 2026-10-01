@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { createEffectExecution, externalEffectId, type EffectIdentity, type EffectExecution } from "@/server/ai/externalEffectJournal";
+import { existingImageEffectResponse } from "@/server/ai/externalEffectObservation";
 import { NextResponse } from "next/server";
 
 import {
@@ -37,6 +39,8 @@ export type AgentTurnImageActionDependencies = Readonly<{
   settle: typeof settleAgentTurnExternalAction;
   loadConfig: typeof loadGrsImageConfig;
   generate: typeof resolveGrsImageResult;
+  createEffect?: (identity: EffectIdentity) => EffectExecution;
+  observeExisting?: typeof existingImageEffectResponse;
   waitForSettlementRetry?: (delayMs: number) => Promise<void>;
 }>;
 
@@ -45,7 +49,9 @@ const defaultDependencies: AgentTurnImageActionDependencies = {
   acquire: acquireAgentTurnExternalAction,
   settle: settleAgentTurnExternalAction,
   loadConfig: loadGrsImageConfig,
-  generate: resolveGrsImageResult
+  generate: resolveGrsImageResult,
+  createEffect: createEffectExecution,
+  observeExisting: existingImageEffectResponse
 };
 
 export function createAgentTurnImageActionPostHandler(
@@ -85,6 +91,17 @@ export function createAgentTurnImageActionPostHandler(
       (parsed.value.stepSequence as number) < 1 ||
       (parsed.value.stepSequence as number) > 10_000
     ) return invalidRequestResponse("Image Action 身份无效。");
+    const effectIdentity: EffectIdentity = {
+      actorUserId: auth.userId,
+      effectId: externalEffectId("a-plus", turnId, parsed.value.localProjectId, "image", parsed.value.actionId),
+      kind: "image"
+    };
+    try {
+      const existing = await dependencies.observeExisting?.(effectIdentity, request.signal);
+      if (existing) return existing;
+    } catch {
+      return NextResponse.json({ code: "effect_observation_unavailable", recoverable: false }, { status: 503 });
+    }
     const inputUnknown = unknownKeys(parsed.value.input, [
       "modelId", "prompt", "images", "aspectRatio", "sizeOption",
       "referenceObjectIds", "directionObjectId", "visualBranchId", "operationId", "clientRequestId"
@@ -156,7 +173,8 @@ export function createAgentTurnImageActionPostHandler(
 
     try {
       const result = await dependencies.generate(config.config, validated.value, {
-        signal: request.signal
+        signal: request.signal,
+        effect: dependencies.createEffect?.(effectIdentity)
       });
       if (result.status === "cancelled") {
         const settled = await settleWithRetry(dependencies, {
@@ -217,13 +235,13 @@ export function createAgentTurnImageActionPostHandler(
         ...identity,
         actionHash,
         status: cancelled ? "externallyCancelled" : "externallyFailed",
-        ...(cancelled ? {} : { failureCode: "image_generation_failed" })
+        failureCode: EXTERNAL_EXECUTION_STATE_UNKNOWN.code
       });
       if (settled.status === "denied") return journalDeniedResponse(settled);
       return NextResponse.json(
         {
-          error: cancelled ? "图像任务已取消。" : "图像任务失败，请稍后重试。",
-          code: cancelled ? "image_cancelled" : "image_generation_failed",
+          error: cancelled ? IMAGE_PROVIDER_CANCELLED.message : EXTERNAL_EXECUTION_STATE_UNKNOWN.message,
+          code: cancelled ? "image_cancelled" : EXTERNAL_EXECUTION_STATE_UNKNOWN.code,
           recoverable: false,
           action: settled.snapshot
         },

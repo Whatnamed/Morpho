@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { externalEffectId, type EffectIdentity } from "@/server/ai/externalEffectJournal";
+import { observeExternalEffect } from "@/server/ai/externalEffectObservation";
 
 import {
   readAgentTurnJournal,
@@ -15,13 +17,15 @@ import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/
 export type ReadAgentTurnRouteDependencies = Readonly<{
   authenticate: () => Promise<AiRouteUserAccessResult>;
   readJournal: typeof readAgentTurnJournal;
+  observeEffect?: (identity: EffectIdentity) => ReturnType<typeof observeExternalEffect>;
 }>;
 
 type RouteContext = { params: Promise<{ turnId: string }> };
 
 const defaultDependencies: ReadAgentTurnRouteDependencies = {
   authenticate: requireAiRouteUser,
-  readJournal: readAgentTurnJournal
+  readJournal: readAgentTurnJournal,
+  observeEffect: observeExternalEffect
 };
 
 export function createAgentTurnGetHandler(
@@ -44,8 +48,20 @@ export function createAgentTurnGetHandler(
       serverTurnId: turnId,
       localProjectId
     });
-    return read.status === "denied"
-      ? journalDeniedResponse(read)
-      : NextResponse.json(read.snapshot);
+    if (read.status === "denied") return journalDeniedResponse(read);
+    let externalEffect;
+    if (read.snapshot.latestRequestId) {
+      try {
+        externalEffect = (await dependencies.observeEffect?.({
+          actorUserId: auth.userId,
+          effectId: externalEffectId("a-plus", turnId, localProjectId,
+            "text", read.snapshot.latestRequestId, read.snapshot.latestStepSequence),
+          kind: "text"
+        }))?.effect;
+      } catch {
+        // Old Journal query remains available when the additive observation contract is unavailable.
+      }
+    }
+    return NextResponse.json({ ...read.snapshot, ...(externalEffect ? { externalEffect } : {}) });
   };
 }

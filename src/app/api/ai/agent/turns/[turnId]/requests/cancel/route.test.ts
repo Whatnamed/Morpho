@@ -6,6 +6,23 @@ import { createAgentTurnCancellationPostHandler } from "./handler";
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ explicit Provider cancellation route", () => {
+  it("persists cancel intent before instance-local abort and fails closed if persistence fails", async () => {
+    const calls: string[] = [];
+    const cancelExternal = vi.fn(() => { calls.push("abort"); return false; });
+    const persistCancel = vi.fn(async () => { calls.push("intent"); });
+    const handler = createAgentTurnCancellationPostHandler({
+      authenticate: async () => ({ status: "allowed", userId: "user-a" }),
+      readTurn: async () => ({ status: "ok", snapshot: snapshot("providerRunning") }),
+      persistCancel, cancelExternal
+    });
+    expect((await handler(cancelRequest("request-1", 1), routeContext())).status).toBe(200);
+    expect(calls).toEqual(["intent", "abort"]);
+    expect(persistCancel).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "user-a", kind: "text", effectId: expect.stringMatching(/^effect:/) }));
+    cancelExternal.mockClear();
+    persistCancel.mockRejectedValueOnce(new Error("Journal unavailable"));
+    expect((await handler(cancelRequest("request-1", 1), routeContext())).status).toBe(503);
+    expect(cancelExternal).not.toHaveBeenCalled();
+  });
   it("authenticates before reading the cancellation body", async () => {
     const readTurn = vi.fn();
     const handler = createAgentTurnCancellationPostHandler({

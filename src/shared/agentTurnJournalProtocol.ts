@@ -4,6 +4,7 @@ import type {
 } from "./agentRuntimeItem";
 import type { AgentTaskStrategyKind } from "@/domain/morpho/types";
 import type { DesignMethodPackId } from "./designMethodPack";
+import { isExternalEffectSnapshot, type ExternalEffectSnapshot } from "./externalEffectProtocol";
 
 export const SERVER_EXTERNAL_EXECUTION_STATUSES = [
   "created",
@@ -34,6 +35,8 @@ export type AgentTurnJournalSnapshot = Readonly<{
   updatedAt: string;
   terminalAt: string | null;
   failureCode?: string;
+  /** Additive Provider execution facts; administrative status/local outcome remain independent. */
+  externalEffect?: ExternalEffectSnapshot;
 }>;
 
 export type APlusAgentTextPart = Readonly<{
@@ -160,7 +163,8 @@ export function isAgentTurnJournalSnapshot(value: unknown): value is AgentTurnJo
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string" &&
     (value.terminalAt === null || typeof value.terminalAt === "string") &&
-    (value.failureCode === undefined || isBoundedFailureCode(value.failureCode));
+    (value.failureCode === undefined || isBoundedFailureCode(value.failureCode)) &&
+    (value.externalEffect === undefined || isExternalEffectSnapshot(value.externalEffect));
 }
 
 function isBoundedIdentifier(value: unknown): value is string {
