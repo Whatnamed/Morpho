@@ -1,3 +1,6 @@
+import { prepareIndependentImageDelivery, completeIndependentImageDelivery } from "./independentImageDelivery";
+import { materializeExternalResultResponse, acknowledgePersistedExternalResult } from "./externalResultClient";
+import { assertExternalRequestBody, type ExternalResultManifest } from "@/shared/externalResultProtocol";
 import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
 import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
 import { getImageCanvasSize } from "@/domain/morpho/imageSizing";
@@ -18,6 +21,7 @@ import type {
 } from "./agentExternalActionClientAPlus";
 import {
   buildAPlusImageBatchIdentity,
+  APlusExternalActionRunningError,
   buildAPlusImageChildActionId,
   classifyAPlusImageResponse,
   createAPlusExternalActionRunningError,
@@ -91,6 +95,7 @@ export function isStaleVisualGenerationExecutionError(
 
 export type WorkspaceVisualGenerationExecutionPorts = {
   fetch: typeof fetch;
+  persistWorkspace?: () => import("./workspacePersistence").WorkspacePersistenceState;
   getCurrentSession: () => WorkspaceVisualGenerationExecutionSession;
   assertCurrentSession: (expectedSession: WorkspaceVisualGenerationExecutionSession) => void;
   commitWorkspace: <T>(
@@ -150,7 +155,7 @@ type VisualGenerationExecutionState = {
   lastProviderTaskId?: string;
 };
 
-type VisualGenerationItemResult = Readonly<{ aPlusActionId?: string }> & (
+type VisualGenerationItemResult = Readonly<{ aPlusActionId?: string; delivery?: ExternalResultManifest; deliveredAction?: APlusExternalActionDescriptor; independentDeliveryKey?: string }> & (
   | {
       status: "existing";
       index: number;
@@ -405,12 +410,15 @@ async function executeVisualGenerationItem(
       index: itemIndex,
       item,
       aPlusActionId,
+      delivery: (() => { const object = context.workspaceAtPlanCommit.objects[existingObjectId];
+        return object?.type === "image" ? object.generation?.delivery : undefined; })(),
       objectId: existingObjectId
     };
   }
 
   state.inFlightCount += 1;
   let provisionalStorageKey: string | undefined;
+  let deliveredAction: APlusExternalActionDescriptor | undefined;
   try {
     publishVisualGenerationProgress(context, state, input, ports);
     const restoredAction = context.externalAction && aPlusActionId
@@ -499,13 +507,18 @@ async function executeVisualGenerationItem(
       ports.assertCurrentSession(context.session);
     }
 
-    const imageResponse = context.externalAction && aPlusActionId
+    if (!restoredAction) assertExternalRequestBody(imageRequestBody);
+    const independentDeliveryKey = !context.externalAction && typeof window !== "undefined"
+      ? await prepareIndependentImageDelivery(context.session.projectId, itemClientRequestId, imageRequestBody,
+        imageCommitDraft(context, item, itemIndex, referenceImages.sourceObjectIds, ports.now())) : undefined;
+    let imageResponse = context.externalAction && aPlusActionId
       ? await postAPlusExternalAction({
           fetch: ports.fetch,
           url: `/api/ai/agent/turns/${encodeURIComponent(context.externalAction.serverTurnId)}/actions/image`,
           actionId: aPlusActionId,
           actionKind: "image",
           requestBody: imageRequestBody,
+          restored: restoredAction !== undefined,
           signal: input.signal,
           message: "图像任务请求响应丢失，服务器状态未知；本地只进行同身份查询，不重复生成。"
         })
@@ -515,6 +528,11 @@ async function executeVisualGenerationItem(
           body: imageRequestBody,
           signal: input.signal
         });
+    const materialized = await materializeExternalResultResponse(imageResponse, ports.fetch, async (delivery) => {
+      if (aPlusActionId) deliveredAction = { actionId: aPlusActionId, actionKind: "image",
+        requestBody: imageRequestBody, requestHash: await hashAPlusExternalActionBody(imageRequestBody), delivery };
+    });
+    imageResponse = materialized.response;
     const providerTaskId = imageResponse.headers.get("X-Morpho-Provider-Task-Id") || undefined;
     if (providerTaskId) {
       state.lastProviderTaskId = providerTaskId;
@@ -561,6 +579,9 @@ async function executeVisualGenerationItem(
       index: itemIndex,
       item,
       aPlusActionId,
+      delivery: materialized.delivery,
+      deliveredAction,
+      independentDeliveryKey,
       asset: saved.asset,
       sourceObjectIds: referenceImages.sourceObjectIds,
       providerTaskId
@@ -577,6 +598,8 @@ async function executeVisualGenerationItem(
     ) {
       throw itemError;
     }
+    if (deliveredAction) throw new APlusExternalActionRunningError(deliveredAction,
+      "图像已生成，本地保存尚未完成；只取回同一结果。");
     const reason = itemError instanceof Error ? itemError.message : "图像生成失败";
     return { status: "failed", index: itemIndex, item, aPlusActionId, reason };
   } finally {
@@ -619,53 +642,22 @@ async function applyVisualGenerationItemResult(
       };
     });
   } else if (result.status === "ok") {
+    let committedLocally = false;
     try {
       ports.assertCurrentSession(context.session);
       const commitResult = ports.commitWorkspace(context.session, (current) => {
+        const draft = imageCommitDraft(context, result.item, result.index, result.sourceObjectIds, ports.now());
         const committed = applyImageGenerationResultCommit(current, {
-          status: "succeeded",
-          operationId: context.operationId,
+          ...draft,
+          position: getGeneratedImagePlacement(current, result.item, result.index, context.placementMap.get(result.item.id)),
           providerTaskId: result.providerTaskId ?? state.lastProviderTaskId,
           asset: result.asset,
-          generation: {
-            modelId: context.generationSettings.modelId,
-            modelLabel: context.generationSettings.modelLabel,
-            aspectRatio: context.generationSettings.aspectRatio,
-            sizeOption: context.generationSettings.sizeOption,
-            prompt: result.item.prompt,
-            compiledPrompt: result.item.prompt,
-            promptContractVersion: result.item.promptContractVersion,
-            editMode: result.item.editMode,
-            referenceObjectIds: result.item.referenceObjectIds,
-            referenceResolution: result.item.referenceResolution,
-            directionId: result.item.targetDirectionId,
-            visualBranchId: result.item.visualBranchId,
-            operationId: context.operationId,
-            clientRequestId: `${context.clientRequestId}-${result.item.id}`,
-            providerTaskId: result.providerTaskId ?? state.lastProviderTaskId,
-            title: result.item.title,
-            purpose: result.item.purpose,
-            role: result.item.role,
-            visualIntent: result.item.visualIntent,
-            visualPlan: context.validatedPlan.plan,
-            createdAt: new Date().toISOString()
-          },
-          sourceObjectIds: result.sourceObjectIds,
-          directionObjectId: result.item.targetDirectionId,
-          visualBranchId: result.item.visualBranchId,
-          title: result.item.title,
-          summary: result.item.purpose,
-          role: result.item.role,
-          position: getGeneratedImagePlacement(
-            current,
-            result.item,
-            result.index,
-            context.placementMap.get(result.item.id)
-          ),
-          canvasSize: context.plannedImageSize
+          generation: { ...draft.generation,
+            delivery: result.delivery, providerTaskId: result.providerTaskId ?? state.lastProviderTaskId }
         });
         return { workspace: committed.workspace, value: committed };
       });
+      committedLocally = true;
       const createdObjectId = commitResult.createdObjectId;
       if (commitResult.reusedExisting && !commitResult.workspace.assets[result.asset.id]) {
         await deleteProvisionalAsset(result.asset.storageKey, ports);
@@ -673,8 +665,16 @@ async function applyVisualGenerationItemResult(
       if (createdObjectId) {
         state.createdObjectIds.push(createdObjectId);
       }
+      if (result.delivery) {
+        const saved = ports.persistWorkspace?.();
+        if (saved?.phase !== "saved" || saved.isDirty) throw new Error("图像已取回，但 Workspace 未能持久保存。");
+        await acknowledgePersistedExternalResult(context.session.projectId, result.delivery, ports.fetch);
+        if (result.independentDeliveryKey) await completeIndependentImageDelivery(context.session.projectId, result.independentDeliveryKey);
+      }
     } catch (error) {
-      await deleteProvisionalAsset(result.asset.storageKey, ports);
+      if (!committedLocally) await deleteProvisionalAsset(result.asset.storageKey, ports);
+      if (result.deliveredAction && !isStaleVisualGenerationExecutionError(error)) throw new APlusExternalActionRunningError(result.deliveredAction,
+        "图像已生成，本地保存尚未完成；只取回同一结果。");
       throw error;
     }
   } else {
@@ -689,6 +689,19 @@ async function applyVisualGenerationItemResult(
       });
       return { workspace: committed.workspace, value: undefined };
     });
+  }
+
+  if (result.status === "existing" && result.delivery) {
+    const image = context.workspaceAtPlanCommit.objects[result.objectId];
+    const asset = image?.type === "image" && image.assetId ? context.workspaceAtPlanCommit.assets[image.assetId] : undefined;
+    const bytes = asset ? await ports.readReferenceAsset(asset.storageKey) : null;
+    if (!bytes || bytes.size !== result.delivery.byteLength) throw new Error("已保存图像资产缺失，不能确认交付。");
+    const hash = await crypto.subtle.digest("SHA-256", await bytes.arrayBuffer());
+    const sha = [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
+    if (sha !== result.delivery.sha256) throw new Error("已保存图像校验失败，不能确认交付。");
+    const saved = ports.persistWorkspace?.();
+    if (saved?.phase !== "saved" || saved.isDirty) throw new Error("图像 Workspace 未能持久保存。");
+    await acknowledgePersistedExternalResult(context.session.projectId, result.delivery, ports.fetch);
   }
 
   // Remove the placeholder after the durable local result commit. A restored
@@ -960,4 +973,46 @@ function isAbortError(error: unknown): boolean {
 
 function isWorkspaceRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function imageCommitDraft(context: VisualGenerationExecutionContext, item: VisualGenerationItem, index: number, sourceObjectIds: string[], now: number): Omit<Extract<import("./imageGenerationResultCommit").ImageGenerationResultCommit, { status: "succeeded" }>, "asset"> {
+  return {
+          status: "succeeded",
+          operationId: context.operationId,
+          generation: {
+            modelId: context.generationSettings.modelId,
+            modelLabel: context.generationSettings.modelLabel,
+            aspectRatio: context.generationSettings.aspectRatio,
+            sizeOption: context.generationSettings.sizeOption,
+            prompt: item.prompt,
+            compiledPrompt: item.prompt,
+            promptContractVersion: item.promptContractVersion,
+            editMode: item.editMode,
+            referenceObjectIds: item.referenceObjectIds,
+            referenceResolution: item.referenceResolution,
+            directionId: item.targetDirectionId,
+            visualBranchId: item.visualBranchId,
+            operationId: context.operationId,
+            clientRequestId: `${context.clientRequestId}-${item.id}`,
+            title: item.title,
+            purpose: item.purpose,
+            role: item.role,
+            visualIntent: item.visualIntent,
+            visualPlan: context.validatedPlan.plan,
+            createdAt: new Date(now).toISOString()
+          },
+          sourceObjectIds: sourceObjectIds,
+          directionObjectId: item.targetDirectionId,
+          visualBranchId: item.visualBranchId,
+          title: item.title,
+          summary: item.purpose,
+          role: item.role,
+          position: getGeneratedImagePlacement(
+            context.workspaceAtPlanCommit,
+            item,
+            index,
+            context.placementMap.get(item.id)
+          ),
+          canvasSize: context.plannedImageSize
+  };
 }

@@ -1,3 +1,5 @@
+import { assertExternalRequestBody, isExternalResultManifest } from "@/shared/externalResultProtocol";
+import { downloadExternalResult, resultResource } from "./externalResultClient";
 import {
   isAgentTurnJournalSnapshot,
   isServerExternalExecutionStatus,
@@ -39,6 +41,8 @@ export function createAgentTurnCoordinatorHttpHost(
     },
 
     async executeExternalRequest(input, observer): Promise<AgentTurnCoordinatorExecutionHandshake> {
+      assertExternalRequestBody(JSON.stringify({ localProjectId: input.localProjectId, requestId: input.requestId,
+        stepSequence: input.stepSequence, providerRequest: input.providerRequest }));
       let response: Response;
       const requestKey = externalRequestKey(input);
       const abortController = new AbortController();
@@ -77,6 +81,23 @@ export function createAgentTurnCoordinatorHttpHost(
       if (contentType.includes("application/json")) {
         activeRequests.delete(requestKey);
         const body = await readJson(response);
+        if (isRecord(body) && isExternalResultManifest(body.result)) {
+          const blob = await downloadExternalResult(body.result, fetchRequest);
+          const output: unknown = JSON.parse(await blob.text());
+          if (!isAgentTurnRequestStreamEvent(output) || output.type !== "providerOutput" ||
+            output.requestId !== input.requestId || output.stepSequence !== input.stepSequence) {
+            throw new Error("Redelivery request identity mismatch.");
+          }
+          return { status: "started", complete: async () => {
+            observer({ ...output, delivery: body.result as import("@/shared/externalResultProtocol").ExternalResultManifest });
+            const query = new URLSearchParams({ localProjectId: input.localProjectId });
+            const journal = await fetchRequest(`${baseUrl}/api/ai/agent/turns/${encodeURIComponent(input.serverTurnId)}?${query}`);
+            const snapshot: unknown = await journal.json();
+            if (isAgentTurnJournalSnapshot(snapshot) && snapshot.status !== "created") observer({
+              type: "serverStatus", requestId: input.requestId, stepSequence: input.stepSequence, status: snapshot.status });
+            return { status: "ended", finalFrameReceived: true };
+          } };
+        }
         if (isRecord(body) && body.replayed === true && isAgentTurnJournalSnapshot(body)) {
           return { status: "replayed" };
         }
@@ -100,12 +121,24 @@ export function createAgentTurnCoordinatorHttpHost(
         status: "started",
         complete: async () => {
           try {
-            return await consumeAgentTurnStream(response.body!, observer);
+            return await consumeAgentTurnStream(response.body!, observer, fetchRequest);
           } finally {
             activeRequests.delete(requestKey);
           }
         }
       };
+    },
+
+    async readProviderResult(input) {
+      const response = await fetchRequest(baseUrl + resultResource({ effectId: input.effectId, kind: "text" }));
+      if (response.status === 404) return undefined;
+      if (!response.ok) throw routeError(response.status, await readJson(response), "同一文本结果暂不可交付。");
+      const body = await readJson(response);
+      if (!isRecord(body) || !isExternalResultManifest(body.result)) throw new Error("Invalid text result manifest.");
+      const output: unknown = JSON.parse(await (await downloadExternalResult(body.result, fetchRequest)).text());
+      if (!isAgentTurnRequestStreamEvent(output) || output.type !== "providerOutput" ||
+        output.requestId !== input.requestId || output.stepSequence !== input.stepSequence) throw new Error("Result binding mismatch.");
+      return { ...output, delivery: body.result };
     },
 
     async queryServerTurn(input): Promise<AgentTurnJournalSnapshot> {
@@ -155,8 +188,16 @@ function externalRequestKey(input: {
 
 async function consumeAgentTurnStream(
   stream: ReadableStream<Uint8Array>,
-  observer: (event: AgentTurnRequestStreamEvent) => void
+  observer: (event: AgentTurnRequestStreamEvent) => void,
+  fetchRequest: typeof fetch
 ): Promise<AgentTurnCoordinatorTransportResult> {
+  const deliver = async (event: AgentTurnRequestStreamEvent) => {
+    if (event.type !== "resultAvailable") { observer(event); return; }
+    const output: unknown = JSON.parse(await (await downloadExternalResult(event.delivery, fetchRequest)).text());
+    if (!isAgentTurnRequestStreamEvent(output) || output.type !== "providerOutput" ||
+      output.requestId !== event.requestId || output.stepSequence !== event.stepSequence) throw new Error("Result identity mismatch.");
+    observer({ ...output, delivery: event.delivery });
+  };
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -168,7 +209,7 @@ async function consumeAgentTurnStream(
       const consumed = consumeFrames(buffer);
       buffer = consumed.remainder;
       for (const event of consumed.events) {
-        observer(event);
+        await deliver(event);
         if (event.type === "serverStatus" && event.status !== "providerRunning") {
           finalFrameReceived = true;
         }
@@ -178,7 +219,7 @@ async function consumeAgentTurnStream(
     if (buffer.trim()) {
       const consumed = consumeFrames(`${buffer}\n\n`);
       for (const event of consumed.events) {
-        observer(event);
+        await deliver(event);
         if (event.type === "serverStatus" && event.status !== "providerRunning") {
           finalFrameReceived = true;
         }
@@ -226,6 +267,7 @@ function isAgentTurnRequestStreamEvent(value: unknown): value is AgentTurnReques
     typeof value.requestId !== "string" ||
     !Number.isSafeInteger(value.stepSequence)
   ) return false;
+  if (value.type === "resultAvailable") return isExternalResultManifest(value.delivery);
   if (value.type === "streamActivity") {
     return Number.isSafeInteger(value.sequence) && "event" in value;
   }

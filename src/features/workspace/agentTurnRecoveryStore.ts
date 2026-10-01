@@ -1,3 +1,5 @@
+import { isExternalResultManifest } from "@/shared/externalResultProtocol";
+import { EXTERNAL_REQUEST_MAX_BYTES, EXTERNAL_RECOVERY_RUNTIME_MAX_BYTES } from "@/shared/externalResultProtocol";
 import { isAgentReadReceipt, isAgentEffectReceipt, type AgentReadReceipt, type AgentEffectReceipt } from "@/shared/agentReadCoverage";
 import { isReadRequirement } from "@/shared/turnTaskContract";
 import { isExternalEffectSnapshot, type ExternalEffectSnapshot } from "@/shared/externalEffectProtocol";
@@ -34,7 +36,7 @@ import type {
 const STORAGE_PREFIX = "morpho.agent-runtime-a-plus.recovery.v2";
 const LEGACY_STORAGE_PREFIX = "morpho.agent-runtime-a-plus.recovery.v1";
 const MAX_METADATA_BYTES = 2 * 1024 * 1024;
-const MAX_PROVIDER_PAYLOAD_BYTES = 32 * 1024 * 1024;
+const MAX_PROVIDER_PAYLOAD_BYTES = EXTERNAL_RECOVERY_RUNTIME_MAX_BYTES;
 
 export const A_PLUS_TURN_RECOVERY_RECORD_VERSION = 2 as const;
 
@@ -122,6 +124,7 @@ export type APlusTurnRecoveryMetadata = Readonly<{
     requestHash: string;
     compactionApplyBoundary?: APlusCompactionApplyBoundary;
     externalEffect?: ExternalEffectSnapshot;
+    delivery?: import("@/shared/externalResultProtocol").ExternalResultManifest;
     lastObservedAt: string;
   }>;
   toolExecutionIntents?: readonly Readonly<{
@@ -236,6 +239,12 @@ export function createAgentTurnRecoveryStore(options: Readonly<{
     async save(record) {
       validateRecordIdentity(record);
       const previous = readPersisted(storage, record.localProjectId);
+      const pending = record.metadata.pendingExternalAction;
+      if (pending && utf8Length(pending.requestBody) > EXTERNAL_REQUEST_MAX_BYTES &&
+        (previous?.metadata.pendingExternalAction?.actionId !== pending.actionId ||
+          previous.metadata.pendingExternalActionPayload?.sha256 !== await sha256Hex(pending.requestBody))) {
+        throw new Error("External Action body exceeds ingress capacity.");
+      }
       const active = record.coordinator.activeRequest;
       const providerPayload = active
         ? await persistPayload(
@@ -615,6 +624,7 @@ function isPersistedExternalActionMetadata(value: unknown): boolean {
     (value.actionKind === "webSearch" || value.actionKind === "image" || value.actionKind === "compaction") &&
     (value.callId === undefined || isIdentifier(value.callId)) &&
     (value.externalEffect === undefined || isExternalEffectSnapshot(value.externalEffect)) &&
+    (value.delivery === undefined || isExternalResultManifest(value.delivery)) &&
     typeof value.requestHash === "string" &&
     /^[0-9a-f]{64}$/.test(value.requestHash) &&
     (applyBoundary === undefined || (
@@ -787,6 +797,7 @@ function isRecoveryProviderOutput(
   if (
     !isRecord(value) ||
     value.type !== "providerOutput" ||
+    (value.delivery !== undefined && !isExternalResultManifest(value.delivery)) ||
     !isIdentifier(value.requestId) ||
     !Number.isSafeInteger(value.stepSequence) ||
     (value.stepSequence as number) < 1 ||

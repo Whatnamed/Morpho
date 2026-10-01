@@ -1,3 +1,5 @@
+import { EXTERNAL_REQUEST_MAX_BYTES } from "@/shared/externalResultProtocol";
+import { externalResultStore, externalResultResponse, saveExternalResult, jsonResult, ExternalResultError, type ExternalResultPort } from "@/server/ai/externalResultStore";
 import { NextResponse } from "next/server";
 import { createEffectExecution, externalEffectId, externalEffectJournal, type EffectExecution } from "@/server/ai/externalEffectJournal";
 
@@ -27,7 +29,8 @@ import {
 } from "@/server/ai/publicProviderError";
 
 export const runtime = "nodejs";
-const MAX_CHAT_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
+export const maxDuration = 300;
+const MAX_CHAT_REQUEST_BODY_BYTES = EXTERNAL_REQUEST_MAX_BYTES;
 
 export async function POST(request: Request) {
   const authenticated = await requireAiRouteUser();
@@ -45,6 +48,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
   }
 
+  const clientKey = request.headers.get("X-Morpho-Effect-Key");
+  if (!clientKey || !/^[A-Za-z0-9._:-]{1,160}$/.test(clientKey)) {
+    return NextResponse.json({ code: "effect_identity_required", recoverable: false }, { status: 400 });
+  }
+  const effectIdentity = { actorUserId: authenticated.userId,
+    effectId: externalEffectId("chat", clientKey), kind: "text" as const };
+  try {
+    const saved = await externalResultResponse(effectIdentity);
+    if (saved) return saved;
+    await externalResultStore.call("probe", effectIdentity);
+    const existing = await externalEffectJournal.call("read", effectIdentity);
+    if (existing.snapshot) {
+      const state = existing.snapshot.executionState;
+      const codes = { unknown: "external_execution_state_unknown", running: "external_execution_running",
+        succeeded: "external_action_result_unavailable", failed: "provider_execution_failed", cancelled: "provider_cancelled" };
+      return NextResponse.json({ effect: existing.snapshot, code: codes[state], recoverable: false },
+        { status: state === "running" ? 202 : 409 });
+    }
+  } catch {
+    return NextResponse.json({ code: "effect_observation_unavailable", recoverable: false }, { status: 503 });
+  }
   const config = loadOpenAiCompatibleConfig(process.env);
   if (config.status === "failed") {
     return NextResponse.json(
@@ -57,24 +81,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const clientKey = request.headers.get("X-Morpho-Effect-Key");
-  if (!clientKey || !/^[A-Za-z0-9._:-]{1,160}$/.test(clientKey)) {
-    return NextResponse.json({ code: "effect_identity_required", recoverable: false }, { status: 400 });
-  }
-  const effectIdentity = { actorUserId: authenticated.userId,
-    effectId: externalEffectId("chat", clientKey), kind: "text" as const };
-  try {
-    const existing = await externalEffectJournal.call("read", effectIdentity);
-    if (existing.snapshot) {
-      const state = existing.snapshot.executionState;
-      const codes = { unknown: "external_execution_state_unknown", running: "external_execution_running",
-        succeeded: "external_action_result_unavailable", failed: "provider_execution_failed", cancelled: "provider_cancelled" };
-      return NextResponse.json({ effect: existing.snapshot, code: codes[state], recoverable: false },
-        { status: state === "running" ? 202 : 409 });
-    }
-  } catch {
-    return NextResponse.json({ code: "effect_observation_unavailable", recoverable: false }, { status: 503 });
-  }
   const access = await guardAiRoute("text");
   if (access.status === "denied") {
     return aiAccessDeniedResponse(access);
@@ -95,6 +101,7 @@ export async function POST(request: Request) {
       originalRequest: validated.value,
       userId: access.userId,
       signal: request.signal,
+      effectIdentity,
       effect: createEffectExecution(effectIdentity)
     }),
     {
@@ -177,6 +184,7 @@ function createNdjsonChatStream(input: {
   originalRequest: AiRouteRequest;
   userId: string;
   signal: AbortSignal;
+  effectIdentity: import("@/server/ai/externalEffectJournal").EffectIdentity;
   effect: EffectExecution;
 }): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -184,7 +192,7 @@ function createNdjsonChatStream(input: {
   return new ReadableStream({
     async start(controller) {
       const writeEvent = (event: unknown) => {
-        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* Display detach cannot discard escrow. */ }
       };
 
       const runProviderStream = async (
@@ -214,6 +222,9 @@ function createNdjsonChatStream(input: {
           leadingWarning ? "imageCompatibility" : undefined
         );
 
+        const delivery = await saveExternalResult(externalResultStore, input.effectIdentity,
+          jsonResult({ outputText: result.outputText, citations: result.citations }));
+        writeEvent({ type: "result", result: delivery });
         const allCitations = dedupeCitations([...citations, ...result.citations]);
         if (allCitations.length > 0) {
           writeEvent({ type: "citations", citations: allCitations });
@@ -249,7 +260,7 @@ function createNdjsonChatStream(input: {
           recoverable: publicError.recoverable
         });
       } finally {
-        controller.close();
+        try { controller.close(); } catch { /* Detached display. */ }
       }
     }
   });

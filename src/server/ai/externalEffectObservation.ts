@@ -1,3 +1,4 @@
+import { externalResultStore, saveExternalResult, externalResultResponse } from "./externalResultStore";
 import "server-only";
 
 import { loadGrsImageConfig } from "@/server/image/config";
@@ -65,11 +66,8 @@ export async function existingImageEffectResponse(
   const result = await observeExternalEffect(identity, { retrieveImage: true, signal });
   if (!result.effect) return undefined;
   if (result.image) {
-    return new Response(result.image, { headers: {
-      "Content-Type": result.mimeType!, "Cache-Control": "no-store",
-      "X-Morpho-Effect-Id": result.effect.effectId,
-      "X-Morpho-Provider-Task-Id": result.effect.taskId ?? ""
-    } });
+    await saveExternalResult(externalResultStore, identity, result.image);
+    return (await externalResultResponse(identity))!;
   }
   const state = result.effect.executionState;
   return Response.json({

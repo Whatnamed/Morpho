@@ -1,3 +1,5 @@
+import { materializeExternalResultResponse, acknowledgePersistedExternalResult } from "./externalResultClient";
+import type { ExternalResultManifest } from "@/shared/externalResultProtocol";
 import {
   applyConversationSummaryRevision,
   buildConversationCompactionPlan,
@@ -66,6 +68,7 @@ export async function runAgentCompaction(input: Readonly<{
   onSummaryApplied?: (input: Readonly<{
     actionId: string;
     revisionId: string;
+    delivery?: ExternalResultManifest;
   }>) => Promise<boolean> | boolean;
 }>): Promise<AgentCompactionAPlusResult> {
   throwIfSessionDetached(input.signal);
@@ -185,6 +188,7 @@ export async function runAgentCompaction(input: Readonly<{
   }
   const requestBody = externalAction.requestBody;
   let response: Response;
+  let delivery: ExternalResultManifest | undefined;
   try {
     throwIfSessionDetached(input.signal);
     response = await postAPlusExternalAction({
@@ -193,6 +197,7 @@ export async function runAgentCompaction(input: Readonly<{
       actionId: input.actionId,
       actionKind: "compaction",
       requestBody,
+      restored: input.restoredExternalAction !== undefined,
       signal: input.signal,
       message: "Compaction 请求响应丢失，服务器状态未知；本地只进行同身份查询，不重复压缩。"
     });
@@ -214,6 +219,17 @@ export async function runAgentCompaction(input: Readonly<{
     return fail(input, "compaction_transport_failed", "Compaction 网络请求失败。");
   }
   throwIfSessionDetached(input.signal);
+  try {
+    const materialized = await materializeExternalResultResponse(response, input.host.fetch, (manifest) => {
+      delivery = manifest;
+      externalAction = { ...externalAction, delivery };
+    });
+    response = materialized.response;
+  } catch (error) {
+    throwIfSessionDetached(input.signal);
+    if (delivery) return { status: "running", actionId: input.actionId, externalAction };
+    throw error;
+  }
   const body = await readJson(response);
   if (response.status === 202) {
     const running = await createAPlusExternalActionRunningError({
@@ -246,6 +262,23 @@ export async function runAgentCompaction(input: Readonly<{
     return fail(input, "invalid_compaction_summary", summary.reason);
   }
 
+  // A crash after Workspace save but before Recovery/ACK must reuse the original revision.
+  const existingRevision = Object.values(input.host.readWorkspace().ai.conversationSummaryRevisions).find((revision) =>
+    revision.sourceMessageIdsHash === executionBoundary.sourceMessageIdsHash &&
+    (revision.previousRevisionId ?? undefined) === (expectedPreviousRevisionId ?? undefined) &&
+    JSON.stringify(revision.summary) === JSON.stringify(summary.summary));
+  if (delivery && existingRevision) {
+    const persisted = input.host.persistWorkspace?.();
+    if (persisted?.phase !== "saved" || persisted.isDirty) return { status: "running", actionId: input.actionId, externalAction };
+    if (input.onSummaryApplied && !await input.onSummaryApplied({ actionId: input.actionId, revisionId: existingRevision.id, delivery })) {
+      return { status: "running", actionId: input.actionId, externalAction };
+    }
+    requireOk(input.coordinator.completeCompaction(input.actionId, { kind: "applied", revisionId: existingRevision.id }));
+    if (input.coordinator.getLifecycleSnapshot()?.persistence === "pending") requireOk(input.coordinator.markLocalPersistenceSucceeded());
+    await acknowledgePersistedExternalResult(input.localProjectId, delivery, input.host.fetch);
+    return { status: "applied", actionId: input.actionId, revisionId: existingRevision.id };
+  }
+
   const boundaryValidation = validateCompactionApplyBoundary(
     input.host.readWorkspace(),
     executionBoundary
@@ -272,21 +305,20 @@ export async function runAgentCompaction(input: Readonly<{
       applied.reason
     );
   }
-  requireOk(input.coordinator.completeCompaction(input.actionId, {
-    kind: "applied",
-    revisionId: applied.revision.id
-  }));
+
   if (input.onSummaryApplied) {
     let recoveryRecorded = false;
     try {
       recoveryRecorded = await input.onSummaryApplied({
         actionId: input.actionId,
-        revisionId: applied.revision.id
+        revisionId: applied.revision.id, delivery
       });
     } catch {
       recoveryRecorded = false;
     }
     if (!recoveryRecorded) {
+      if (delivery) return { status: "running", actionId: input.actionId, externalAction };
+      requireOk(input.coordinator.completeCompaction(input.actionId, { kind: "applied", revisionId: applied.revision.id }));
       return failAfterCompactionApplied(
         input,
         "recovery_record_persistence_failed",
@@ -296,13 +328,20 @@ export async function runAgentCompaction(input: Readonly<{
   }
   const persistence = input.host.persistWorkspace?.();
   if (persistence?.phase !== "saved" || persistence.isDirty) {
+    if (delivery) return { status: "running", actionId: input.actionId, externalAction };
+    requireOk(input.coordinator.completeCompaction(input.actionId, { kind: "applied", revisionId: applied.revision.id }));
     return failAfterCompactionApplied(
       input,
       "workspace_persistence_failed",
       persistence?.error ?? "Summary Revision 未能持久化。"
     );
   }
+  requireOk(input.coordinator.completeCompaction(input.actionId, {
+    kind: "applied",
+    revisionId: applied.revision.id
+  }));
   requireOk(input.coordinator.markLocalPersistenceSucceeded());
+  if (delivery) await acknowledgePersistedExternalResult(input.localProjectId, delivery, input.host.fetch);
   return { status: "applied", actionId: input.actionId, revisionId: applied.revision.id };
 }
 

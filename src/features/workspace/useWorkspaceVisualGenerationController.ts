@@ -1,3 +1,4 @@
+import { resumeIndependentImageDeliveries } from "./independentImageDelivery";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
@@ -39,6 +40,7 @@ export type UseWorkspaceVisualGenerationControllerInput = {
   setImageTaskStatus: (status: ImageTaskStatus | null) => void;
   selectObjects: (objectIds: string[]) => void;
   focusObject: (objectId: string) => void;
+  persistWorkspace?: () => import("./workspacePersistence").WorkspacePersistenceState;
   services?: Partial<WorkspaceVisualGenerationControllerServices>;
 };
 
@@ -189,6 +191,7 @@ export function useWorkspaceVisualGenerationController(
   const ports = useMemo<WorkspaceVisualGenerationExecutionPorts>(
     () => ({
       fetch: services.fetch,
+      persistWorkspace: input.persistWorkspace,
       getCurrentSession,
       assertCurrentSession,
       commitWorkspace,
@@ -203,6 +206,7 @@ export function useWorkspaceVisualGenerationController(
       randomSuffix: services.randomSuffix
     }),
     [
+      input.persistWorkspace,
       assertCurrentSession,
       commitWorkspace,
       focusObject,
@@ -213,6 +217,12 @@ export function useWorkspaceVisualGenerationController(
       updatePendingImageGenerationSlots
     ]
   );
+  const deliveryResumedFor = useRef<symbol | undefined>(undefined);
+  useEffect(() => {
+    if (!session.workspaceReady || deliveryResumedFor.current === session.generation) return;
+    deliveryResumedFor.current = session.generation;
+    void resumeIndependentImageDeliveries(ports).catch(() => undefined);
+  }, [ports, session]);
   const executeVisualGenerationPlan = useCallback<ExecuteAgentVisualGenerationPlan>(
     (executionInput) => executeWorkspaceVisualGenerationPlan(
       executionInput,

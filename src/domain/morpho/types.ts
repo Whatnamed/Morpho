@@ -417,6 +417,8 @@ export type VisualReviewMark = {
 };
 
 export type ImageGenerationMetadata = {
+  /** Transport receipt only; never Project Truth or Provider execution authority. */
+  delivery?: import("@/shared/externalResultProtocol").ExternalResultManifest;
   operationId?: string;
   clientRequestId?: string;
   providerTaskId?: string;

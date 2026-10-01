@@ -109,6 +109,12 @@ export type APlusAgentProviderRequest = Readonly<{
 
 export type AgentTurnRequestStreamEvent =
   | Readonly<{
+      type: "resultAvailable";
+      requestId: string;
+      stepSequence: number;
+      delivery: import("./externalResultProtocol").ExternalResultManifest;
+    }>
+  | Readonly<{
       type: "streamActivity";
       requestId: string;
       stepSequence: number;
@@ -117,6 +123,7 @@ export type AgentTurnRequestStreamEvent =
     }>
   | Readonly<{
       type: "providerOutput";
+      delivery?: import("./externalResultProtocol").ExternalResultManifest;
       requestId: string;
       stepSequence: number;
       outputText: string;

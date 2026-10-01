@@ -1,4 +1,5 @@
 "use client";
+import { flushPendingExternalResultAcks } from "./externalResultClient";
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -230,6 +231,7 @@ type ObjectOperationUndoEntry = {
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
   const [workspace, setPersistentWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
+  useEffect(() => { void flushPendingExternalResultAcks(projectId, fetch).catch(() => undefined); }, [projectId]);
   const workspaceReady = persistenceState.isWorkspaceLoaded && workspace.project.id === projectId;
   const canMutateWorkspace = resolveCanMutateWorkspace({
     persistence: persistenceState,
@@ -1001,6 +1003,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [canMutateWorkspace, setWorkspace, workspace.objects, workspace.project.id]);
 
   const visualGeneration = useWorkspaceVisualGenerationController({
+    persistWorkspace: flushWorkspace,
     projectId,
     workspaceReady: canMutateWorkspace,
     effectiveImageGenerationSettings,

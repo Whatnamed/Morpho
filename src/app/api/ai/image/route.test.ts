@@ -1,6 +1,15 @@
+import { createExternalResultFake } from "@/test/externalResultFake";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "./route";
+
+const resultFake = vi.hoisted(() => ({ current: undefined as ReturnType<typeof createExternalResultFake> | undefined }));
+vi.mock("@/server/ai/externalResultStore", async () => ({
+  ...await vi.importActual<typeof import("@/server/ai/externalResultStore")>("@/server/ai/externalResultStore"),
+  externalResultResponse: (identity: import("@/server/ai/externalEffectJournal").EffectIdentity) =>
+    vi.importActual<typeof import("@/server/ai/externalResultStore")>("@/server/ai/externalResultStore").then((m) => m.externalResultResponse(identity, resultFake.current!.port)),
+  externalResultStore: { call: (...args: Parameters<import("@/server/ai/externalResultStore").ExternalResultPort["call"]>) => resultFake.current!.port.call(...args) }
+}));
 
 const observeExistingMock = vi.hoisted(() => vi.fn<() => Promise<Response | undefined>>(async () => undefined));
 vi.mock("@/server/ai/externalEffectObservation", () => ({ existingImageEffectResponse: observeExistingMock }));
@@ -51,6 +60,7 @@ describe("AI image route auth guard", () => {
     expect(resolveGrsImageResultMock).not.toHaveBeenCalled();
   });
   beforeEach(() => {
+    resultFake.current = createExternalResultFake();
     observeExistingMock.mockReset().mockResolvedValue(undefined);
     requireAiRouteUserMock.mockReset();
     requireAiRouteUserMock.mockResolvedValue({ status: "allowed", userId: "user-a" });

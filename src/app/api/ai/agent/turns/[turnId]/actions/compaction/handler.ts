@@ -1,3 +1,4 @@
+import { externalResultStore, externalResultResponse, saveExternalResult, jsonResult, ExternalResultError, type ExternalResultPort } from "@/server/ai/externalResultStore";
 import { NextResponse } from "next/server";
 import { createEffectExecution, externalEffectId, type EffectIdentity, type EffectExecution } from "@/server/ai/externalEffectJournal";
 
@@ -34,6 +35,7 @@ export type AgentTurnCompactionActionDependencies = Readonly<{
   settle: typeof settleAgentTurnExternalAction;
   loadConfig: () => OpenAiCompatibleConfigResult;
   execute: typeof executeOpenAiCompatibleResponse;
+  results?: ExternalResultPort;
   createEffect?: (identity: EffectIdentity) => EffectExecution;
   waitForSettlementRetry?: (delayMs: number) => Promise<void>;
 }>;
@@ -44,6 +46,7 @@ const defaultDependencies: AgentTurnCompactionActionDependencies = {
   settle: settleAgentTurnExternalAction,
   loadConfig: () => loadOpenAiCompatibleConfig(process.env),
   execute: executeOpenAiCompatibleResponse,
+  results: externalResultStore,
   createEffect: createEffectExecution
 };
 
@@ -68,6 +71,15 @@ export function createAgentTurnCompactionActionPostHandler(
     if (parsed.status === "failed") return parsed.response;
     const body = parseCompactionBody(parsed.value);
     if (!body) return invalidRequestResponse("Compaction Action 合同无效。", "invalid_compaction_request");
+    const effectIdentity: EffectIdentity = { actorUserId: auth.userId,
+      effectId: externalEffectId("a-plus", turnId, body.localProjectId, "compaction", body.actionId), kind: "compaction" };
+    if (dependencies.results) {
+      try {
+        const existing = await externalResultResponse(effectIdentity, dependencies.results);
+        if (existing) return existing;
+        await dependencies.results.call("probe", effectIdentity);
+      } catch { return NextResponse.json({ code: "result_store_unavailable", recoverable: false }, { status: 503 }); }
+    }
     const config = dependencies.loadConfig();
     if (config.status === "failed") {
       return NextResponse.json(
@@ -142,17 +154,24 @@ export function createAgentTurnCompactionActionPostHandler(
       if (result.functionCalls.length > 0) throw new Error("Compaction Provider returned Tool Calls.");
       const summary = parseConversationSummaryPayload(result.outputText);
       if (summary.status !== "ok") throw new Error(summary.reason);
+      const delivery = dependencies.results ? await saveExternalResult(dependencies.results, effectIdentity,
+        jsonResult({ summary: summary.summary, sourceBoundary: {
+          sourceStartMessageId: body.sourceStartMessageId, sourceEndMessageId: body.sourceEndMessageId,
+          sourceDigest: hashAgentTurnExternalActionContract(body.messages),
+          expectedPreviousRevisionId: body.expectedPreviousRevisionId ?? null
+        } }), { ...identity, actionHash }) : undefined;
       const settled = await settleWithRetry(dependencies, {
         ...identity,
         actionHash,
         status: "externallyCompleted"
       });
       if (settled.status === "denied") return journalDeniedResponse(settled);
+      if (delivery) return NextResponse.json({ result: delivery }, { headers: { "Cache-Control": "no-store" } });
       return NextResponse.json({ summary: summary.summary, action: settled.snapshot, replayed: false });
     } catch (error) {
       const cancelled = request.signal.aborted || (error instanceof Error && error.name === "AbortError");
       const unknown = getPublicTextProviderFailureCode(error) === EXTERNAL_EXECUTION_STATE_UNKNOWN.code;
-      const failureCode = unknown ? EXTERNAL_EXECUTION_STATE_UNKNOWN.code : "compaction_failed";
+      const failureCode = error instanceof ExternalResultError ? error.code : unknown ? EXTERNAL_EXECUTION_STATE_UNKNOWN.code : "compaction_failed";
       const settled = await settleWithRetry(dependencies, {
         ...identity,
         actionHash,

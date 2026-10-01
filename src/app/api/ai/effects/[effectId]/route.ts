@@ -1,8 +1,10 @@
+import { externalResultStore, saveExternalResult, externalResultResponse } from "@/server/ai/externalResultStore";
 import { requireAiRouteUser, aiAccessDeniedResponse } from "@/server/auth/aiAccess";
 import { externalEffectJournal } from "@/server/ai/externalEffectJournal";
 import { observeExternalEffect } from "@/server/ai/externalEffectObservation";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 type Context = { params: Promise<{ effectId: string }> };
 
 /** Server facts only; no request body/config reconstruction or new paid admission. */
@@ -30,14 +32,20 @@ async function handle(request: Request, context: Context, cancel: boolean): Prom
       return Response.json({ effect: result.snapshot, cancelIntentRecorded: true,
         providerCancellationConfirmed: result.snapshot?.executionState === "cancelled" });
     }
+    if (new URL(request.url).searchParams.get("result") === "image") {
+      const saved = await externalResultResponse(identity);
+      if (saved) return saved;
+    }
     const result = await observeExternalEffect(identity, {
       retrieveImage: new URL(request.url).searchParams.get("result") === "image",
       signal: request.signal
     });
-    if (result.image) return new Response(result.image, { headers: {
-      "Content-Type": result.mimeType!, "Cache-Control": "no-store",
-      "X-Morpho-Provider-Task-Id": result.effect?.taskId ?? ""
-    } });
+    if (result.image) {
+      const existing = await externalResultResponse(identity);
+      if (existing) return existing;
+      await saveExternalResult(externalResultStore, identity, result.image);
+      return (await externalResultResponse(identity))!;
+    }
     return Response.json(result, { status: result.effect ? 200 : 404, headers: { "Cache-Control": "no-store" } });
   } catch {
     return Response.json({ code: "effect_observation_unavailable", recoverable: false }, { status: 503 });

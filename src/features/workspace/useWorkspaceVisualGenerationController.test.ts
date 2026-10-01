@@ -2,7 +2,7 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createBlankWorkspace, createTestWorkspace } from "@/domain/morpho/workspace";
 import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
@@ -32,6 +32,8 @@ afterEach(async () => {
   }
   document.body.replaceChildren();
 });
+
+vi.mock("./independentImageDelivery", () => ({ prepareIndependentImageDelivery: async () => "fake-intent", completeIndependentImageDelivery: async () => undefined, resumeIndependentImageDeliveries: async () => undefined }));
 
 describe("useWorkspaceVisualGenerationController", () => {
   it("uses the latest effective settings after a rerender", async () => {

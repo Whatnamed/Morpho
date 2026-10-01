@@ -51,6 +51,46 @@ describe("A+ unified Compaction orchestrator", () => {
     }
   );
 
+  it("a hosted Summary save failure pauses same-result delivery and duplicate recovery applies one Revision then ACKs", async () => {
+    const fixture = await createFixture();
+    const data = new Map<string,string>();
+    const storage = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string,v: string) => { data.set(k,v); }, removeItem: (k: string) => { data.delete(k); } };
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: storage } });
+    let payload = "", ackCount = 0, saveFails = true;
+    const bodies: string[] = [];
+    const host: AgentTurnHost = { ...fixture.host, persistWorkspace: () => saveFails
+      ? { phase: "error", isDirty: true, error: "quota" } : fixture.fake.persistWorkspace(),
+      fetch: async (url, init) => {
+        if (String(url).includes("/effects/")) {
+          if (init?.method === "POST") { ackCount++; return Response.json({ acknowledged: true }); }
+          return new Response(payload);
+        }
+        bodies.push(String(init?.body));
+        const normal = await fixture.host.fetch(url, init);
+        payload = JSON.stringify(await normal.json());
+        const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+        return Response.json({ result: { effectId: `effect:${"a".repeat(64)}`, resultId: `result:${"b".repeat(64)}`,
+          version: 1, kind: "compaction", sha256: [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2,"0")).join(""),
+          byteLength: new TextEncoder().encode(payload).byteLength, mimeType: "application/json", chunkCount: 1, expiresAt: "2099-01-01T00:00:00Z" } });
+      } };
+    try {
+      const input = { mode: "manual" as const, actionId: "compact:save-failure", coordinator: fixture.coordinator,
+        host, localProjectId: "project-test", force: true, signal: new AbortController().signal };
+      const first = await runAgentCompaction(input);
+      expect(first.status).toBe("running"); expect(ackCount).toBe(0);
+      expect(fixture.coordinator.getLifecycleSnapshot()?.phase).toBe("compacting");
+      if (first.status !== "running") throw new Error("Expected saved result pending local persistence.");
+      saveFails = false;
+      expect((await runAgentCompaction({ ...input, restoredExternalAction: first.externalAction })).status).toBe("applied");
+      expect(Object.keys(host.readWorkspace().ai.conversationSummaryRevisions)).toHaveLength(1);
+      expect(ackCount).toBe(1); expect(bodies[0]).toBe(bodies[1]);
+    } finally {
+      if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+      else Reflect.deleteProperty(globalThis, "window");
+    }
+  });
+
   it("cancels without applying a half Summary Revision or deleting raw chat", async () => {
     const fixture = await createFixture({ abortRoute: true });
     const controller = new AbortController();

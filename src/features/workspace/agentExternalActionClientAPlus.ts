@@ -1,3 +1,4 @@
+import { assertExternalRequestBody } from "@/shared/externalResultProtocol";
 import type { APlusExternalRequestIdentity } from "./agentToolBatchAPlus";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import type { ExternalEffectSnapshot } from "@/shared/externalEffectProtocol";
@@ -39,6 +40,7 @@ export type APlusExternalActionDescriptor = Readonly<{
   requestBody: string;
   requestHash: string;
   compactionApplyBoundary?: APlusCompactionApplyBoundary;
+  delivery?: import("@/shared/externalResultProtocol").ExternalResultManifest;
   externalEffect?: ExternalEffectSnapshot;
 }>;
 
@@ -153,7 +155,19 @@ export async function postAPlusExternalAction(input: Readonly<{
   requestBody: string;
   signal: AbortSignal;
   message: string;
+  /** Compatibility: large already-persisted actions can query a result without retransmitting input. */
+  restored?: boolean;
 }>): Promise<Response> {
+  try { assertExternalRequestBody(input.requestBody); }
+  catch (error) {
+    if (!input.restored || input.actionKind === "webSearch") throw error;
+    const body = JSON.parse(input.requestBody) as Record<string, unknown>;
+    const match = /\/turns\/([^/]+)\/actions\//.exec(input.url);
+    if (!match || typeof body.localProjectId !== "string" || body.actionId !== input.actionId) throw error;
+    const effectId = `effect:${await sha256Hex(JSON.stringify(["a-plus", decodeURIComponent(match[1]!), body.localProjectId,
+      input.actionKind, input.actionId]))}`;
+    return input.fetch(`/api/ai/effects/${encodeURIComponent(effectId)}/result?kind=${input.actionKind}`, { signal: input.signal });
+  }
   try {
     return await input.fetch(input.url, {
       method: "POST",

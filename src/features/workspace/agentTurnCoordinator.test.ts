@@ -22,6 +22,33 @@ import {
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ AgentTurnCoordinator", () => {
+  it("persists the started flag before unavailable-result pause and reloads without starting step 1 twice", async () => {
+    const host = new FakeHost();
+    const output = { type: "providerOutput" as const, requestId: "request-1", stepSequence: 1,
+      outputText: "same output", producedUserVisibleEffect: true, toolCallIds: [], toolCalls: [] };
+    const readProviderResult = vi.fn(async () => output);
+    readProviderResult.mockRejectedValueOnce(Object.assign(new Error("store temporary"), { code: "result_store_unavailable" }));
+    const enhancedHost = Object.assign(host, { readProviderResult });
+    host.executeExternalRequest.mockImplementationOnce(async () => {
+      host.snapshot = snapshot({ status: "externallyCompleted", latestRequestId: "request-1", latestStepSequence: 1,
+        externalEffect: { version: 1, effectId: `effect:${"a".repeat(64)}`, kind: "text", requestDigest: null,
+          namespace: null, executionState: "succeeded", cancelRequestedAt: null, localAbortObservedAt: null,
+          attemptId: null, taskId: null, responseId: "response" } });
+      throw new TypeError("headers lost after escrow");
+    });
+    const observed: NonNullable<ReturnType<AgentTurnCoordinator["exportRecoverySnapshot"]>>[] = [];
+    const coordinator = new AgentTurnCoordinator({ localProjectId: "project-a", creationIdempotencyKey: "creation-a",
+      host: enhancedHost, createRequestId: () => "request-1", onRecoverySnapshotChanged: (s) => observed.push(s) });
+    await coordinator.initialize();
+    expect(await coordinator.startInitialRequest(providerRequest())).toMatchObject({ status: "denied", code: "external_result_pending" });
+    expect(observed.at(-1)?.activeRequest?.lifecycleStarted).toBe(true);
+    const restored = AgentTurnCoordinator.restore({ snapshot: observed.at(-1), host: enhancedHost, createRequestId: () => "never" });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+    expect(await restored.coordinator.recoverServerExecutionStatus()).toMatchObject({ status: "ok" });
+    expect(restored.coordinator.getProviderOutputSnapshot()?.outputText).toBe("same output");
+    expect(host.executeExternalRequest).toHaveBeenCalledOnce();
+  });
+
   it("creates the lifecycle from the Server Turn ID and completes preparation through the reducer", async () => {
     const host = new FakeHost();
     const coordinator = createCoordinator(host, ["request-1"]);

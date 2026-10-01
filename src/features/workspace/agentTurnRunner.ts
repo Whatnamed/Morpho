@@ -1,3 +1,4 @@
+import { acknowledgePersistedExternalResult, flushPendingExternalResultAcks } from "./externalResultClient";
 import { evaluateAgentTaskFulfillment, taskFulfillmentNotice } from "./agentTaskFulfillment";
 import { requirementCovered } from "./agentSourceReads";
 import { materializeContinuationImages } from "./agentContinuationImages";
@@ -483,11 +484,11 @@ export async function runManualCompactionTurn(
       force: true,
       signal: restoredProduct.prepared.controller.signal,
       onExternalActionIntent: (action) => persistExternalActionIntent(session, action),
-      onSummaryApplied: ({ revisionId }) => recordAppliedCompaction(
+      onSummaryApplied: ({ revisionId, delivery }) => recordAppliedCompaction(
         recovery,
         "manual",
         actionId,
-        revisionId
+        revisionId, delivery
       )
     });
     if (result.status === "running") {
@@ -610,11 +611,11 @@ async function driveSession(session: APlusSession): Promise<void> {
           ? { restoredExternalAction: session.recovery.metadata.pendingExternalAction }
           : {}),
         onExternalActionIntent: (action) => persistExternalActionIntent(session, action),
-        onSummaryApplied: ({ revisionId }) => recordAppliedCompaction(
+        onSummaryApplied: ({ revisionId, delivery }) => recordAppliedCompaction(
           session.recovery,
           metadata.mode,
           metadata.actionId,
-          revisionId
+          revisionId, delivery
         )
       });
       await recordCompactionResult(session, result, metadata);
@@ -876,6 +877,16 @@ async function reconcileRequestResult(
   syncRecoveryRuntimeFacts(session);
   await session.recovery.flush();
   if (result.status === "ok") {
+    const output = session.coordinator.getProviderOutputSnapshot();
+    if (output?.delivery) {
+      const saved = session.host.persistWorkspace?.();
+      if (saved?.phase !== "saved" || saved.isDirty || !await session.recovery.flush()) {
+        session.host.ui.setStreaming(false);
+        showAgentTurnRecoveryPending(session.host.ui);
+        return "pending";
+      }
+      await acknowledgePersistedExternalResult(session.localProjectId, output.delivery, session.host.fetch);
+    }
     markDeliveredReads(session);
     syncRecoveryRuntimeFacts(session);
     await session.recovery.flush();
@@ -896,7 +907,7 @@ async function reconcileRequestResult(
     result.recoverable &&
     (result.code === "journal_query_failed" ||
       result.code === "external_execution_pending_reconciliation" ||
-      result.code === "external_action_running")
+      result.code === "external_action_running" || result.code === "external_result_pending")
   ) {
     // A query-only pause must leave the current page usable.  The session is
     // intentionally retained so the explicit Resume action can reconcile it
@@ -945,11 +956,11 @@ async function maybeCompact(
     limits: session.turnInput.readConversationTokenLimits(),
     signal: session.prepared.controller.signal,
     onExternalActionIntent: (action) => persistExternalActionIntent(session, action),
-    onSummaryApplied: ({ revisionId }) => recordAppliedCompaction(
+    onSummaryApplied: ({ revisionId, delivery }) => recordAppliedCompaction(
       session.recovery,
       mode,
       actionId,
-      revisionId
+      revisionId, delivery
     )
   });
   await recordCompactionResult(session, result, {
@@ -1045,10 +1056,12 @@ async function recordAppliedCompaction(
   recovery: RecoveryWriter,
   mode: "automatic" | "preContinuation" | "manual",
   actionId: string,
-  revisionId: string
+  revisionId: string,
+  delivery?: import("@/shared/externalResultProtocol").ExternalResultManifest
 ): Promise<boolean> {
   recovery.updateMetadata((metadata) => ({
     ...metadata,
+    ...(delivery && metadata.pendingExternalAction ? { pendingExternalAction: { ...metadata.pendingExternalAction, delivery } } : {}),
     compaction: {
       mode,
       actionId,
@@ -1071,6 +1084,9 @@ function recoverInterruptedCompaction(session: APlusSession): boolean {
     metadata.appliedRevisionId &&
     session.host.readWorkspace().ai.conversationSummaryRevisions[metadata.appliedRevisionId]
   ) {
+    const saved = session.host.persistWorkspace?.();
+    if (saved?.phase !== "saved" || saved.isDirty) return false;
+    if (session.coordinator.getLifecycleSnapshot()?.persistence === "pending") requireCoordinatorOk(session.coordinator.markLocalPersistenceSucceeded());
     requireCoordinatorOk(session.coordinator.completeCompaction(metadata.actionId, {
       kind: "applied",
       revisionId: metadata.appliedRevisionId
@@ -1186,6 +1202,14 @@ async function finalizeSession(session: APlusSession): Promise<void> {
     session.host.ui.showFailure();
     return;
   }
+  const compactionDelivery = session.recovery.metadata.pendingExternalAction?.actionKind === "compaction"
+    ? session.recovery.metadata.pendingExternalAction.delivery : undefined;
+  if (compactionDelivery && session.recovery.metadata.compaction?.summaryApplyState === "applied") {
+    await acknowledgePersistedExternalResult(session.localProjectId, compactionDelivery, session.host.fetch);
+  }
+  const output = session.coordinator.getProviderOutputSnapshot();
+  if (output?.delivery) await acknowledgePersistedExternalResult(session.localProjectId, output.delivery, session.host.fetch);
+  if (typeof window !== "undefined") await flushPendingExternalResultAcks(session.localProjectId, session.host.fetch);
   if (!session.recovery.metadata.pendingConfirmation) {
     await session.recovery.clear();
   }

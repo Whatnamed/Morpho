@@ -37,6 +37,8 @@ export type AgentTurnCoordinatorHost = Readonly<{
     },
     observer: (event: AgentTurnRequestStreamEvent) => void
   ): Promise<AgentTurnCoordinatorExecutionHandshake>;
+  readProviderResult?(input: { effectId: string; requestId: string; stepSequence: number }): Promise<
+    Extract<AgentTurnRequestStreamEvent, { type: "providerOutput" }> | undefined>;
   queryServerTurn(input: {
     serverTurnId: string;
     localProjectId: string;
@@ -550,6 +552,7 @@ export class AgentTurnCoordinator {
     }
     let result: AgentTurnCoordinatorActionResult;
     switch (event.type) {
+      case "resultAvailable": return this.denied("unmaterialized_result", "Transport 必须先校验结果。");
       case "streamActivity":
         result = this.dispatch({
           type: "STREAM_ACTIVITY_OBSERVED",
@@ -664,8 +667,28 @@ export class AgentTurnCoordinator {
       });
       if (started.status === "denied") return started;
       this.activeRequest.lifecycleStarted = true;
+      this.notifyRecoverySnapshotChanged();
     }
     this.serverSnapshot = cloneSnapshot(snapshot);
+    if ((snapshot.status === "awaitingNextRequest" || snapshot.status === "externallyCompleted" ||
+      (snapshot.status === "externallyFailed" && snapshot.externalEffect?.executionState === "succeeded" &&
+        !snapshot.externalEffect.cancelRequestedAt)) &&
+      this.lifecycle?.providerOutput.kind === "none" && snapshot.externalEffect && this.input.host.readProviderResult) {
+      try {
+        const output = await this.input.host.readProviderResult({ effectId: snapshot.externalEffect.effectId,
+          requestId: expected.requestId, stepSequence: expected.stepSequence });
+        if (generation !== this.syncGeneration) return this.denied("stale_query_result", "旧结果已被拒绝。");
+        if (output) {
+          const observed = this.observeStreamEvent(output);
+          if (observed.status === "denied") return observed;
+        }
+      } catch (error) {
+        const code = readErrorCode(error);
+        return this.denied(code === "external_result_expired" ? code : "external_result_pending",
+          code === "external_result_expired" ? "原执行结果已超过保留期，无法重新交付。" : "同一执行结果尚不可交付；不会重新执行。",
+          code !== "external_result_expired");
+      }
+    }
     if (
       snapshot.status === "awaitingNextRequest" &&
       this.lifecycle?.providerOutput.kind === "none"

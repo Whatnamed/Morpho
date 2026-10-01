@@ -1,3 +1,4 @@
+import { isExternalResultManifest } from "@/shared/externalResultProtocol";
 import { normalizeAgentTaskFulfillment, isAgentReadReceipt } from "@/shared/agentReadCoverage";
 import type {
   AgentActivityKind,
@@ -336,6 +337,9 @@ function validateVisualReviewMark(value: unknown, path: string, add: WorkspaceCo
 
 function validateImageGenerationMetadata(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
   const item = record(value, path, add); if (!item) return;
+  if (item.delivery !== undefined && (!isExternalResultManifest(item.delivery) || item.delivery.kind !== "image")) {
+    add(`${path}.delivery`, "Invalid image result receipt.");
+  }
   for (const key of ["operationId", "clientRequestId", "providerTaskId", "directionId", "visualBranchId"] as const) {
     optionalId(item[key], `${path}.${key}`, add);
   }

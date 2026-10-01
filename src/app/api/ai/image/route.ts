@@ -1,3 +1,5 @@
+import { EXTERNAL_REQUEST_MAX_BYTES } from "@/shared/externalResultProtocol";
+import { externalResultStore, externalResultResponse, saveExternalResult, jsonResult, ExternalResultError, type ExternalResultPort } from "@/server/ai/externalResultStore";
 import { NextResponse } from "next/server";
 import { createEffectExecution, externalEffectId } from "@/server/ai/externalEffectJournal";
 import { existingImageEffectResponse } from "@/server/ai/externalEffectObservation";
@@ -15,7 +17,8 @@ import {
 } from "@/server/ai/publicProviderError";
 
 export const runtime = "nodejs";
-const MAX_IMAGE_REQUEST_BODY_BYTES = 36 * 1024 * 1024;
+export const maxDuration = 300;
+const MAX_IMAGE_REQUEST_BODY_BYTES = EXTERNAL_REQUEST_MAX_BYTES;
 
 export async function POST(request: Request) {
   const authenticated = await requireAiRouteUser();
@@ -33,6 +36,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validated.reason }, { status: 400 });
   }
 
+  const clientKey = validated.value.clientRequestId ?? request.headers.get("X-Morpho-Effect-Key");
+  if (!clientKey || !/^[A-Za-z0-9._:-]{1,160}$/.test(clientKey)) {
+    return NextResponse.json({ code: "effect_identity_required", error: "生图请求缺少稳定执行身份。", recoverable: false }, { status: 400 });
+  }
+  const effectIdentity = { actorUserId: authenticated.userId,
+    effectId: externalEffectId("image", clientKey), kind: "image" as const };
+  try {
+    const saved = await externalResultResponse(effectIdentity);
+    if (saved) return saved;
+    await externalResultStore.call("probe", effectIdentity);
+    const existing = await existingImageEffectResponse(effectIdentity, request.signal);
+    if (existing) return existing;
+  } catch (error) {
+    return NextResponse.json({ code: "effect_observation_unavailable", recoverable: false }, { status: 503 });
+  }
+  if (request.headers.get("X-Morpho-Effect-Contract") !== "1") {
+    // A legacy independent request has no server registry. Absence is not evidence that it
+    // never executed; only a new-contract producer may register a fresh paid effect.
+    return NextResponse.json({ code: EXTERNAL_EXECUTION_STATE_UNKNOWN.code,
+      error: EXTERNAL_EXECUTION_STATE_UNKNOWN.message, recoverable: false }, { status: 409 });
+  }
   const config = loadGrsImageConfig(process.env);
   if (config.status === "failed") {
     return NextResponse.json(
@@ -45,24 +69,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const clientKey = validated.value.clientRequestId ?? request.headers.get("X-Morpho-Effect-Key");
-  if (!clientKey || !/^[A-Za-z0-9._:-]{1,160}$/.test(clientKey)) {
-    return NextResponse.json({ code: "effect_identity_required", error: "生图请求缺少稳定执行身份。", recoverable: false }, { status: 400 });
-  }
-  const effectIdentity = { actorUserId: authenticated.userId,
-    effectId: externalEffectId("image", clientKey), kind: "image" as const };
-  try {
-    const existing = await existingImageEffectResponse(effectIdentity, request.signal);
-    if (existing) return existing;
-  } catch {
-    return NextResponse.json({ code: "effect_observation_unavailable", recoverable: false }, { status: 503 });
-  }
-  if (request.headers.get("X-Morpho-Effect-Contract") !== "1") {
-    // A legacy independent request has no server registry. Absence is not evidence that it
-    // never executed; only a new-contract producer may register a fresh paid effect.
-    return NextResponse.json({ code: EXTERNAL_EXECUTION_STATE_UNKNOWN.code,
-      error: EXTERNAL_EXECUTION_STATE_UNKNOWN.message, recoverable: false }, { status: 409 });
-  }
   const access = await guardAiRoute("image");
   if (access.status === "denied") {
     return aiAccessDeniedResponse(access);
@@ -98,21 +104,14 @@ export async function POST(request: Request) {
       );
     }
 
-    return new Response(result.blob, {
-      headers: {
-        "Content-Type": result.mimeType,
-        "Cache-Control": "no-store",
-        "X-Morpho-Image-Provider": "grsai",
-        "X-Morpho-Effect-Id": effectIdentity.effectId,
-        "X-Morpho-Client-Request-Id": validated.value.clientRequestId ?? "",
-        "X-Morpho-Provider-Task-Id": result.providerTaskId ?? ""
-      }
-    });
-  } catch {
+    const delivery = await saveExternalResult(externalResultStore, effectIdentity, result.blob);
+    return NextResponse.json({ result: delivery }, { headers: { "Cache-Control": "no-store",
+      "X-Morpho-Provider-Task-Id": result.providerTaskId ?? "" } });
+  } catch (error) {
     return NextResponse.json(
       {
         error: EXTERNAL_EXECUTION_STATE_UNKNOWN.message,
-        code: EXTERNAL_EXECUTION_STATE_UNKNOWN.code,
+        code: error instanceof ExternalResultError ? error.code : EXTERNAL_EXECUTION_STATE_UNKNOWN.code,
         recoverable: false
       },
       { status: 502 }

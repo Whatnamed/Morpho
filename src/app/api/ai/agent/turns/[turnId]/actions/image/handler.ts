@@ -1,3 +1,4 @@
+import { externalResultStore, externalResultResponse, saveExternalResult, jsonResult, ExternalResultError, type ExternalResultPort } from "@/server/ai/externalResultStore";
 import { createHash } from "node:crypto";
 import { createEffectExecution, externalEffectId, type EffectIdentity, type EffectExecution } from "@/server/ai/externalEffectJournal";
 import { existingImageEffectResponse } from "@/server/ai/externalEffectObservation";
@@ -39,6 +40,7 @@ export type AgentTurnImageActionDependencies = Readonly<{
   settle: typeof settleAgentTurnExternalAction;
   loadConfig: typeof loadGrsImageConfig;
   generate: typeof resolveGrsImageResult;
+  results?: ExternalResultPort;
   createEffect?: (identity: EffectIdentity) => EffectExecution;
   observeExisting?: typeof existingImageEffectResponse;
   waitForSettlementRetry?: (delayMs: number) => Promise<void>;
@@ -50,6 +52,7 @@ const defaultDependencies: AgentTurnImageActionDependencies = {
   settle: settleAgentTurnExternalAction,
   loadConfig: loadGrsImageConfig,
   generate: resolveGrsImageResult,
+  results: externalResultStore,
   createEffect: createEffectExecution,
   observeExisting: existingImageEffectResponse
 };
@@ -97,6 +100,11 @@ export function createAgentTurnImageActionPostHandler(
       kind: "image"
     };
     try {
+      if (dependencies.results) {
+        const saved = await externalResultResponse(effectIdentity, dependencies.results);
+        if (saved) return saved;
+        await dependencies.results.call("probe", effectIdentity);
+      }
       const existing = await dependencies.observeExisting?.(effectIdentity, request.signal);
       if (existing) return existing;
     } catch {
@@ -213,12 +221,16 @@ export function createAgentTurnImageActionPostHandler(
           { status: 502 }
         );
       }
+      const delivery = dependencies.results ? await saveExternalResult(dependencies.results,
+        effectIdentity, result.blob, { ...identity, actionHash }) : undefined;
       const settled = await settleWithRetry(dependencies, {
         ...identity,
         actionHash,
         status: "externallyCompleted"
       });
       if (settled.status === "denied") return journalDeniedResponse(settled);
+      if (delivery) return NextResponse.json({ result: delivery }, { headers: { "Cache-Control": "no-store",
+        "X-Morpho-Provider-Task-Id": result.providerTaskId ?? "" } });
       return new Response(result.blob, {
         headers: {
           "Content-Type": result.mimeType,
@@ -235,13 +247,13 @@ export function createAgentTurnImageActionPostHandler(
         ...identity,
         actionHash,
         status: cancelled ? "externallyCancelled" : "externallyFailed",
-        failureCode: EXTERNAL_EXECUTION_STATE_UNKNOWN.code
+        failureCode: error instanceof ExternalResultError ? error.code : EXTERNAL_EXECUTION_STATE_UNKNOWN.code
       });
       if (settled.status === "denied") return journalDeniedResponse(settled);
       return NextResponse.json(
         {
           error: cancelled ? IMAGE_PROVIDER_CANCELLED.message : EXTERNAL_EXECUTION_STATE_UNKNOWN.message,
-          code: cancelled ? "image_cancelled" : EXTERNAL_EXECUTION_STATE_UNKNOWN.code,
+          code: cancelled ? "image_cancelled" : error instanceof ExternalResultError ? error.code : EXTERNAL_EXECUTION_STATE_UNKNOWN.code,
           recoverable: false,
           action: settled.snapshot
         },
@@ -277,19 +289,7 @@ function validateImagePayloadBoundary(value: Record<string, unknown>): string | 
   if (typeof value.prompt !== "string" || value.prompt.trim().length < 1 || value.prompt.length > 16_000) {
     return "Image prompt 为空或超过 16000 字符。";
   }
-  if (value.images !== undefined && !Array.isArray(value.images)) return "images 必须是数组。";
-  const images = Array.isArray(value.images) ? value.images : [];
-  let totalBytes = 0;
-  for (const image of images) {
-    if (
-      typeof image !== "string" ||
-      !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/i.test(image)
-    ) return "参考图必须是受支持的 image data URL。";
-    const byteLength = Buffer.byteLength(image, "utf8");
-    if (byteLength > 8 * 1024 * 1024) return "单张参考图超过 8 MiB。";
-    totalBytes += byteLength;
-  }
-  return totalBytes > 24 * 1024 * 1024 ? "参考图总量超过 24 MiB。" : undefined;
+  return undefined;
 }
 
 function hashImageDataUrl(value: string): string {

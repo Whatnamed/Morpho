@@ -1,3 +1,4 @@
+import { externalResultStore, externalResultResponse, saveExternalResult, jsonResult, ExternalResultError, type ExternalResultPort } from "@/server/ai/externalResultStore";
 import { NextResponse } from "next/server";
 import { createEffectExecution, externalEffectId, type EffectIdentity, type EffectExecution } from "@/server/ai/externalEffectJournal";
 
@@ -54,6 +55,7 @@ export type AgentTurnRequestRouteDependencies = Readonly<{
   acquireRequest: typeof acquireAgentTurnRequest;
   settleRequest: typeof settleAgentTurnRequest;
   streamProvider: typeof streamOpenAiCompatibleResponse;
+  results?: ExternalResultPort;
   createEffect?: (identity: EffectIdentity) => EffectExecution;
   waitForSettlementRetry?: (delayMs: number) => Promise<void>;
 }>;
@@ -67,6 +69,7 @@ const defaultDependencies: AgentTurnRequestRouteDependencies = {
   acquireRequest: acquireAgentTurnRequest,
   settleRequest: settleAgentTurnRequest,
   streamProvider: streamOpenAiCompatibleResponse,
+  results: externalResultStore,
   createEffect: createEffectExecution
 };
 
@@ -111,6 +114,16 @@ export function createAgentTurnRequestPostHandler(
       (parsedBody.value.stepSequence as number) > 10_000
     ) {
       return invalidRequestResponse("localProjectId、requestId 或 stepSequence 格式无效。");
+    }
+    const effectIdentity: EffectIdentity = { actorUserId: auth.userId,
+      effectId: externalEffectId("a-plus", turnId, parsedBody.value.localProjectId, "text",
+        parsedBody.value.requestId, parsedBody.value.stepSequence as number), kind: "text" };
+    if (dependencies.results) {
+      try {
+        const existing = await externalResultResponse(effectIdentity, dependencies.results);
+        if (existing) return existing;
+        await dependencies.results.call("probe", effectIdentity);
+      } catch { return NextResponse.json({ code: "result_store_unavailable", recoverable: false }, { status: 503 }); }
     }
     const providerRequest = parseAPlusAgentProviderRequest(parsedBody.value.providerRequest);
     if (providerRequest.status === "failed") {
@@ -267,8 +280,9 @@ function createProviderStreamResponse(input: {
             })
           );
           const toolCalls = normalizeAPlusProviderToolCalls(result.functionCalls);
+          if (result.outputText.length > 240_000) throw new ExternalResultError("result_payload_too_large");
           const toolCallIds = toolCalls.map((call) => call.callId);
-          enqueue({
+          const output = {
             type: "providerOutput",
             requestId: input.identity.requestId,
             stepSequence: input.identity.stepSequence,
@@ -276,10 +290,22 @@ function createProviderStreamResponse(input: {
             producedUserVisibleEffect: result.outputText.trim().length > 0,
             toolCallIds,
             toolCalls
-          });
+          } as const;
           const nextStatus: ServerExternalExecutionStatus = toolCallIds.length > 0
             ? "awaitingNextRequest"
             : "externallyCompleted";
+          let delivery;
+          if (input.dependencies.results) {
+            const claims = buildAPlusExternalToolActionClaims(toolCalls).map((claim) => ({ ...claim,
+              actionKind: claim.actionKind === "webSearch" ? "web_search" : "image" }));
+            delivery = await saveExternalResult(input.dependencies.results, {
+              actorUserId: input.identity.actorUserId,
+              effectId: externalEffectId("a-plus", input.identity.serverTurnId, input.identity.localProjectId,
+                "text", input.identity.requestId, input.identity.stepSequence), kind: "text"
+            }, jsonResult(output), { ...input.identity, status: nextStatus, claims });
+          }
+          enqueue(delivery ? { type: "resultAvailable", requestId: output.requestId,
+            stepSequence: output.stepSequence, delivery } : output);
           const settled = await settle(
             input,
             nextStatus,
@@ -309,7 +335,8 @@ function createProviderStreamResponse(input: {
           const cancelled = abortController.signal.aborted ||
             (error instanceof Error && error.name === "AbortError");
           const nextStatus = cancelled ? "externallyCancelled" as const : "externallyFailed" as const;
-          const publicError = cancelled ? undefined : getPublicTextProviderError(error);
+          const publicError = cancelled ? undefined : error instanceof ExternalResultError
+            ? { code: error.code, message: error.message, recoverable: true } : getPublicTextProviderError(error);
           const failureCode = publicError?.code;
           const settled = await settle(input, nextStatus, failureCode);
           enqueue({
