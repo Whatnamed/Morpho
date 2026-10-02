@@ -1,346 +1,96 @@
 // @vitest-environment happy-dom
-
 import { act, createElement, useCallback, useState, type Dispatch, type SetStateAction } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
-import type { WorkspaceSnapshotEntry } from "./workspaceUndo";
-import {
-  useWorkspaceObjectHistoryController,
-  type WorkspaceObjectHistoryController
-} from "./useWorkspaceObjectHistoryController";
+import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
+import { useWorkspaceObjectHistoryController, type WorkspaceObjectHistoryController } from "./useWorkspaceObjectHistoryController";
 
 const roots: Root[] = [];
-
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+afterEach(async () => { for (const root of roots.splice(0)) await act(async () => root.unmount()); document.body.replaceChildren(); });
 
-afterEach(async () => {
-  while (roots.length > 0) {
-    const root = roots.pop();
-    if (root) {
-      await act(async () => root.unmount());
+describe("manual history controller", () => {
+  it("captures at the commit boundary and preserves independent writes in both directions", async () => {
+    const h = await renderController();
+    act(() => h.current().updateManualWorkspace((w) => ({ ...w, project: { ...w.project, title: "manual" } })));
+    const ai = { id: "ai-later", role: "assistant" as const, body: "独立结果", status: "done" as const };
+    act(() => h.independent((w) => ({ ...w, ai: { ...w.ai, messages: [ai] } })));
+    act(() => expect(h.current().undo()).toBe(true));
+    expect(h.workspace().project.title).not.toBe("manual");
+    expect(h.workspace().ai.messages).toEqual([ai]);
+    act(() => expect(h.current().redo()).toBe(true));
+    expect(h.workspace().project.title).toBe("manual");
+    expect(h.workspace().ai.messages).toEqual([ai]);
+    expect(h.current().canUndo).toBe(true);
+    expect(h.current().canRedo).toBe(false);
+  });
+  it("retains blocked history and availability without partial writes", async () => {
+    const h = await renderController();
+    act(() => h.current().updateManualWorkspace((w) => ({ ...w, project: { ...w.project, title: "manual" } })));
+    act(() => h.independent((w) => ({ ...w, project: { ...w.project, title: "third party" } })));
+    for (let i = 0; i < 2; i++) act(() => expect(h.current().undo()).toBe(true));
+    expect(h.notices).toHaveLength(2);
+    expect(h.notices[0]).toContain("历史已保留");
+    expect(h.workspace().project.title).toBe("third party");
+    expect(h.current().canUndo).toBe(true);
+    act(() => h.independent((w) => ({ ...w, project: { ...w.project, title: "manual" } })));
+    act(() => h.current().undo());
+    expect(h.current().canRedo).toBe(true);
+  });
+  it("owns all mutation shortcuts and empty history, leaving input native history alone", async () => {
+    const h = await renderController();
+    act(() => h.current().updateManualWorkspace((w) => ({ ...w, project: { ...w.project, title: "manual" } })));
+    for (const [key, ctrlKey, metaKey, shiftKey] of [["z", true, false, false], ["y", true, false, false], ["z", false, true, false], ["z", false, true, true]] as const) {
+      const event = new KeyboardEvent("keydown", { key, ctrlKey, metaKey, shiftKey, cancelable: true });
+      act(() => window.dispatchEvent(event)); expect(event.defaultPrevented).toBe(true);
     }
-  }
-  document.body.replaceChildren();
-});
-
-describe("useWorkspaceObjectHistoryController", () => {
-  it("pushes explicit snapshots and restores them through undo and redo", async () => {
-    const before = createBlankWorkspace("project-a");
-    const harness = await renderController({ projectId: "project-a", workspace: before, workspaceReady: true });
-
-    harness.setLabel("before");
-    act(() => harness.current().pushUndoSnapshot());
-    act(() => harness.setWorkspace(renameProject(harness.workspace(), "after")));
-    harness.setLabel("after");
-
-    expect(harness.current().undo()).toBe(true);
-    expect(harness.applied().map((entry) => entry.label)).toEqual(["before"]);
-
-    act(() => harness.setWorkspace(harness.applied()[0]?.workspace ?? before));
-    expect(harness.current().redo()).toBe(true);
-    expect(harness.applied().map((entry) => entry.label)).toEqual(["before", "after"]);
+    for (const tag of ["input", "textarea", "div"]) {
+      const target = document.createElement(tag); if (tag === "div") target.contentEditable = "true";
+      document.body.appendChild(target);
+      const event = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true, bubbles: true });
+      act(() => target.dispatchEvent(event)); expect(event.defaultPrevented).toBe(false);
+    }
+    act(() => h.current().clearHistory());
+    const empty = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true });
+    act(() => window.dispatchEvent(empty)); expect(empty.defaultPrevented).toBe(true);
   });
-
-  it("captures the latest state at push time and preserves history for ready updates", async () => {
-    const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });
-
-    harness.setLabel("latest");
-    act(() => harness.current().pushUndoSnapshot());
-    act(() => harness.setWorkspace(renameProject(harness.workspace(), "same-project-update")));
-    harness.setLabel("current");
-    expect(harness.current().undo()).toBe(true);
-    expect(harness.applied().at(-1)?.label).toBe("latest");
+  it("resets on project/readiness transitions and rejects stale callbacks after A/B/A", async () => {
+    const h = await renderController(); const stale = h.current().updateManualWorkspace;
+    act(() => h.current().updateManualWorkspace((w) => ({ ...w, project: { ...w.project, title: "manual" } })));
+    await h.switchProject("b", false);
+    const event = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true });
+    act(() => window.dispatchEvent(event)); expect(event.defaultPrevented).toBe(false);
+    await h.switchProject("a", true); act(() => stale((w) => ({ ...w, project: { ...w.project, title: "stale" } })));
+    expect(h.workspace().project.title).not.toBe("stale"); expect(h.current().undo()).toBe(false);
   });
-
-  it("gives detail navigation undo priority over object history", async () => {
-    let detailUndoAvailable = true;
-    const detailUndo = vi.fn(() => {
-      if (!detailUndoAvailable) {
-        return false;
-      }
-      detailUndoAvailable = false;
-      return true;
-    });
-    const harness = await renderController({
-      projectId: "project-a",
-      workspace: createBlankWorkspace("project-a"),
-      workspaceReady: true,
-      undoDetailNavigation: detailUndo
-    });
-
-    act(() => harness.current().pushUndoSnapshot());
-    expect(harness.current().undo()).toBe(true);
-    expect(detailUndo).toHaveBeenCalledTimes(1);
-    expect(harness.applied()).toHaveLength(0);
-
-    expect(harness.current().undo()).toBe(true);
-    expect(detailUndo).toHaveBeenCalledTimes(2);
-    expect(harness.applied()).toHaveLength(1);
-  });
-
-  it("blocks undo and redo after AI content without consuming the protected history", async () => {
-    const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });
-
-    act(() => harness.current().pushUndoSnapshot());
-    act(() => harness.setWorkspace(appendAiMessage(harness.workspace(), "ai-after-manual")));
-    expect(harness.current().undo()).toBe(true);
-    expect(harness.closedContextMenuCount()).toBe(1);
-    expect(harness.notices()).toEqual([
-      {
-        message: "撤销已暂停：恢复快照可能覆盖后来的 AI、运行结果或历史内容；撤销历史已保留。",
-        durationMs: 2600
-      }
-    ]);
-
-    expect(harness.current().undo()).toBe(true);
-    expect(harness.notices()).toHaveLength(2);
-  });
-
-  it("blocks redo after an AI result appears on the undone branch", async () => {
-    const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });
-
-    act(() => harness.current().pushUndoSnapshot());
-    act(() => harness.setWorkspace(renameProject(harness.workspace(), "after")));
-    expect(harness.current().undo()).toBe(true);
-    act(() => harness.setWorkspace(appendAiMessage(harness.workspace(), "ai-after-undo")));
-
-    expect(harness.current().redo()).toBe(true);
-    expect(harness.notices()).toEqual([
-      {
-        message: "重做已暂停：恢复快照可能覆盖后来的 AI、运行结果或历史内容；重做历史已保留。",
-        durationMs: 2600
-      }
-    ]);
-    expect(harness.closedContextMenuCount()).toBe(1);
-  });
-
-  it("owns keyboard undo and redo, but leaves editable targets and empty history alone", async () => {
-    const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });
-    const emptyUndo = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true });
-    act(() => window.dispatchEvent(emptyUndo));
-    expect(emptyUndo.defaultPrevented).toBe(false);
-
-    act(() => harness.current().pushUndoSnapshot());
-    act(() => harness.setWorkspace(renameProject(harness.workspace(), "after")));
-    const undoEvent = new KeyboardEvent("keydown", { key: "z", metaKey: true, cancelable: true });
-    act(() => window.dispatchEvent(undoEvent));
-    expect(undoEvent.defaultPrevented).toBe(true);
-    expect(harness.applied()).toHaveLength(1);
-
-    act(() => harness.setWorkspace(harness.applied()[0]?.workspace ?? createBlankWorkspace("project-a")));
-    const redoEvent = new KeyboardEvent("keydown", { key: "y", ctrlKey: true, cancelable: true });
-    act(() => window.dispatchEvent(redoEvent));
-    expect(redoEvent.defaultPrevented).toBe(true);
-    expect(harness.applied()).toHaveLength(2);
-
-    const undoAgainEvent = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true });
-    act(() => window.dispatchEvent(undoAgainEvent));
-    const shiftRedoEvent = new KeyboardEvent("keydown", {
-      key: "z",
-      ctrlKey: true,
-      shiftKey: true,
-      cancelable: true
-    });
-    act(() => window.dispatchEvent(shiftRedoEvent));
-    expect(shiftRedoEvent.defaultPrevented).toBe(true);
-
-    const metaUndoEvent = new KeyboardEvent("keydown", { key: "z", metaKey: true, cancelable: true });
-    act(() => window.dispatchEvent(metaUndoEvent));
-    expect(metaUndoEvent.defaultPrevented).toBe(true);
-
-    const metaShiftRedoEvent = new KeyboardEvent("keydown", {
-      key: "z",
-      metaKey: true,
-      shiftKey: true,
-      cancelable: true
-    });
-    act(() => window.dispatchEvent(metaShiftRedoEvent));
-    expect(metaShiftRedoEvent.defaultPrevented).toBe(true);
-
-    const metaUndoForYEvent = new KeyboardEvent("keydown", { key: "z", metaKey: true, cancelable: true });
-    act(() => window.dispatchEvent(metaUndoForYEvent));
-    expect(metaUndoForYEvent.defaultPrevented).toBe(true);
-
-    const metaRedoYEvent = new KeyboardEvent("keydown", { key: "y", metaKey: true, cancelable: true });
-    act(() => window.dispatchEvent(metaRedoYEvent));
-    expect(metaRedoYEvent.defaultPrevented).toBe(true);
-
-    const input = document.createElement("input");
-    document.body.appendChild(input);
-    const editableEvent = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true });
-    act(() => input.dispatchEvent(editableEvent));
-    expect(editableEvent.defaultPrevented).toBe(false);
-
-    const textarea = document.createElement("textarea");
-    document.body.appendChild(textarea);
-    const textareaEvent = new KeyboardEvent("keydown", { key: "z", metaKey: true, bubbles: true, cancelable: true });
-    act(() => textarea.dispatchEvent(textareaEvent));
-    expect(textareaEvent.defaultPrevented).toBe(false);
-
-    const editableContent = document.createElement("div");
-    editableContent.contentEditable = "true";
-    document.body.appendChild(editableContent);
-    const contentEditableEvent = new KeyboardEvent("keydown", {
-      key: "z",
-      ctrlKey: true,
-      bubbles: true,
-      cancelable: true
-    });
-    act(() => editableContent.dispatchEvent(contentEditableEvent));
-    expect(contentEditableEvent.defaultPrevented).toBe(false);
-  });
-
-  it("does not intercept shortcuts or retain history while switching projects", async () => {
-    const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });
-    act(() => harness.current().pushUndoSnapshot());
-
-    await harness.rerender({ projectId: "project-b", workspace: harness.workspace(), workspaceReady: false });
-    const blockedSwitchEvent = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, cancelable: true });
-    act(() => window.dispatchEvent(blockedSwitchEvent));
-    expect(blockedSwitchEvent.defaultPrevented).toBe(false);
-    expect(harness.current().undo()).toBe(false);
-
-    await harness.rerender({ projectId: "project-b", workspace: createBlankWorkspace("project-b"), workspaceReady: false });
-    await harness.rerender({ projectId: "project-b", workspace: createBlankWorkspace("project-b"), workspaceReady: true });
-    expect(harness.current().undo()).toBe(false);
-  });
-
-  it("blocks stale history callbacks after A to B to A2", async () => {
-    const harness = await renderController({
-      projectId: "project-a",
-      workspace: createBlankWorkspace("project-a"),
-      workspaceReady: true
-    });
-    const stalePushUndoSnapshot = harness.current().pushUndoSnapshot;
-
-    await harness.rerender({
-      projectId: "project-b",
-      workspace: createBlankWorkspace("project-b"),
-      workspaceReady: true
-    });
-    await harness.rerender({
-      projectId: "project-a",
-      workspace: createBlankWorkspace("project-a"),
-      workspaceReady: true
-    });
-
-    act(() => stalePushUndoSnapshot());
-
-    expect(harness.current().undo()).toBe(false);
-    expect(harness.applied()).toHaveLength(0);
-  });
-
-  it("removes its global keyboard listener on unmount", async () => {
-    const removeListener = vi.spyOn(window, "removeEventListener");
-    const harness = await renderController({ projectId: "project-a", workspace: createBlankWorkspace("project-a"), workspaceReady: true });
-    await harness.unmount();
-    expect(removeListener).toHaveBeenCalledWith("keydown", expect.any(Function), { capture: true });
+  it("does not consume redo for an empty/blocked domain operation and removes its keyboard listener", async () => {
+    const remove = vi.spyOn(window, "removeEventListener"); const h = await renderController();
+    act(() => h.current().updateManualWorkspace((w) => ({ ...w, project: { ...w.project, title: "manual" } })));
+    act(() => h.current().undo()); act(() => h.current().updateManualWorkspace((w) => w));
+    expect(h.current().canRedo).toBe(true);
+    await act(async () => h.root.unmount()); roots.splice(roots.indexOf(h.root), 1);
+    expect(remove).toHaveBeenCalledWith("keydown", expect.any(Function), { capture: true });
   });
 });
-
-type TestEntry = WorkspaceSnapshotEntry & { label: string };
-type HistoryTestInput = {
-  projectId: string;
-  workspace: MorphoWorkspace;
-  workspaceReady: boolean;
-  undoDetailNavigation?: () => boolean;
-  closeCanvasContextMenu?: () => void;
-  showNotice?: (message: string, durationMs?: number) => void;
-  initialLabel?: string;
-};
-
-function renameProject(workspace: MorphoWorkspace, title: string): MorphoWorkspace {
-  return { ...workspace, project: { ...workspace.project, title } };
-}
-
-function appendAiMessage(workspace: MorphoWorkspace, messageId: string): MorphoWorkspace {
-  return {
-    ...workspace,
-    ai: {
-      ...workspace.ai,
-      messages: [...workspace.ai.messages, { id: messageId, role: "assistant", body: "AI 结果", status: "done" }]
-    }
-  };
-}
-
-async function renderController(initialInput: HistoryTestInput) {
-  let currentInput = initialInput;
-  let currentLabel = initialInput.initialLabel ?? "current";
-  let controller: WorkspaceObjectHistoryController<TestEntry> | null = null;
-  let forceRender: Dispatch<SetStateAction<number>> | null = null;
-  const appliedEntries: TestEntry[] = [];
-  const notices: Array<{ message: string; durationMs: number }> = [];
-  let closedContextMenuCount = 0;
-  const container = document.createElement("div");
-  document.body.appendChild(container);
-  const root = createRoot(container);
-  roots.push(root);
-
+async function renderController() {
+  let workspace = createBlankWorkspace("a"), projectId = "a", ready = true;
+  let controller: WorkspaceObjectHistoryController | undefined;
+  let render: Dispatch<SetStateAction<number>> | undefined;
+  const notices: string[] = [];
   function Harness() {
-    const [, setRenderVersion] = useState(0);
-    forceRender = setRenderVersion;
-    const updateWorkspace = useCallback<Dispatch<SetStateAction<MorphoWorkspace>>>((action) => {
-      const nextWorkspace = typeof action === "function" ? action(currentInput.workspace) : action;
-      currentInput = { ...currentInput, workspace: nextWorkspace };
-      forceRender?.((version) => version + 1);
+    const [, setVersion] = useState(0); render = setVersion;
+    const commitWorkspace = useCallback(<T,>(transform: WorkspaceCommitTransform<T>): T => {
+      const result = transform(workspace); workspace = result.workspace; setVersion((v) => v + 1); return result.value;
     }, []);
-    const captureCurrent = useCallback((): TestEntry => ({ workspace: currentInput.workspace, label: currentLabel }), []);
-    const applyEntry = useCallback((entry: TestEntry) => {
-      appliedEntries.push(entry);
-      currentInput = { ...currentInput, workspace: entry.workspace };
-      currentLabel = entry.label;
-      forceRender?.((version) => version + 1);
-    }, []);
-    const undoDetailNavigation = currentInput.undoDetailNavigation ?? (() => false);
-    const closeCanvasContextMenu = currentInput.closeCanvasContextMenu ?? (() => {
-      closedContextMenuCount += 1;
-    });
-    const showNotice = currentInput.showNotice ?? ((message: string, durationMs = 1600) => {
-      notices.push({ message, durationMs });
-    });
-
-    controller = useWorkspaceObjectHistoryController({
-      projectId: currentInput.projectId,
-      workspace: currentInput.workspace,
-      workspaceReady: currentInput.workspaceReady,
-      captureCurrent,
-      applyEntry,
-      undoDetailNavigation,
-      closeCanvasContextMenu,
-      showNotice
-    });
+    controller = useWorkspaceObjectHistoryController({ projectId, workspace, workspaceReady: ready, commitWorkspace, closeCanvasContextMenu: () => undefined, showNotice: (m) => notices.push(m) });
     return null;
   }
-
+  const div = document.createElement("div"); document.body.appendChild(div); const root = createRoot(div); roots.push(root);
   await act(async () => root.render(createElement(Harness)));
-
-  return {
-    current: () => {
-      if (!controller) {
-        throw new Error("Controller has not rendered.");
-      }
-      return controller;
-    },
-    workspace: () => currentInput.workspace,
-    applied: () => appliedEntries,
-    notices: () => notices,
-    closedContextMenuCount: () => closedContextMenuCount,
-    setLabel: (label: string) => {
-      currentLabel = label;
-    },
-    setWorkspace: (workspace: MorphoWorkspace) => {
-      currentInput = { ...currentInput, workspace };
-      forceRender?.((version) => version + 1);
-    },
-    rerender: async (nextInput: HistoryTestInput) => {
-      currentInput = nextInput;
-      await act(async () => root.render(createElement(Harness)));
-    },
-    unmount: async () => {
-      await act(async () => root.unmount());
-    }
+  return { root, current: () => { if (!controller) throw new Error("not rendered"); return controller; }, workspace: () => workspace, notices,
+    independent: (transform: (w: MorphoWorkspace) => MorphoWorkspace) => { workspace = transform(workspace); render?.((v) => v + 1); },
+    switchProject: async (id: string, workspaceReady: boolean) => { projectId = id; workspace = createBlankWorkspace(id); ready = workspaceReady; await act(async () => root.render(createElement(Harness))); }
   };
 }

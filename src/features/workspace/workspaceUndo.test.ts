@@ -1,430 +1,276 @@
 import { describe, expect, it } from "vitest";
+import { createBlankWorkspace, createInitialWorkspace, hideObjects, restoreObject, deleteObjects, setConceptDirectionStatus, setKeyConclusionCategory, createKeyConclusion } from "@/domain/morpho/workspace";
+import { ensureStageRegions } from "@/domain/morpho/stageRegions";
+import { importTextObject } from "@/domain/morpho/imports";
+import { addObjectsToDeliverySection, createDeliveryPreparation, moveDeliveryReference, removeDeliveryReference, updateDeliveryReferenceEditorial, updateDeliverySection } from "@/domain/morpho/deliveryPreparation";
+import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
+import { buildSemanticPatchAuthorization } from "@/domain/morpho/conversationSemanticPatch";
+import { applyConversationSemanticPatch, setConversationSemanticEntryManualState } from "@/domain/morpho/projectContinuity";
+import { classifyDecisionRecords } from "@/domain/morpho/decisionRecords";
+import { validateCurrentMorphoWorkspace } from "@/domain/morpho/currentWorkspaceValidation";
+import { createEditableProjectBackupManifest, validateEditableProjectBackupManifest } from "@/domain/morpho/projectArchive";
+import { migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
+import type { MorphoWorkspace } from "@/domain/morpho/types";
+import { captureManualHistory, absorbCanvasMeasurements, createManualHistory, pushManualHistory, undoManualHistory, redoManualHistory, type ManualHistory, type ManualHistoryResult } from "./workspaceUndo";
 
-import { createInitialWorkspace, deleteObject } from "@/domain/morpho/workspace";
-import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
-import type { ArtifactProposal, OperationRecord, SourceCitation } from "@/domain/operations/types";
-import { popDetailNavigation, pushDetailNavigation } from "./workspaceNavigation";
-import {
-  SNAPSHOT_HISTORY_LIMIT,
-  createSnapshotHistory,
-  pushSnapshotHistoryEntry,
-  redoSnapshotHistory,
-  shouldBlockSnapshotUndo,
-  undoSnapshotHistory,
-  type SnapshotHistory
-} from "./workspaceUndo";
-
-type TestEntry = {
-  workspace: MorphoWorkspace;
-  label: string;
-};
-
-it("blocks an unrelated newly pointed-to Memory revision instead of treating every current pointer as derived", () => {
-  const before = createInitialWorkspace();
-  const current = structuredClone(before);
-  const originalId = current.projectMemory.documents.projectOverview.currentRevisionId!;
-  const original = current.projectMemory.revisions[originalId]!;
-  current.projectMemory.revisions["unrelated-projection"] = { ...original, id: "unrelated-projection", previousRevisionId: originalId, sections: [{ key: "unrelated", title: "独立内容", items: ["不能随人工撤销丢失"] }] };
-  current.projectMemory.documents.projectOverview.currentRevisionId = "unrelated-projection";
-  expect(shouldBlockSnapshotUndo(before, current)).toBe(true);
-});
-
-function renameProject(workspace: MorphoWorkspace, title: string): MorphoWorkspace {
-  return {
-    ...workspace,
-    project: {
-      ...workspace.project,
-      title
-    }
-  };
+function history(before: MorphoWorkspace, after: MorphoWorkspace, label = "test"): ManualHistory {
+  return pushManualHistory(createManualHistory(), captureManualHistory(label, before, after));
+}
+function restored(result: ManualHistoryResult) {
+  expect(result.status, result.status === "blocked" ? result.conflicts.join(", ") : undefined).toBe("restored");
+  if (result.status !== "restored") throw new Error(JSON.stringify(result));
+  return result;
+}
+function safe(workspace: MorphoWorkspace) {
+  expect(validateCurrentMorphoWorkspace(workspace)).toMatchObject({ status: "ok" });
+  const migrated = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(workspace)));
+  expect(migrated.status).toBe("ok");
+  if (migrated.status !== "ok") throw new Error(migrated.reason);
+  expect(migrated.didMigrate).toBe(false);
+  expect(validateCurrentMorphoWorkspace(migrated.workspace).status).toBe("ok");
+  const backup = createEditableProjectBackupManifest(workspace);
+  expect(backup.status).toBe("ok");
+  if (backup.status === "ok") expect(validateEditableProjectBackupManifest(JSON.parse(JSON.stringify(backup.manifest))).status).toBe("ok");
+}
+function independent(workspace: MorphoWorkspace) {
+  const ai = importTextObject(workspace, { text: "B independent AI result", position: { x: 900, y: 100 } });
+  const id = ai.objectIds[0];
+  return { ...ai.workspace, objects: { ...ai.workspace.objects, [id]: { ...ai.workspace.objects[id], createdBy: "ai" as const } }, ai: { ...ai.workspace.ai, messages: [...ai.workspace.ai.messages, { id: "ai-later", role: "assistant" as const, body: "independent result", status: "done" as const }] } };
+}
+function roundTrip(before: MorphoWorkspace, after: MorphoWorkspace, current = after) {
+  const undo = restored(undoManualHistory(history(before, after), current)); safe(undo.workspace);
+  const redo = restored(redoManualHistory(undo.history, undo.workspace)); safe(redo.workspace);
+  return { undo, redo };
 }
 
-function appendAiMessage(workspace: MorphoWorkspace, messageId: string): MorphoWorkspace {
-  return {
-    ...workspace,
-    ai: {
-      ...workspace.ai,
-      messages: [
-        ...workspace.ai.messages,
-        {
-          id: messageId,
-          role: "assistant",
-          body: "AI 已生成新的分析。",
-          status: "done"
-        }
-      ]
-    }
-  };
-}
-
-function historyWith(entries: TestEntry[]): SnapshotHistory<TestEntry> {
-  return entries.reduce(
-    (history, entry) => pushSnapshotHistoryEntry(history, entry),
-    createSnapshotHistory<TestEntry>()
-  );
-}
-
-describe("workspace object-operation undo history", () => {
-  it.each(["body", "status", "trace"])("blocks same-ID AI message %s changes and retains history", (field) => {
-    const before = appendAiMessage(createInitialWorkspace(), "p1a-existing-message");
-    const current: MorphoWorkspace = { ...before, ai: { ...before.ai, messages: before.ai.messages.map((message) => {
-      if (message.id !== "p1a-existing-message") return message;
-      if (field === "body") return { ...message, body: "后来独立生成的完整回复" };
-      if (field === "status") return { ...message, status: "failed" };
-      return { ...message, agentTrace: { startedAt: "2026-09-30T00:00:00.000Z", parts: [], status: "done" } };
-    }) } };
-    const history = historyWith([{ workspace: before, label: "before" }]);
-    const blocked = undoSnapshotHistory(history, current, () => ({ workspace: current, label: "current" }));
-    expect(blocked).toEqual({ status: "blocked", history });
-    expect(undoSnapshotHistory(history, current, () => ({ workspace: current, label: "current" }))).toEqual(blocked);
+describe("operation-owned manual history", () => {
+  it("records no workspace snapshots or navigation/runtime-only changes", () => {
+    const w = createBlankWorkspace("history");
+    expect(captureManualHistory("navigation", w, { ...w, canvas: { ...w.canvas, view: { x: 100, y: 200, zoom: 2 } }, ui: { ...w.ui, lastSelectionIds: [] }, ai: { ...w.ai, messages: [{ id: "ai", role: "assistant", body: "later" }] } })).toBeNull();
+    const entry = captureManualHistory("rename", w, { ...w, project: { ...w.project, title: "Y" } });
+    expect(entry).not.toHaveProperty("workspace");
+    expect(JSON.stringify(entry)).not.toContain("conversationCompaction");
   });
-
-  it("blocks mutations to existing operation, proposal and citation IDs", () => {
-    const base = createInitialWorkspace();
-    const operation = createAiOperation(base.project.id);
-    const proposal = createAiProposal(operation.id);
-    const citation = createAiCitation(operation.id);
-    const before: MorphoWorkspace = {
-      ...base, operations: { [operation.id]: operation }, artifactProposals: { [proposal.id]: proposal }, citationSnapshots: { [citation.id]: citation }
-    };
-    const cases: MorphoWorkspace[] = [
-      { ...before, operations: { [operation.id]: { ...operation, status: "failed", updatedAt: "2026-09-30T00:00:00.000Z" } } },
-      { ...before, artifactProposals: { [proposal.id]: { ...proposal, summary: "Later AI artifact" } } },
-      { ...before, citationSnapshots: { [citation.id]: { ...citation, snippet: "Later citation content" } } }
-    ];
-    const history = historyWith([{ workspace: before, label: "before" }]);
-    for (const current of cases) {
-      expect(undoSnapshotHistory(history, current, () => ({ workspace: current, label: "current" }))).toEqual({ status: "blocked", history });
-    }
-  });
-
-  it("protects appended revisions and Decision/history plus same-ID history changes", () => {
+  it.each(["image-soft-rail-v2", "research-night-travel", "direction-soft-rail"])("hide/restore %s preserves later AI object, messages, assets and authority history", (id) => {
     const before = createInitialWorkspace();
-    const revision = Object.values(before.directionRevisions)[0]!;
-    const decision = before.decisionRecords[0]!;
-    const cases: MorphoWorkspace[] = [
-      { ...before, directionRevisions: { ...before.directionRevisions, [revision.id]: { ...revision, summary: "Later revision content" } } },
-      { ...before, directionRevisions: { ...before.directionRevisions, "p1a-new-revision": { ...revision, id: "p1a-new-revision" } } },
-      { ...before, decisionRecords: [...before.decisionRecords, { ...decision, id: "p1a-new-decision" }] },
-      { ...before, decisionRecords: before.decisionRecords.map((record) => record.id === decision.id ? { ...record, reason: "Later reason" } : record) }
-    ];
-    for (const current of cases) expect(shouldBlockSnapshotUndo(before, current)).toBe(true);
-  });
-
-  it("blocks existing-file asynchronous parse results without blocking ordinary title edits", () => {
-    const before = createInitialWorkspace();
-    const file = before.objects["file-course-brief"];
-    if (file.type !== "file") throw new Error("Expected file.");
-    const current: MorphoWorkspace = { ...before, objects: { ...before.objects, [file.id]: { ...file, parseStatus: "parsed", extractedCharCount: 123 } } };
-    expect(shouldBlockSnapshotUndo(before, current)).toBe(true);
-    expect(shouldBlockSnapshotUndo(before, { ...before, objects: { ...before.objects, [file.id]: { ...file, parsedAt: "2026-09-30T00:00:00.000Z" } } })).toBe(true);
-    expect(shouldBlockSnapshotUndo(before, { ...before, objects: { ...before.objects, [file.id]: { ...file, title: "手动标题" } } })).toBe(false);
-  });
-
-  it("allows delete → Undo → Redo using the restore baseline, then blocks an independent same-ID update", () => {
-    const before = createInitialWorkspace();
-    const deletion = deleteObject(before, "image-night-scenario", { confirmed: true });
-    if (deletion.status !== "updated") throw new Error("Expected deletion.");
-    const after = deletion.workspace;
-    const undone = undoSnapshotHistory(historyWith([{ workspace: before, label: "before" }]), after, () => ({ workspace: after, label: "after" }));
-    if (undone.status !== "restored") throw new Error("Expected safe Undo.");
-    const redo = redoSnapshotHistory(undone.history, undone.entry.workspace, () => ({ workspace: undone.entry.workspace, label: "before" }));
-    expect(redo.status).toBe("restored");
-    if (redo.status !== "restored") throw new Error("Expected safe Redo.");
-    expect(redo.entry.workspace.objects["image-night-scenario"]).toBeUndefined();
-    expect(undoSnapshotHistory(redo.history, redo.entry.workspace, () => ({ workspace: redo.entry.workspace, label: "after" })).status).toBe("restored");
-    const changed = { ...undone.entry.workspace, ai: { ...before.ai, messages: before.ai.messages.map((message, index) => index === 0 ? { ...message, body: `${message.body} later` } : message) } };
-    expect(redoSnapshotHistory(undone.history, changed, () => ({ workspace: changed, label: "changed" }))).toEqual({ status: "blocked", history: undone.history });
-  });
-  it("restores the latest manual snapshot and moves the current state onto the redo stack", () => {
-    const before = createInitialWorkspace();
-    const after = renameProject(before, "手动改名后的项目");
-    const history = historyWith([{ workspace: before, label: "before" }]);
-
-    const result = undoSnapshotHistory(history, after, () => ({ workspace: after, label: "after" }));
-
-    expect(result.status).toBe("restored");
-    if (result.status !== "restored") {
-      throw new Error("Expected the manual snapshot to restore.");
+    // Seed names are explicit domain fixtures, not browser mock state.
+    const target = before.objects[id] ? id : Object.values(before.objects).find((o) => o.type === "research")!.id;
+    const after = hideObjects(before, [target]); const current = independent(after);
+    const aiIds = Object.keys(current.objects).filter((objectId) => !before.objects[objectId]);
+    const { undo, redo } = roundTrip(before, after, current);
+    expect(undo.workspace.objects[target].visibility).toBe("active"); expect(redo.workspace.objects[target].visibility).toBe("hidden");
+    for (const w of [undo.workspace, redo.workspace]) {
+      expect(w.ai).toEqual(current.ai); expect(w.assets).toEqual(current.assets);
+      for (const aiId of aiIds) expect(w.objects[aiId]).toEqual(current.objects[aiId]);
+      expect(w.decisionRecords.slice(0, current.decisionRecords.length)).toEqual(current.decisionRecords);
     }
-    expect(result.entry.label).toBe("before");
-    expect(result.history.undo).toHaveLength(0);
-    expect(result.history.redo.map((entry) => entry.label)).toEqual(["after"]);
+    const restoredObject = restoreObject(redo.workspace, target);
+    const second = roundTrip(redo.workspace, restoredObject);
+    expect(second.undo.workspace.objects[target].visibility).toBe("hidden"); expect(second.redo.workspace.objects[target].visibility).toBe("active");
   });
-
-  it("keeps a protected snapshot on the stack instead of consuming it after an AI turn", () => {
-    const before = createInitialWorkspace();
-    const withAiContent = appendAiMessage(before, "ai-message-new");
-    const history = historyWith([{ workspace: before, label: "before-ai" }]);
-
-    const result = undoSnapshotHistory(history, withAiContent, () => ({
-      workspace: withAiContent,
-      label: "current"
-    }));
-
-    expect(result.status).toBe("blocked");
-    if (result.status !== "blocked") {
-      throw new Error("Expected the snapshot to be blocked.");
-    }
-    expect(result.history.undo.map((entry) => entry.label)).toEqual(["before-ai"]);
-    expect(result.history.redo).toHaveLength(0);
-  });
-
-  it("does not burn history when undo is pressed repeatedly against a protected snapshot", () => {
-    const before = createInitialWorkspace();
-    const withAiContent = appendAiMessage(before, "ai-message-new");
-    let history = historyWith([
-      { workspace: before, label: "older" },
-      { workspace: before, label: "newer" }
-    ]);
-
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      const result = undoSnapshotHistory(history, withAiContent, () => ({
-        workspace: withAiContent,
-        label: "current"
-      }));
-      expect(result.status).toBe("blocked");
-      if (result.status !== "blocked") {
-        throw new Error("Expected the snapshot to stay blocked.");
-      }
-      history = result.history;
-    }
-
-    expect(history.undo.map((entry) => entry.label)).toEqual(["older", "newer"]);
-    expect(history.redo).toHaveLength(0);
-  });
-
-  it("redoes a restored snapshot symmetrically", () => {
-    const before = createInitialWorkspace();
-    const after = renameProject(before, "手动改名后的项目");
-    const history = historyWith([{ workspace: before, label: "before" }]);
-
-    const undone = undoSnapshotHistory(history, after, () => ({ workspace: after, label: "after" }));
-    if (undone.status !== "restored") {
-      throw new Error("Expected the manual snapshot to restore.");
-    }
-
-    const redone = redoSnapshotHistory(undone.history, undone.entry.workspace, () => ({
-      workspace: undone.entry.workspace,
-      label: "before"
-    }));
-
-    expect(redone.status).toBe("restored");
-    if (redone.status !== "restored") {
-      throw new Error("Expected the redo snapshot to restore.");
-    }
-    expect(redone.entry.label).toBe("after");
-    expect(redone.history.undo.map((entry) => entry.label)).toEqual(["before"]);
-    expect(redone.history.redo).toHaveLength(0);
-  });
-
-  it("blocks redo without consuming it when new content appeared after the undo", () => {
-    const before = createInitialWorkspace();
-    const after = renameProject(before, "手动改名后的项目");
-    const history = historyWith([{ workspace: before, label: "before" }]);
-
-    const undone = undoSnapshotHistory(history, after, () => ({ workspace: after, label: "after" }));
-    if (undone.status !== "restored") {
-      throw new Error("Expected the manual snapshot to restore.");
-    }
-
-    const withAiContent = appendAiMessage(undone.entry.workspace, "ai-message-after-undo");
-    const redone = redoSnapshotHistory(undone.history, withAiContent, () => ({
-      workspace: withAiContent,
-      label: "current"
-    }));
-
-    expect(redone.status).toBe("blocked");
-    if (redone.status !== "blocked") {
-      throw new Error("Expected the redo snapshot to be blocked.");
-    }
-    expect(redone.history.redo.map((entry) => entry.label)).toEqual(["after"]);
-  });
-
-  it("clears the redo stack when a new explicit operation starts a fresh forward path", () => {
-    const before = createInitialWorkspace();
-    const after = renameProject(before, "手动改名后的项目");
-    const history = historyWith([{ workspace: before, label: "before" }]);
-
-    const undone = undoSnapshotHistory(history, after, () => ({ workspace: after, label: "after" }));
-    if (undone.status !== "restored") {
-      throw new Error("Expected the manual snapshot to restore.");
-    }
-    expect(undone.history.redo).toHaveLength(1);
-
-    const next = pushSnapshotHistoryEntry(undone.history, {
-      workspace: undone.entry.workspace,
-      label: "new-operation"
+  it("preserves a later generated image, bytes identity, metadata, messages and same-ID runtime changes", () => {
+    const before = createInitialWorkspace(), after = hideObjects(before, ["direction-soft-rail"]);
+    const generated = createGeneratedImageFromAsset(after, {
+      asset: { id: "p6h-ai-asset", fileName: "B.png", mimeType: "image/png", size: 42, createdAt: "2026-10-03T00:00:00Z", storageKey: "B-bytes", sourceType: "aiGeneratedImage" },
+      generation: { modelId: "gpt-image-2", modelLabel: "GPT Image 2", prompt: "independent B", aspectRatio: "1:1", createdAt: "2026-10-03T00:00:00Z", referenceObjectIds: [] }, sourceObjectIds: [], position: { x: 1000, y: 100 }
     });
-
-    expect(next.redo).toHaveLength(0);
-    expect(next.undo.map((entry) => entry.label)).toEqual(["new-operation"]);
-  });
-
-  it("caps the undo stack at the history limit", () => {
-    const base = createInitialWorkspace();
-    let history = createSnapshotHistory<TestEntry>();
-    for (let index = 0; index < SNAPSHOT_HISTORY_LIMIT + 5; index += 1) {
-      history = pushSnapshotHistoryEntry(history, { workspace: base, label: `entry-${index}` });
-    }
-
-    expect(history.undo).toHaveLength(SNAPSHOT_HISTORY_LIMIT);
-    expect(history.undo[0].label).toBe("entry-5");
-  });
-
-  it("keeps detail-navigation undo and object-operation undo independent", () => {
-    const before = createInitialWorkspace();
-    const after = renameProject(before, "手动改名后的项目");
-    const objectHistory = historyWith([{ workspace: before, label: "object-op" }]);
-    const detailHistory = pushDetailNavigation([], {
-      view: { x: 100, y: 200, zoom: 0.8 },
-      selectedObjectIds: ["image-soft-rail-v2"]
-    });
-
-    // Detail navigation restores without touching the object-operation stack.
-    const detailRestored = popDetailNavigation(detailHistory);
-    expect(detailRestored?.snapshot.selectedObjectIds).toEqual(["image-soft-rail-v2"]);
-    expect(objectHistory.undo).toHaveLength(1);
-
-    // Object-operation undo restores without touching the detail-navigation stack.
-    const result = undoSnapshotHistory(objectHistory, after, () => ({ workspace: after, label: "after" }));
-    expect(result.status).toBe("restored");
-    expect(detailHistory).toHaveLength(1);
-  });
-
-  it("blocks snapshot undo when project content was created after the snapshot", () => {
-    const snapshot = createInitialWorkspace();
-    const current = {
-      ...snapshot,
-      objects: {
-        ...snapshot.objects,
-        "research-generated": {
-          id: "research-generated",
-          type: "research" as const,
-          title: "Generated research",
-          summary: "AI generated research card",
-          createdBy: "ai" as const,
-          visibility: "active" as const,
-          findings: ["发现：一句说明"],
-          opportunities: [],
-          constraints: [],
-          openQuestions: [],
-          evidence: []
-        }
-      },
-      canvas: {
-        ...snapshot.canvas,
-        instances: [
-          ...snapshot.canvas.instances,
-          {
-            id: "canvas-research-generated",
-            objectId: "research-generated",
-            position: { x: 100, y: 100 },
-            size: { w: 320, h: 180 }
-          }
-        ]
-      }
-    };
-
-    expect(shouldBlockSnapshotUndo(snapshot, current)).toBe(true);
-  });
-
-  it("blocks snapshot undo for each AI-created record collection", () => {
-    const snapshot = createInitialWorkspace();
-    const asset = createAiAsset();
-    const operation = createAiOperation(snapshot.project.id);
-    const proposal = createAiProposal(operation.id);
-    const citation = createAiCitation(operation.id);
-    const cases: Array<[string, MorphoWorkspace]> = [
-      ["asset", { ...snapshot, assets: { ...snapshot.assets, [asset.id]: asset } }],
-      ["operation", { ...snapshot, operations: { ...snapshot.operations, [operation.id]: operation } }],
-      ["artifact proposal", { ...snapshot, artifactProposals: { ...snapshot.artifactProposals, [proposal.id]: proposal } }],
-      ["citation snapshot", { ...snapshot, citationSnapshots: { ...snapshot.citationSnapshots, [citation.id]: citation } }]
-    ];
-
-    for (const [label, current] of cases) {
-      expect(shouldBlockSnapshotUndo(snapshot, current), label).toBe(true);
+    const current = independent(generated.workspace), { undo, redo } = roundTrip(before, after, current);
+    for (const w of [undo.workspace, redo.workspace]) {
+      expect(w.objects[generated.createdObjectId]).toEqual(current.objects[generated.createdObjectId]);
+      expect(w.assets).toEqual(current.assets); expect(w.ai).toEqual(current.ai); expect(w.operations).toEqual(current.operations);
     }
   });
-
-  it("allows snapshot undo when no project content was created after the snapshot", () => {
-    const snapshot = createInitialWorkspace();
-    const current = {
-      ...snapshot,
-      objects: {
-        ...snapshot.objects,
-        "image-soft-rail-v2": {
-          ...snapshot.objects["image-soft-rail-v2"],
-          visibility: "hidden" as const
-        }
-      }
-    };
-
-    expect(shouldBlockSnapshotUndo(snapshot, current)).toBe(false);
+  it("semantic manual lifecycle uses P1B user-action evidence and retains guards through chronological undo/redo", () => {
+    const quote = "我偏好简洁的结构";
+    const blank = createBlankWorkspace("semantic-history"), withMessage = { ...blank, ai: { ...blank.ai, messages: [{ id: "user", role: "user" as const, body: quote, createdAt: "2026-10-03T00:00:00Z" }] } };
+    const authorization = buildSemanticPatchAuthorization({ taskMode: "chatAnalysis", draft: quote, userMessageId: "user", userMessageCreatedAt: "2026-10-03T00:00:00Z", currentFocusArea: "research", objectIds: [], revisionIds: [], decisionIds: [] });
+    const created = applyConversationSemanticPatch(withMessage, authorization, [{ kind: "preference", scope: "project", evidenceQuote: quote, relatedObjectIds: [], relatedRevisionIds: [], relatedDecisionIds: [] }]);
+    const before = created.workspace, id = created.entries[0].id, after = setConversationSemanticEntryManualState(before, id, "withdrawn");
+    const { undo, redo } = roundTrip(before, after, after);
+    expect(undo.workspace.projectContinuity.recordEntries.find((r) => r.id === id)).toMatchObject({ manualState: "active", lifecycleEvidence: { action: "restore", origin: "userAction" } });
+    expect(redo.workspace.projectContinuity.recordEntries.find((r) => r.id === id)).toMatchObject({ manualState: "withdrawn", lifecycleEvidence: { action: "retract", origin: "userAction" } });
+    const third = { ...after, projectContinuity: { ...after.projectContinuity, recordEntries: after.projectContinuity.recordEntries.map((r) => r.id === id ? { ...r, supersededByEntryId: "later-authority" } : r) } };
+    expect(undoManualHistory(history(before, after), third).status).toBe("blocked");
+  });
+  it("allows unrelated edits on the same object, but detects owned field and incarnation conflicts atomically", () => {
+    const before = createInitialWorkspace(); const id = "direction-soft-rail"; const after = hideObjects(before, [id]);
+    const renamed = { ...after, objects: { ...after.objects, [id]: { ...after.objects[id], title: "independent rename" } } };
+    const undone = restored(undoManualHistory(history(before, after), renamed)); expect(undone.workspace.objects[id].title).toBe("independent rename");
+    for (const current of [restoreObject(after, id), { ...after, objects: { ...after.objects, [id]: { ...after.objects[id], incarnationId: "recreated" } } }]) {
+      const stack = history(before, after), json = JSON.stringify(current);
+      const blocked = undoManualHistory(stack, current); expect(blocked).toMatchObject({ status: "blocked", history: stack });
+      expect(JSON.stringify(current)).toBe(json); expect(undoManualHistory(stack, current)).toEqual(blocked);
+    }
+  });
+  it("blocks redo after an independent same-field edit and keeps its entry", () => {
+    const before = createInitialWorkspace(), after = hideObjects(before, ["direction-soft-rail"]);
+    const undo = restored(undoManualHistory(history(before, after), after));
+    const third = hideObjects(undo.workspace, ["direction-soft-rail"]);
+    expect(redoManualHistory(undo.history, third)).toMatchObject({ status: "blocked", history: undo.history });
+  });
+  it("creates/removes only the manual result, preserving logical identity across repeat undo/redo and independent objects", () => {
+    const before = createBlankWorkspace("create"), created = importTextObject(before, { text: "manual A", position: { x: 10, y: 20 } });
+    const id = created.objectIds[0], current = independent(created.workspace);
+    const { undo, redo } = roundTrip(before, created.workspace, current);
+    expect(undo.workspace.objects[id]).toBeUndefined(); expect(redo.workspace.objects[id]).toEqual(created.workspace.objects[id]);
+    expect(redo.workspace.canvas.instances.find((i) => i.objectId === id)).toEqual(created.workspace.canvas.instances.find((i) => i.objectId === id));
+    expect(redo.workspace.ai).toEqual(current.ai);
+    const again = restored(undoManualHistory(redo.history, redo.workspace)); expect(again.workspace.objects[id]).toBeUndefined();
+  });
+  it.each(["direction-soft-rail", "image-soft-rail-v2"])("delete/restore %s preserves relationships, old revisions and later history", (id) => {
+    const before = createInitialWorkspace(), after = deleteObjects(before, [id], { confirmed: true, reason: "manual delete" }).workspace;
+    const current = independent(after), json = JSON.stringify(current);
+    const { undo, redo } = roundTrip(before, after, current);
+    expect(undo.workspace.objects[id]).toEqual(before.objects[id]); expect(redo.workspace.objects[id]).toBeUndefined();
+    for (const relation of before.relations.filter((r) => r.fromObjectId === id || r.toObjectId === id)) expect(undo.workspace.relations).toContainEqual(relation);
+    expect(Object.keys(undo.workspace.directionRevisions)).toEqual(Object.keys(current.directionRevisions));
+    expect(undo.workspace.ai).toEqual(current.ai); expect(redo.workspace.ai).toEqual(current.ai);
+    expect(JSON.stringify(current)).toBe(json);
+  });
+  it("renderer auto-grow completes owned creation size; manual resize and changed object content still conflict", () => {
+    const before = ensureStageRegions(createBlankWorkspace("measurement")), created = importTextObject(before, { text: "A", position: { x: 0, y: 0 } }), after = ensureStageRegions(created.workspace);
+    const id = created.objectIds[0], measured = { ...after, canvas: { ...after.canvas, instances: after.canvas.instances.map((i) => i.objectId === id ? { ...i, size: { ...i.size, h: i.size.h + 100 } } : i) } };
+    const stack = history(before, after);
+    expect(undoManualHistory(stack, measured).status).toBe("blocked");
+    const completed = absorbCanvasMeasurements(stack, after, measured), undo = restored(undoManualHistory(completed, measured)), redo = restored(redoManualHistory(undo.history, undo.workspace));
+    expect(redo.workspace.canvas.instances).toEqual(measured.canvas.instances);
+    const changedObject = { ...after, objects: { ...after.objects, [id]: { ...after.objects[id], title: "independently changed" } } };
+    expect(undoManualHistory(absorbCanvasMeasurements(stack, changedObject, { ...measured, objects: changedObject.objects }), { ...measured, objects: changedObject.objects }).status).toBe("blocked");
+  });
+  it("layout history binds the instance to its original object and incarnation", () => {
+    const before = createInitialWorkspace(), instance = before.canvas.instances[0], after = { ...before, canvas: { ...before.canvas, instances: before.canvas.instances.map((i) => i.id === instance.id ? { ...i, position: { ...i.position, x: i.position.x + 50 } } : i) } };
+    const stack = history(before, after);
+    const other = Object.keys(before.objects).find((id) => id !== instance.objectId)!;
+    const retargeted = { ...after, canvas: { ...after.canvas, instances: after.canvas.instances.map((i) => i.id === instance.id ? { ...i, objectId: other } : i) } };
+    expect(undoManualHistory(stack, retargeted).status).toBe("blocked");
+    const recreated = { ...after, objects: { ...after.objects, [instance.objectId]: { ...after.objects[instance.objectId], incarnationId: "new-instance-owner" } } };
+    expect(undoManualHistory(stack, recreated).status).toBe("blocked");
+  });
+  it("a Region/member layout commit is one atomic delta and retains both parts on conflict", () => {
+    const before = ensureStageRegions(createInitialWorkspace()), instance = before.canvas.instances[0], region = before.canvas.stageRegions![0];
+    const after = { ...before, canvas: { ...before.canvas,
+      instances: before.canvas.instances.map((i) => i.id === instance.id ? { ...i, position: { ...i.position, x: i.position.x + 30 } } : i),
+      stageRegions: before.canvas.stageRegions!.map((r) => r.id === region.id ? { ...r, x: r.x + 30 } : r)
+    } };
+    const { undo, redo } = roundTrip(before, after);
+    expect(undo.workspace.canvas.instances).toEqual(before.canvas.instances);
+    expect(undo.workspace.canvas.stageRegions).toEqual(before.canvas.stageRegions);
+    expect(redo.workspace.canvas.instances).toEqual(after.canvas.instances);
+    const current = { ...after, canvas: { ...after.canvas, stageRegions: after.canvas.stageRegions.map((r) => r.id === region.id ? { ...r, x: r.x + 1 } : r) } }, stack = history(before, after);
+    expect(undoManualHistory(stack, current)).toMatchObject({ status: "blocked", history: stack });
+    expect(current.canvas.instances).toEqual(after.canvas.instances);
+  });
+  it("Undo creation prunes its live selection ref while preserving current navigation", () => {
+    const before = ensureStageRegions(createBlankWorkspace("created-selection"));
+    const created = importTextObject(before, { text: "A", position: { x: 0, y: 0 } }), after = ensureStageRegions(created.workspace);
+    const current = { ...after, canvas: { ...after.canvas, view: { x: 90, y: 70, zoom: 2 } } };
+    const { undo, redo } = roundTrip(before, after, current);
+    expect(undo.workspace.ui.lastSelectionIds).toEqual([]); expect(redo.workspace.canvas.view).toEqual(current.canvas.view);
+    expect(redo.workspace.objects[created.objectIds[0]]).toEqual(after.objects[created.objectIds[0]]);
+  });
+  it("creation owns required Stage membership and retains an independently populated region", () => {
+    const before = ensureStageRegions(createBlankWorkspace("stage-members")), created = importTextObject(before, { text: "manual A", position: { x: 0, y: 0 } });
+    const after = ensureStageRegions(created.workspace), later = importTextObject(after, { text: "independent B", position: { x: 600, y: 0 } }), current = ensureStageRegions(later.workspace);
+    const { undo, redo } = roundTrip(before, after, current);
+    expect(undo.workspace.canvas.stageRegions?.some((r) => r.memberObjectIds.includes(created.objectIds[0]))).toBe(false);
+    expect(redo.workspace.canvas.stageRegions?.some((r) => r.memberObjectIds.includes(created.objectIds[0]))).toBe(true);
+    for (const w of [undo.workspace, redo.workspace]) expect(w.canvas.stageRegions?.find((r) => r.memberObjectIds.includes(later.objectIds[0]))?.isActivated).toBe(true);
+  });
+  it("does not remove an independent dependent instance when undoing creation", () => {
+    const before = createBlankWorkspace("create"), created = importTextObject(before, { text: "A", position: { x: 0, y: 0 } });
+    const current = { ...created.workspace, canvas: { ...created.workspace.canvas, instances: [...created.workspace.canvas.instances, { ...created.workspace.canvas.instances[0], id: "independent-instance" }] } };
+    expect(undoManualHistory(history(before, created.workspace), current).status).toBe("blocked");
+  });
+  it("status Undo/Redo preserves Decision history with compensating identity-bound effects and projections", () => {
+    const before = createInitialWorkspace(), id = "direction-soft-rail";
+    const after = setConceptDirectionStatus(before, id, "eliminated", "manual eliminate");
+    const { undo, redo } = roundTrip(before, after, independent(after));
+    expect(undo.workspace.objects[id]).toMatchObject({ status: "primary" }); expect(redo.workspace.objects[id]).toMatchObject({ status: "eliminated" });
+    expect(undo.workspace.workingState.primaryDirectionId).toBe(id);
+    expect(undo.workspace.directionRevisions).toEqual(after.directionRevisions);
+    expect(undo.workspace.decisionRecords.slice(0, after.decisionRecords.length)).toEqual(after.decisionRecords);
+    expect(classifyDecisionRecords(undo.workspace).filter((r) => r.state === "current" && r.record.effect?.kind === "setDirectionStatus").at(-1)?.record.effect).toMatchObject({ status: "primary", targetIncarnationId: before.objects[id].incarnationId });
+    expect(classifyDecisionRecords(redo.workspace).filter((r) => r.state === "current" && r.record.effect?.kind === "setDirectionStatus").at(-1)?.record.effect).toMatchObject({ status: "eliminated" });
+  });
+  it("detects an independent primary slot owner and changed immutable revision payload before reconciliation", () => {
+    const before = createInitialWorkspace(), after = setConceptDirectionStatus(before, "direction-soft-rail", "eliminated", "manual");
+    const other = Object.values(after.objects).find((o) => o.type === "conceptDirection" && o.id !== "direction-soft-rail")!;
+    const current = setConceptDirectionStatus(after, other.id, "primary", "independent");
+    expect(undoManualHistory(history(before, after), current)).toMatchObject({ status: "blocked", conflicts: ["primaryDirection"] });
+    const direction = after.objects["direction-soft-rail"]; if (direction.type !== "conceptDirection") throw new Error("direction");
+    const revision = after.directionRevisions[direction.currentRevisionId];
+    const changed = { ...after, directionRevisions: { ...after.directionRevisions, [revision.id]: { ...revision, summary: "independent edit" } } };
+    expect(undoManualHistory(history(before, after), changed).status).toBe("blocked");
+  });
+  it("Research-owned key conclusion creation/category edits are symmetric without rerunning the source", () => {
+    const before = createInitialWorkspace(), sourceId = Object.values(before.objects).find((o) => o.type === "research")!.id;
+    const created = createKeyConclusion(before, { title: "manual retained", body: "candidate claim", sourceObjectIds: [sourceId], category: "finding", confidence: "needsVerification", position: { x: 0, y: 0 } });
+    const id = created.keyConclusion.id, { undo, redo } = roundTrip(before, created.workspace, independent(created.workspace));
+    expect(undo.workspace.objects[id]).toBeUndefined(); expect(redo.workspace.objects[id]).toEqual(created.workspace.objects[id]);
+    const changed = setKeyConclusionCategory(redo.workspace, id, "constraint");
+    if (changed.status !== "updated") throw new Error(changed.reason);
+    const category = roundTrip(redo.workspace, changed.workspace);
+    expect(category.undo.workspace.objects[id]).toMatchObject({ category: "finding" }); expect(category.redo.workspace.objects[id]).toMatchObject({ category: "constraint" });
+  });
+  it("multiple manual mutations undo and redo in chronological order across independent AI writes", () => {
+    const a = createBlankWorkspace("order"), b = { ...a, project: { ...a.project, title: "B" } }, c = { ...b, project: { ...b.project, title: "C" } };
+    const stack = pushManualHistory(history(a, b), captureManualHistory("second", b, c));
+    const u1 = restored(undoManualHistory(stack, independent(c))), u2 = restored(undoManualHistory(u1.history, u1.workspace));
+    expect(u2.workspace.project.title).toBe(a.project.title);
+    const r1 = restored(redoManualHistory(u2.history, u2.workspace)), r2 = restored(redoManualHistory(r1.history, r1.workspace));
+    expect(r2.workspace.project.title).toBe("C"); expect(r2.workspace.ai).toEqual(u2.workspace.ai);
   });
 });
 
-function createAiAsset(): AssetRecord {
-  return {
-    id: "asset-ai-result",
-    fileName: "ai-result.png",
-    mimeType: "image/png",
-    size: 1,
-    createdAt: "2026-08-07T00:00:00.000Z",
-    storageKey: "asset-ai-result",
-    sourceType: "aiGeneratedImage"
-  };
-}
-
-function createAiOperation(projectId: string): OperationRecord {
-  return {
-    id: "operation-ai-result",
-    type: "research",
-    projectId,
-    createdAt: "2026-08-07T00:00:00.000Z",
-    updatedAt: "2026-08-07T00:00:00.000Z",
-    status: "succeeded",
-    userInput: "AI research",
-    inputSnapshot: {
-      userInput: "AI research",
-      selectedObjectIds: [],
-      sourceSnapshots: [],
-      objectSnapshots: []
-    },
-    allowedCapabilities: { webSearch: false, imagePixels: false },
-    steps: [],
-    events: [],
-    sourceIds: [],
-    proposalIds: [],
-    retryable: false
-  };
-}
-
-function createAiProposal(operationId: string): ArtifactProposal {
-  return {
-    id: "proposal-ai-result",
-    type: "researchAnalysis",
-    operationId,
-    status: "pending",
-    sourceSnapshots: [],
-    sourceObjectIds: [],
-    citationIds: [],
-    createdAt: "2026-08-07T00:00:00.000Z",
-    title: "AI research proposal",
-    summary: "AI result",
-    findings: [],
-    opportunities: [],
-    constraints: [],
-    openQuestions: [],
-    evidence: []
-  };
-}
-
-function createAiCitation(operationId: string): SourceCitation {
-  return {
-    id: "citation-ai-result",
-    operationId,
-    title: "AI source",
-    retrievedAt: "2026-08-07T00:00:00.000Z"
-  };
-}
+describe("Delivery manual history", () => {
+  function deliveryFixture() {
+    const result = createDeliveryPreparation(createInitialWorkspace(), { title: "manual delivery", format: "board", position: { x: 0, y: 0 } });
+    if (result.status !== "updated") throw new Error(result.reason);
+    const delivery = result.workspace.objects[result.deliveryObjectId]; if (delivery.type !== "delivery") throw new Error("delivery");
+    return { before: result.workspace, deliveryObjectId: delivery.id, sectionId: delivery.sections[0].id, secondSectionId: delivery.sections[1].id };
+  }
+  it("section edits preserve later caption changes and messages", () => {
+    const f = deliveryFixture(), input = { deliveryObjectId: f.deliveryObjectId, sectionId: f.sectionId };
+    const changed = updateDeliverySection(f.before, { ...input, title: "manual section", narrative: "manual narrative" }); if (changed.status !== "updated") throw new Error(changed.reason);
+    const { undo, redo } = roundTrip(f.before, changed.workspace, independent(changed.workspace));
+    expect(redo.workspace.objects[f.deliveryObjectId]).toEqual(changed.workspace.objects[f.deliveryObjectId]);
+    expect(undo.workspace.objects[f.deliveryObjectId]).toMatchObject({ sections: expect.arrayContaining([expect.objectContaining({ id: f.sectionId, title: "项目背景与问题" })]) });
+  });
+  it("Undo a reference addition preserves a later independent reference in the same section", () => {
+    const f = deliveryFixture();
+    const manual = addObjectsToDeliverySection(f.before, { deliveryObjectId: f.deliveryObjectId, sectionId: f.sectionId, sourceObjectIds: ["image-soft-rail-v2"] }); if (manual.status !== "updated") throw new Error(manual.reason);
+    const later = addObjectsToDeliverySection(manual.workspace, { deliveryObjectId: f.deliveryObjectId, sectionId: f.sectionId, sourceObjectIds: ["direction-soft-rail"] }); if (later.status !== "updated") throw new Error(later.reason);
+    const { undo, redo } = roundTrip(f.before, manual.workspace, later.workspace);
+    const id = later.createdReferenceIds[0]; expect(undo.workspace.deliveryReferences[id]).toEqual(later.workspace.deliveryReferences[id]); expect(redo.workspace.deliveryReferences[id]).toEqual(later.workspace.deliveryReferences[id]);
+  });
+  it("editorial ownership rejects a recreated Delivery owner", () => {
+    const f = deliveryFixture(), added = addObjectsToDeliverySection(f.before, { deliveryObjectId: f.deliveryObjectId, sectionId: f.sectionId, sourceObjectIds: ["image-soft-rail-v2"] }); if (added.status !== "updated") throw new Error(added.reason);
+    const edited = updateDeliveryReferenceEditorial(added.workspace, { deliveryObjectId: f.deliveryObjectId, referenceId: added.createdReferenceIds[0], caption: "manual" }); if (edited.status !== "updated") throw new Error(edited.reason);
+    const current = { ...edited.workspace, objects: { ...edited.workspace.objects, [f.deliveryObjectId]: { ...edited.workspace.objects[f.deliveryObjectId], incarnationId: "new-delivery-owner" } } };
+    expect(undoManualHistory(history(added.workspace, edited.workspace), current).status).toBe("blocked");
+  });
+  it("first caption edit owns only caption and preserves an independent later note", () => {
+    const f = deliveryFixture(), added = addObjectsToDeliverySection(f.before, { deliveryObjectId: f.deliveryObjectId, sectionId: f.sectionId, sourceObjectIds: ["image-soft-rail-v2"] }); if (added.status !== "updated") throw new Error(added.reason);
+    const referenceId = added.createdReferenceIds[0], input = { deliveryObjectId: f.deliveryObjectId, referenceId };
+    const caption = updateDeliveryReferenceEditorial(added.workspace, { ...input, caption: "manual caption" }); if (caption.status !== "updated") throw new Error(caption.reason);
+    const note = updateDeliveryReferenceEditorial(caption.workspace, { ...input, note: "independent note" }); if (note.status !== "updated") throw new Error(note.reason);
+    const { undo, redo } = roundTrip(added.workspace, caption.workspace, note.workspace);
+    expect(undo.workspace.deliveryReferences[referenceId].editorial).toEqual({ note: "independent note" });
+    expect(redo.workspace.deliveryReferences[referenceId].editorial).toEqual({ caption: "manual caption", note: "independent note" });
+    const clean = roundTrip(added.workspace, caption.workspace);
+    expect(clean.undo.workspace.deliveryReferences[referenceId].editorial).toBeUndefined();
+    expect(restored(undoManualHistory(history(f.before, added.workspace), clean.undo.workspace)).workspace.deliveryReferences[referenceId]).toBeUndefined();
+  });
+  it("reference add/remove/move/editorial edits remain symmetric and keep stable snapshot identity", () => {
+    const f = deliveryFixture();
+    const add = addObjectsToDeliverySection(f.before, { deliveryObjectId: f.deliveryObjectId, sectionId: f.sectionId, sourceObjectIds: ["image-soft-rail-v2"] }); if (add.status !== "updated") throw new Error(add.reason);
+    const id = add.createdReferenceIds[0];
+    const added = roundTrip(f.before, add.workspace, independent(add.workspace)); expect(added.undo.workspace.deliveryReferences[id]).toBeUndefined(); expect(added.redo.workspace.deliveryReferences[id]).toEqual(add.workspace.deliveryReferences[id]);
+    const edit = updateDeliveryReferenceEditorial(add.workspace, { deliveryObjectId: f.deliveryObjectId, referenceId: id, caption: "manual caption", note: "manual note" }); if (edit.status !== "updated") throw new Error(edit.reason);
+    const edited = roundTrip(add.workspace, edit.workspace, independent(edit.workspace)); expect(edited.redo.workspace.deliveryReferences[id]).toMatchObject({ editorial: { caption: "manual caption", note: "manual note" } });
+    const move = moveDeliveryReference(edit.workspace, { deliveryObjectId: f.deliveryObjectId, referenceId: id, toSectionId: f.secondSectionId, toIndex: 0 }); if (move.status !== "updated") throw new Error(move.reason);
+    const moved = roundTrip(edit.workspace, move.workspace, independent(move.workspace)); expect(moved.redo.workspace.deliveryReferences[id].snapshot).toEqual(add.workspace.deliveryReferences[id].snapshot);
+    const remove = removeDeliveryReference(move.workspace, { deliveryObjectId: f.deliveryObjectId, referenceId: id }); if (remove.status !== "updated") throw new Error(remove.reason);
+    const removed = roundTrip(move.workspace, remove.workspace, independent(remove.workspace)); expect(removed.undo.workspace.deliveryReferences[id]).toEqual(move.workspace.deliveryReferences[id]); expect(removed.redo.workspace.deliveryReferences[id]).toBeUndefined();
+  });
+});

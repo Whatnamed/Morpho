@@ -177,7 +177,7 @@ describe("useWorkspaceConfirmationExecutionController", () => {
 
     expect(harness.events).toEqual(["ack:commit=0:undo=0"]);
     expect(harness.commitCalls).toBe(1);
-    expect(harness.undoCalls).toBe(1);
+    expect(harness.undoCalls).toBe(0);
     expect(harness.pending).toBeNull();
     const target = harness.workspace.objects[confirmation.targetObjectId!];
     expect(target?.type).toBe("conceptDirection");
@@ -419,8 +419,12 @@ async function renderExecution(harness: ExecutionHarness): Promise<{ current: Wo
           return result.value;
         },
         readWorkspace: () => harness.workspace,
-        pushUndoSnapshot: () => {
+        commitManualWorkspace: <T,>(transform: WorkspaceCommitTransform<T>): T => {
           harness.undoCalls += 1;
+          harness.commitCalls += 1;
+          const result = transform(harness.workspace);
+          harness.workspace = result.workspace;
+          return result.value;
         },
         setSelectedObjectIds: harness.setSelectedObjectIds,
         setLocalEditObjectId: harness.setLocalEditObjectId,

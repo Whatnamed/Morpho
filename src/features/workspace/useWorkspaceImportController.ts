@@ -42,6 +42,7 @@ export type UseWorkspaceImportControllerInput = Readonly<{
   projectId: string;
   workspaceReady: boolean;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
+  commitManualWorkspace?: <T>(transform: WorkspaceCommitTransform<T>, label?: string) => T;
   selectObjects: (objectIds: string[]) => void;
   onImportRejected?: (message: string) => void;
   services?: Partial<WorkspaceImportControllerServices>;
@@ -73,6 +74,7 @@ export function useWorkspaceImportController({
   projectId,
   workspaceReady,
   commitWorkspace: commitWorkspaceInput,
+  commitManualWorkspace: commitManualWorkspaceInput,
   selectObjects: selectObjectsInput,
   onImportRejected,
   services: serviceOverrides
@@ -133,6 +135,15 @@ export function useWorkspaceImportController({
     [assertCurrentSession, commitWorkspaceInput]
   );
 
+  const commitManualWorkspace = useCallback(<T,>(expectedSession: WorkspaceImportExecutionSession, transform: WorkspaceCommitTransform<T>): T => {
+    assertCurrentSession(expectedSession);
+    return (commitManualWorkspaceInput ?? commitWorkspaceInput)((current) => {
+      assertCurrentSession(expectedSession);
+      if (current.project.id !== expectedSession.projectId) throw createStaleWorkspaceImportExecutionError();
+      return transform(current);
+    });
+  }, [assertCurrentSession, commitManualWorkspaceInput, commitWorkspaceInput]);
+
   const selectObjects = useCallback(
     (expectedSession: WorkspaceImportExecutionSession, objectIds: string[]): void => {
       if (!isCurrentSession(expectedSession)) {
@@ -148,6 +159,7 @@ export function useWorkspaceImportController({
       getCurrentSession: () => currentSessionRef.current,
       assertCurrentSession,
       commitWorkspace,
+      commitManualWorkspace,
       selectObjects,
       saveAsset: services.saveAsset,
       readImageDimensions: services.readImageDimensions,
@@ -156,7 +168,7 @@ export function useWorkspaceImportController({
       saveDocumentExtract: services.saveDocumentExtract,
       now: services.now
     }),
-    [assertCurrentSession, commitWorkspace, selectObjects, services]
+    [assertCurrentSession, commitWorkspace, commitManualWorkspace, selectObjects, services]
   );
 
   const executeImportRequest = useCallback(

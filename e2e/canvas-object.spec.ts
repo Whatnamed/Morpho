@@ -85,7 +85,7 @@ test.describe("画布对象操作", () => {
     expect(afterChoice.objects[seed.objectIds.derivedImage]?.pendingReview).toBeUndefined();
   });
 
-  test("撤销遇到 AI 生成内容时暂停，并保留撤销历史", async ({ page }) => {
+  test("人工撤销与重做保留后来的 AI 消息", async ({ page }) => {
     const seed = await seedProject(page);
     await installAgentMock(page);
     await page.goto(`/projects/${seed.seedProjectId}`);
@@ -106,16 +106,16 @@ test.describe("画布对象操作", () => {
       .poll(async () => (await readStoredWorkspace(page)).ai.messages.length)
       .toBeGreaterThan(1);
 
-    // 3. Undo now crosses the AI content and must stop rather than discard it.
+    await expect(page.locator('[aria-label="发送"]')).toBeVisible();
+    const withAi = await readStoredWorkspace(page);
+    await clickEmptyCanvas(page);
     await page.keyboard.press("Control+z");
-    const notice = page.getByText("撤销已暂停", { exact: false });
-    await expect(notice).toBeVisible();
-    expect((await readStoredWorkspace(page)).objects[seed.objectIds.research]?.visibility).toBe("hidden");
+    await expect.poll(async () => (await readStoredWorkspace(page)).objects[seed.objectIds.research]?.visibility).toBe("active");
+    expect((await readStoredWorkspace(page)).ai.messages).toEqual(withAi.ai.messages);
+    await page.keyboard.press("Control+Shift+z");
+    await expect.poll(async () => (await readStoredWorkspace(page)).objects[seed.objectIds.research]?.visibility).toBe("hidden");
+    expect((await readStoredWorkspace(page)).ai.messages).toEqual(withAi.ai.messages);
+    expect(await agentTurnCallCount(page)).toBe(1);
 
-    // 4. The blocked attempt must not have consumed the entry: a second press is
-    //    blocked the same way. A popped stack would report empty and stay silent.
-    await expect(notice).toBeHidden({ timeout: 8_000 });
-    await page.keyboard.press("Control+z");
-    await expect(page.getByText("撤销已暂停", { exact: false })).toBeVisible();
   });
 });

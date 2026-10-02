@@ -1,10 +1,14 @@
 "use client";
 
-import { Archive, ChevronDown, Download, Home, Import, PackageOpen, Search, SquareDashedMousePointer } from "lucide-react";
+import { Undo2, Redo2, Archive, ChevronDown, Download, Home, Import, PackageOpen, Search, SquareDashedMousePointer } from "lucide-react";
 import { useRef } from "react";
 
 type TopControlsProps = {
   projectTitle: string;
+  canUndo?: boolean;
+  canRedo?: boolean;
+  onUndo?: () => void;
+  onRedo?: () => void;
   canMutateWorkspace?: boolean;
   onImportFiles: (files: File[]) => void;
   onImportStart?: () => void;
@@ -24,6 +28,10 @@ type TopControlsProps = {
 
 export function TopControls({
   projectTitle,
+  canUndo = false,
+  canRedo = false,
+  onUndo,
+  onRedo,
   canMutateWorkspace = true,
   onImportFiles,
   onImportStart,
@@ -98,6 +106,11 @@ export function TopControls({
         ) : null}
       </div>
       <div className="floating-cluster top-right">
+        <div className="toolbar-group" role="group" aria-label="人工操作历史">
+          <button className="icon-button" type="button" aria-label="撤销人工操作" title="撤销 (Ctrl+Z)" disabled={!canMutateWorkspace || !canUndo} onClick={onUndo}><Undo2 size={16} /></button>
+          <button className="icon-button" type="button" aria-label="重做人工操作" title="重做 (Ctrl+Shift+Z / Ctrl+Y)" disabled={!canMutateWorkspace || !canRedo} onClick={onRedo}><Redo2 size={16} /></button>
+        </div>
+        <div className="cluster-divider" />
         <div className="toolbar-group" role="group" aria-label="视图">
           <button className="icon-button" type="button" aria-label="搜索" title="搜索" onClick={onSearch}>
             <Search size={16} />

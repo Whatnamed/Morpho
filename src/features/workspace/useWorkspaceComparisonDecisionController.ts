@@ -52,7 +52,7 @@ export type UseWorkspaceComparisonDecisionControllerInput = Readonly<{
   ) => boolean;
   clearPendingConfirmation: (expected?: PendingAiConfirmation) => boolean;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
-  pushUndoSnapshot: () => void;
+  commitManualWorkspace: <T>(transform: WorkspaceCommitTransform<T>, label?: string) => T;
   setSelectedObjectIds: Dispatch<SetStateAction<string[]>>;
   requestObjectFocus: (objectId: string) => void;
   showNotice: (message: string) => void;
@@ -78,7 +78,7 @@ export function useWorkspaceComparisonDecisionController({
   updatePendingConfirmation,
   clearPendingConfirmation,
   commitWorkspace: commitWorkspaceInput,
-  pushUndoSnapshot,
+  commitManualWorkspace,
   setSelectedObjectIds,
   requestObjectFocus,
   showNotice,
@@ -242,10 +242,10 @@ export function useWorkspaceComparisonDecisionController({
     }
 
     resolvingConfirmationRef.current = pendingConfirmation;
-    // The preflight is synchronous and uses the same current workspace that will be committed.
-    // The functional commit below still revalidates against the authoritative state boundary.
-    pushUndoSnapshot();
-    const result = commitWorkflow(session, (current) => {
+    const result = commitManualWorkspace((current) => {
+      if (!isCurrentSession(session) || current.project.id !== session.projectId) {
+        return { workspace: current, value: null };
+      }
       const applied = applyConfirmedComparisonDecision(current, pendingConfirmation);
       return {
         workspace: applied.workspace,
@@ -274,11 +274,10 @@ export function useWorkspaceComparisonDecisionController({
     }
     showNotice(result.notice);
   }, [
-    commitWorkflow,
     isCurrentSession,
     ownsPendingConfirmation,
     pendingConfirmation,
-    pushUndoSnapshot,
+    commitManualWorkspace,
     requestObjectFocus,
     session,
     setAiDraft,

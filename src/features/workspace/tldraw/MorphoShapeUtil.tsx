@@ -169,7 +169,7 @@ function MorphoShapeContainer({ shape }: { shape: MorphoShape }) {
       if (!nextHeight) {
         return;
       }
-      editor.run(
+      editor.store.mergeRemoteChanges(() => editor.run(
         () => {
           editor.updateShape<MorphoShape>({
             id: shape.id,
@@ -178,7 +178,7 @@ function MorphoShapeContainer({ shape }: { shape: MorphoShape }) {
           });
         },
         { history: "ignore" }
-      );
+      ));
     };
 
     // A new material treatment can legitimately need one growth pass. Keep it out

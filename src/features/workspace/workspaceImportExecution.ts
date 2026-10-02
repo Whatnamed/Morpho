@@ -67,6 +67,10 @@ export type WorkspaceImportExecutionPorts = Readonly<{
     expectedSession: WorkspaceImportExecutionSession,
     transform: WorkspaceCommitTransform<T>
   ) => T;
+  commitManualWorkspace?: <T>(
+    expectedSession: WorkspaceImportExecutionSession,
+    transform: WorkspaceCommitTransform<T>
+  ) => T;
   selectObjects: (
     expectedSession: WorkspaceImportExecutionSession,
     objectIds: string[]
@@ -148,7 +152,7 @@ export async function executeWorkspaceImport(
       ports.assertCurrentSession(session);
     }
 
-    const imported = ports.commitWorkspace(session, (current) => {
+    const imported = (ports.commitManualWorkspace ?? ports.commitWorkspace)(session, (current) => {
     ports.assertCurrentSession(session);
     let next = current;
     let objectIds: string[] = [];

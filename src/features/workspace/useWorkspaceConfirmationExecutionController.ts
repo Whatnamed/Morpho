@@ -94,7 +94,7 @@ export type UseWorkspaceConfirmationExecutionControllerInput = Readonly<{
   clearPendingConfirmation: (expected?: PendingAiConfirmation) => boolean;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
   readWorkspace: () => MorphoWorkspace;
-  pushUndoSnapshot: () => void;
+  commitManualWorkspace: <T>(transform: WorkspaceCommitTransform<T>, label?: string) => T;
   setSelectedObjectIds: Dispatch<SetStateAction<string[]>>;
   setLocalEditObjectId: Dispatch<SetStateAction<string | null>>;
   setAiDraft: (draft: string) => void;
@@ -196,7 +196,7 @@ export function useWorkspaceConfirmationExecutionController(
 
   const commitSynchronous = useCallback(
     (confirmation: PendingAiConfirmation): CommitResult =>
-      input.commitWorkspace<CommitResult>((current) => {
+      (isManualConfirmation(confirmation) ? input.commitManualWorkspace : input.commitWorkspace)<CommitResult>((current) => {
         if (!isCurrentSession() || !input.ownsPendingConfirmation(confirmation) || current.project.id !== session.projectId) {
           return { workspace: current, value: { status: "stale" } };
         }
@@ -333,9 +333,6 @@ export function useWorkspaceConfirmationExecutionController(
         return;
       }
 
-      if (shouldPushUndo(confirmation)) {
-        input.pushUndoSnapshot();
-      }
       const result = commitSynchronous(confirmation);
       if (result.status === "stale") return;
       if (result.status === "blocked") {
@@ -377,8 +374,7 @@ export function useWorkspaceConfirmationExecutionController(
         return;
       }
       if (!isCurrentSession() || !input.ownsPendingConfirmation(confirmation)) return;
-      input.pushUndoSnapshot();
-      const result = input.commitWorkspace<CommitResult>((current) => {
+      const result = input.commitManualWorkspace<CommitResult>((current) => {
         if (!isCurrentSession() || !input.ownsPendingConfirmation(confirmation)) {
           return { workspace: current, value: { status: "stale" } };
         }
@@ -623,9 +619,9 @@ function isVisualConfirmation(
     (confirmation.kind === "agentRequestedAction" && confirmation.action === "batchGenerateVisuals");
 }
 
-function shouldPushUndo(confirmation: PendingAiConfirmation): boolean {
-  return confirmation.kind === "setDefaultReference" || confirmation.kind === "deleteObject" ||
-    (confirmation.kind === "agentRequestedAction" && confirmation.action !== "batchGenerateVisuals");
+function isManualConfirmation(confirmation: PendingAiConfirmation): boolean {
+  return getPendingConfirmationOrigin(confirmation) !== "agent" &&
+    (confirmation.kind === "setDefaultReference" || confirmation.kind === "deleteObject" || confirmation.kind === "createKeyConclusion");
 }
 
 function applyConfirmation(

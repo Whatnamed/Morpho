@@ -222,12 +222,6 @@ type SaveResearchKeyConclusionInput = {
   researchObjectId: string;
 } & ResearchKeyConclusionSource;
 
-type ObjectOperationUndoEntry = {
-  workspace: MorphoWorkspace;
-  selectedObjectIds: string[];
-  localEditObjectId: string | null;
-};
-
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
   const [workspace, setPersistentWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
@@ -299,7 +293,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     focusObject: requestFocusObject,
     requestObjectFocus,
     locateObjectFromDetail: requestLocateObjectFromDetail,
-    undoDetailNavigation,
     commitCanvasView,
     observeCanvasView,
     getLatestCanvasView,
@@ -408,13 +401,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [projectId, setPersistentWorkspace]
   );
   const readWorkspaceNow = useCallback(() => workspaceRef.current, []);
-  const { importRequest, captureImportSession } = useWorkspaceImportController({
-    projectId,
-    workspaceReady: canMutateWorkspace,
-    commitWorkspace: commitWorkspaceNow,
-    selectObjects: requestCanvasSelection,
-    onImportRejected: setContextWarning
-  });
   const assetUrls = useWorkspaceAssetUrls(workspace.assets);
   const railImportInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImportPickerRef = useRef<PendingImportPicker | null>(null);
@@ -430,6 +416,43 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [manualSaveNotice, setManualSaveNotice] = useState<string | null>(null);
   const manualSaveNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const showWorkspaceNotice = useCallback((message: string, durationMs = 1600) => {
+    setManualSaveNotice(message);
+    if (manualSaveNoticeTimeoutRef.current) {
+      clearTimeout(manualSaveNoticeTimeoutRef.current);
+    }
+    manualSaveNoticeTimeoutRef.current = setTimeout(() => {
+      setManualSaveNotice(null);
+      manualSaveNoticeTimeoutRef.current = null;
+    }, durationMs);
+  }, []);
+
+  const handleManualHistoryRestored = useCallback((restored: MorphoWorkspace) => {
+    requestCanvasSelection(restored.ui.lastSelectionIds.filter((id) => restored.objects[id]?.visibility === "active"));
+    setLocalEditObjectId((id) => id && restored.objects[id] ? id : null);
+  }, [requestCanvasSelection]);
+  const {
+    commitManualWorkspace,
+    updateManualWorkspace: setManualWorkspace,
+    updateCanvasProjectionWorkspace: setCanvasProjectionWorkspace,
+    undo: undoLastObjectOperation,
+    redo: redoLastObjectOperation,
+    canUndo, canRedo
+  } = useWorkspaceObjectHistoryController({
+    projectId, workspace, workspaceReady: canMutateWorkspace,
+    commitWorkspace: commitWorkspaceNow,
+    onRestored: handleManualHistoryRestored,
+    closeCanvasContextMenu, showNotice: showWorkspaceNotice
+  });
+
+  const { importRequest, captureImportSession } = useWorkspaceImportController({
+    projectId,
+    workspaceReady: canMutateWorkspace,
+    commitWorkspace: commitWorkspaceNow,
+    commitManualWorkspace,
+    selectObjects: requestCanvasSelection,
+    onImportRejected: setContextWarning
+  });
   const selectedObjects = useMemo(
     () => compactObjectList(workspace.objects, selectedObjectIds),
     [selectedObjectIds, workspace.objects]
@@ -458,7 +481,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     projectId,
     workspaceReady: canMutateWorkspace,
     workspace,
-    updateWorkspace: setWorkspace,
+    updateWorkspace: setManualWorkspace,
     onBlocked: setContextWarning,
     onDeliveryCreated: handleDeliveryCreatedCanvasFocus
   });
@@ -660,17 +683,6 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [changeDrawer, requestLocateObjectFromDetail]
   );
 
-  const showWorkspaceNotice = useCallback((message: string, durationMs = 1600) => {
-    setManualSaveNotice(message);
-    if (manualSaveNoticeTimeoutRef.current) {
-      clearTimeout(manualSaveNoticeTimeoutRef.current);
-    }
-    manualSaveNoticeTimeoutRef.current = setTimeout(() => {
-      setManualSaveNotice(null);
-      manualSaveNoticeTimeoutRef.current = null;
-    }, durationMs);
-  }, []);
-
   const requestLocalPendingConfirmation = useCallback(
     (value: PendingAiConfirmation): boolean => {
       const result = requestPendingConfirmation(value);
@@ -705,45 +717,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const handleSetContinuityEntryManualState = useCallback(
     (entryId: string, manualState: ContinuityManualState) => {
       if (!canMutateWorkspace) return;
-      setWorkspace((current) => setConversationSemanticEntryManualState(current, entryId, manualState));
+      setManualWorkspace((current) => setConversationSemanticEntryManualState(current, entryId, manualState));
       openProjectRecords([entryId]);
     },
-    [canMutateWorkspace, openProjectRecords, setWorkspace]
+    [canMutateWorkspace, openProjectRecords, setManualWorkspace]
   );
-
-  const captureObjectOperationSnapshot = useCallback(
-    (): ObjectOperationUndoEntry => ({
-      workspace,
-      selectedObjectIds,
-      localEditObjectId
-    }),
-    [localEditObjectId, selectedObjectIds, workspace]
-  );
-
-  const applyObjectOperationSnapshot = useCallback(
-    (entry: ObjectOperationUndoEntry) => {
-      setWorkspace(entry.workspace);
-      requestCanvasSelection(entry.selectedObjectIds);
-      setLocalEditObjectId(entry.localEditObjectId);
-      closeCanvasContextMenu();
-    },
-    [closeCanvasContextMenu, requestCanvasSelection, setWorkspace]
-  );
-
-  const {
-    pushUndoSnapshot: pushObjectOperationUndo,
-    undo: undoLastObjectOperation,
-    redo: redoLastObjectOperation
-  } = useWorkspaceObjectHistoryController<ObjectOperationUndoEntry>({
-    projectId,
-    workspace,
-    workspaceReady,
-    captureCurrent: captureObjectOperationSnapshot,
-    applyEntry: applyObjectOperationSnapshot,
-    undoDetailNavigation,
-    closeCanvasContextMenu,
-    showNotice: showWorkspaceNotice
-  });
 
   const comparisonDecision = useWorkspaceComparisonDecisionController({
     projectId,
@@ -754,7 +732,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     updatePendingConfirmation,
     clearPendingConfirmation,
     commitWorkspace: commitWorkspaceNow,
-    pushUndoSnapshot: pushObjectOperationUndo,
+    commitManualWorkspace,
     setSelectedObjectIds,
     requestObjectFocus,
     showNotice: showWorkspaceNotice,
@@ -782,15 +760,15 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   );
 
   const handleInstancesChange = useCallback(
-    (instances: CanvasInstance[]) => {
-      setWorkspace((current) => updateWorkspaceInstances(current, instances));
+    (instances: CanvasInstance[], manual = true) => {
+      (manual ? setManualWorkspace : setCanvasProjectionWorkspace)((current) => updateWorkspaceInstances(current, instances));
     },
-    [setWorkspace]
+    [setManualWorkspace, setCanvasProjectionWorkspace]
   );
 
   const handleStageRegionsChange = useCallback(
-    (regions: StageRegionRecord[]) => {
-      setWorkspace((current) => {
+    (regions: StageRegionRecord[], manual = true) => {
+      (manual ? setManualWorkspace : setWorkspace)((current) => {
         if (areStageRegionRecordsEqual(current.canvas.stageRegions, regions)) {
           return current;
         }
@@ -803,12 +781,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         };
       });
     },
-    [setWorkspace]
+    [setManualWorkspace, setWorkspace]
   );
+
+  const handleCanvasLayoutChange = useCallback((instances: CanvasInstance[], regions: StageRegionRecord[]) => {
+    setManualWorkspace((current) => {
+      const next = updateWorkspaceInstances(current, instances);
+      return areStageRegionRecordsEqual(next.canvas.stageRegions, regions) ? next : { ...next, canvas: { ...next.canvas, stageRegions: regions } };
+    });
+  }, [setManualWorkspace]);
 
   const applyStageRegionWorkspaceMutation = useCallback(
     (mutate: (current: typeof workspace) => typeof workspace) => {
-      setWorkspace((current) => {
+      setManualWorkspace((current) => {
         const next = mutate(ensureStageRegions(current));
         if (areStageRegionRecordsEqual(current.canvas.stageRegions, next.canvas.stageRegions)) {
           return current;
@@ -816,7 +801,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return next;
       });
     },
-    [setWorkspace]
+    [setManualWorkspace]
   );
 
   const handleCanvasViewChange = useCallback((view: CanvasView) => {
@@ -949,21 +934,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    setWorkspace((current) => ({
+    setManualWorkspace((current) => ({
       ...current,
       project: {
         ...current.project,
         title: result.title
       }
     }));
-  }, [consumeProjectRename, setWorkspace]);
+  }, [consumeProjectRename, setManualWorkspace]);
 
   const handleReorderSelectedLayers = useCallback(
     (action: CanvasLayerReorderAction) => {
-      setWorkspace((current) => reorderCanvasInstances(current, selectedObjectIds, action));
+      setManualWorkspace((current) => reorderCanvasInstances(current, selectedObjectIds, action));
       closeCanvasContextMenu();
     },
-    [closeCanvasContextMenu, selectedObjectIds, setWorkspace]
+    [closeCanvasContextMenu, selectedObjectIds, setManualWorkspace]
   );
 
   const handleCopySelectedSummary = useCallback(() => {
@@ -1054,7 +1039,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     clearPendingConfirmation,
     commitWorkspace: commitWorkspaceNow,
     readWorkspace: readWorkspaceNow,
-    pushUndoSnapshot: pushObjectOperationUndo,
+    commitManualWorkspace,
     setSelectedObjectIds,
     setLocalEditObjectId,
     setAiDraft,
@@ -1256,22 +1241,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      if (promptState.prompt.kind === "eliminateDirection") {
-        const currentWorkspace = readWorkspaceNow();
-        if (
-          !isWorkspaceTextPromptSessionCurrent(
-            promptState.session,
-            activeTextPromptSessionRef.current,
-            currentWorkspace
-          )
-        ) {
-          setTextPrompt((current) => (current?.session === promptState.session ? null : current));
-          return;
-        }
-        pushObjectOperationUndo();
-      }
-
-      const result = commitWorkspaceNow<WorkspaceTextPromptCommitResult>((current) => {
+      const result = commitManualWorkspace<WorkspaceTextPromptCommitResult>((current) => {
         const applied = applyWorkspaceTextPromptIfCurrent(
           current,
           promptState,
@@ -1299,9 +1269,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       setTextPrompt((current) => (current?.session === promptState.session ? null : current));
     },
     [
-      commitWorkspaceNow,
-      pushObjectOperationUndo,
-      readWorkspaceNow,
+      commitManualWorkspace,
       setContextWarning,
       showWorkspaceNotice,
       textPrompt,
@@ -1311,7 +1279,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleArchiveVisualBranch = useCallback(
     (branchId: string) => {
-      setWorkspace((current) => {
+      setManualWorkspace((current) => {
         const result = archiveVisualBranch(current, branchId);
         if (result.status === "blocked") {
           setContextWarning(result.reason);
@@ -1320,12 +1288,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return result.workspace;
       });
     },
-    [setWorkspace]
+    [setManualWorkspace]
   );
 
   const handleRestoreVisualBranch = useCallback(
     (branchId: string) => {
-      setWorkspace((current) => {
+      setManualWorkspace((current) => {
         const result = restoreVisualBranch(current, branchId);
         if (result.status === "blocked") {
           setContextWarning(result.reason);
@@ -1334,7 +1302,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return result.workspace;
       });
     },
-    [setWorkspace]
+    [setManualWorkspace]
   );
 
   const handleAssignImageToVisualBranch = useCallback(
@@ -1344,7 +1312,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      setWorkspace((current) => {
+      setManualWorkspace((current) => {
         const result = assignImageToVisualBranch(current, target.id, branchId);
         if (result.status === "blocked") {
           setContextWarning(result.reason);
@@ -1353,7 +1321,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return result.workspace;
       });
     },
-    [selectedObjects, setWorkspace]
+    [selectedObjects, setManualWorkspace]
   );
 
   const handleRemoveImageFromVisualBranch = useCallback(() => {
@@ -1362,7 +1330,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    setWorkspace((current) => {
+    setManualWorkspace((current) => {
       const result = removeImageFromVisualBranch(current, target.id);
       if (result.status === "blocked") {
         setContextWarning(result.reason);
@@ -1370,7 +1338,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
       return result.workspace;
     });
-  }, [selectedObjects, setWorkspace]);
+  }, [selectedObjects, setManualWorkspace]);
 
   const handleLocalEdit = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "image");
@@ -1404,8 +1372,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
 
       if (target.isDefaultReference) {
-        pushObjectOperationUndo();
-        setWorkspace((current) =>
+          setManualWorkspace((current) =>
           clearDefaultReference(current, target.id, {
             reason: "用户在画布上明确取消后续默认参考。"
           })
@@ -1437,8 +1404,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      pushObjectOperationUndo();
-      setWorkspace((current) =>
+      setManualWorkspace((current) =>
         setDefaultReference(current, target.id, {
           reason: "用户在画布上明确设为后续默认参考。"
         })
@@ -1446,10 +1412,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       showWorkspaceNotice(`已设「${target.title}」为后续默认参考`);
     },
     [
-      pushObjectOperationUndo,
       requestLocalPendingConfirmation,
       selectedObjects,
-      setWorkspace,
+      setManualWorkspace,
       showWorkspaceNotice
     ]
   );
@@ -1460,11 +1425,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      pushObjectOperationUndo();
-      setWorkspace((current) => clearVisualReviewMark(current, objectId));
+      setManualWorkspace((current) => clearVisualReviewMark(current, objectId));
       showWorkspaceNotice(`已保留「${target.title}」，待复核标记已清除`);
     },
-    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace.objects]
+    [setManualWorkspace, showWorkspaceNotice, workspace.objects]
   );
 
   const handleRegenerateReviewedVisual = useCallback(
@@ -1495,8 +1459,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const proposalObjects = selectedObjects.filter((object) => object.type === "proposalDraft");
     const objectIds = selectedObjects.filter((object) => object.type !== "proposalDraft").map((object) => object.id);
     if (objectIds.length > 0) {
-      pushObjectOperationUndo();
-      setWorkspace((current) => hideObjects(current, objectIds));
+      setManualWorkspace((current) => hideObjects(current, objectIds));
     }
     rejectProposals(
       proposalObjects.map((object) => object.proposalId),
@@ -1512,22 +1475,21 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     clearActiveProposalIf,
     closeCanvasContextMenu,
     closeProposalDetailIf,
-    pushObjectOperationUndo,
     rejectProposals,
     selectedObjects,
     setSelectedObjectIds,
     canMutateWorkspace,
-    setWorkspace
+    setManualWorkspace
   ]);
 
   const handleRestoreObject = useCallback(
     (objectId: string) => {
       if (!canMutateWorkspace) return;
-      setWorkspace((current) => restoreObject(current, objectId));
+      setManualWorkspace((current) => restoreObject(current, objectId));
       setSelectedObjectIds([objectId]);
       focusObject(objectId);
     },
-    [canMutateWorkspace, focusObject, setSelectedObjectIds, setWorkspace]
+    [canMutateWorkspace, focusObject, setSelectedObjectIds, setManualWorkspace]
   );
 
   const handleDeleteSelected = useCallback(() => {
@@ -1538,8 +1500,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const proposalObjects = selectedObjects.filter((object) => object.type === "proposalDraft");
     const objectIds = selectedObjects.filter((object) => object.type !== "proposalDraft").map((object) => object.id);
     if (objectIds.length > 0) {
-      pushObjectOperationUndo();
-      setWorkspace((current) =>
+      setManualWorkspace((current) =>
         deleteObjects(current, objectIds, {
           confirmed: true,
           reason: "用户在对象详情栏直接删除该对象。"
@@ -1568,12 +1529,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     clearPendingConfirmation,
     closeProposalDetailIf,
     pendingConfirmation,
-    pushObjectOperationUndo,
     rejectProposals,
     selectedObjects,
     setSelectedObjectIds,
     canMutateWorkspace,
-    setWorkspace
+    setManualWorkspace
   ]);
 
   const handleEliminateDirection = useCallback(() => {
@@ -1604,12 +1564,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    pushObjectOperationUndo();
-    setWorkspace((current) =>
+    setManualWorkspace((current) =>
       setConceptDirectionStatus(current, target.id, "primary", "用户在画布上明确将该方向设为主方向。")
     );
     showWorkspaceNotice(`已将「${target.title}」设为主方向`);
-  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice]);
+  }, [selectedObjects, setManualWorkspace, showWorkspaceNotice]);
 
   const handleSetDirectionAlternative = useCallback(() => {
     const target = selectedObjects.find((object) => object.type === "conceptDirection");
@@ -1617,12 +1576,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    pushObjectOperationUndo();
-    setWorkspace((current) =>
+    setManualWorkspace((current) =>
       setConceptDirectionStatus(current, target.id, "alternative", "用户在画布上明确将该方向转为备选方向。")
     );
     showWorkspaceNotice(`已将「${target.title}」设为备选方向`);
-  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice]);
+  }, [selectedObjects, setManualWorkspace, showWorkspaceNotice]);
 
   const handleSetKeyConclusionCategory = useCallback(
     (objectId: string, category: AssignableKeyConclusionCategory) => {
@@ -1631,8 +1589,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      pushObjectOperationUndo();
-      setWorkspace((current) => {
+      setManualWorkspace((current) => {
         const result = setKeyConclusionCategory(current, objectId, category, {
           reason: "用户在关键结论详情中补充类别。"
         });
@@ -1640,7 +1597,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       });
       showWorkspaceNotice(`已将关键结论「${target.title}」归为${getKeyConclusionCategoryLabel(category)}`);
     },
-    [pushObjectOperationUndo, setWorkspace, showWorkspaceNotice, workspace.objects]
+    [setManualWorkspace, showWorkspaceNotice, workspace.objects]
   );
 
   const handleRestoreDirectionAsAlternative = useCallback(() => {
@@ -1649,12 +1606,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    pushObjectOperationUndo();
-    setWorkspace((current) =>
+    setManualWorkspace((current) =>
       setConceptDirectionStatus(current, target.id, "alternative", "用户将已淘汰方向恢复为备选方向。")
     );
     showWorkspaceNotice(`已将「${target.title}」恢复为备选方向`);
-  }, [pushObjectOperationUndo, selectedObjects, setWorkspace, showWorkspaceNotice]);
+  }, [selectedObjects, setManualWorkspace, showWorkspaceNotice]);
 
   const handleSaveKeyConclusionFromResearchItem = useCallback(
     (input: SaveResearchKeyConclusionInput) => {
@@ -1666,35 +1622,20 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       const source = input.kind === "evidence"
         ? { kind: "evidence" as const, index: input.index, category: input.category }
         : { kind: input.kind, index: input.index };
-      const draftResult = buildKeyConclusionDraftFromResearchSource(workspace, input.researchObjectId, source);
-      if (draftResult.status !== "ready") {
-        showWorkspaceNotice(draftResult.reason);
-        return;
-      }
-
-      pushObjectOperationUndo();
-      const result = createKeyConclusion(workspace, {
-        title: draftResult.draft.title,
-        body: draftResult.draft.body,
-        summary: draftResult.draft.summary,
-        sourceObjectIds: draftResult.draft.sourceObjectIds,
-        citationIds: draftResult.draft.citationIds,
-        category: draftResult.draft.category,
-        confidence: draftResult.draft.confidence,
-        state: draftResult.draft.state,
-        note: draftResult.draft.note,
-        evidence: draftResult.draft.evidence,
-        researchOrigin: draftResult.draft.researchOrigin,
-        position: {
-          x: workspace.canvas.view.x + 240,
-          y: workspace.canvas.view.y + 180
-        }
-      });
-      setWorkspace(result.workspace);
+      const result = commitManualWorkspace<{ status: "blocked"; reason: string } | { status: "created"; keyConclusion: ReturnType<typeof createKeyConclusion>["keyConclusion"] }>((current) => {
+        const draftResult = buildKeyConclusionDraftFromResearchSource(current, input.researchObjectId, source);
+        if (draftResult.status !== "ready") return { workspace: current, value: { status: "blocked" as const, reason: draftResult.reason } };
+        const created = createKeyConclusion(current, {
+          ...draftResult.draft,
+          position: { x: current.canvas.view.x + 240, y: current.canvas.view.y + 180 }
+        });
+        return { workspace: created.workspace, value: { status: "created" as const, keyConclusion: created.keyConclusion } };
+      }, "保存研究关键结论");
+      if (result.status === "blocked") { showWorkspaceNotice(result.reason); return; }
       requestFocusObject(result.keyConclusion.id);
       showWorkspaceNotice(`已保存关键结论「${result.keyConclusion.title}」`);
     },
-    [pushObjectOperationUndo, requestFocusObject, setWorkspace, showWorkspaceNotice, workspace]
+    [requestFocusObject, commitManualWorkspace, showWorkspaceNotice, workspace]
   );
 
   const handleOpenResearchDetail = useCallback(() => {
@@ -1720,14 +1661,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    const result = applyResearchExtractionSelection(workspace, research.id, selectedKeys);
-    setWorkspace(result.workspace);
+    const result = commitManualWorkspace((current) => {
+      const applied = applyResearchExtractionSelection(current, research.id, getResearchExtractionRecommendationKeys(current, research.id));
+      return { workspace: applied.workspace, value: applied };
+    }, "保留研究提取");
     if (result.activeObjectIds.length > 0) {
       setSelectedObjectIds(result.activeObjectIds);
       requestObjectFocus(result.activeObjectIds[0]);
     }
     closeResearchDetail();
-  }, [closeResearchDetail, requestObjectFocus, selectedObjects, setSelectedObjectIds, setWorkspace, workspace]);
+  }, [closeResearchDetail, requestObjectFocus, selectedObjects, setSelectedObjectIds, commitManualWorkspace, workspace]);
 
   const handleApplyResearchExtractionSelection = useCallback(
     (selectedKeys: string[]) => {
@@ -1735,14 +1678,16 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         return;
       }
 
-      const result = applyResearchExtractionSelection(workspace, activeResearchDetailObjectId, selectedKeys);
-      setWorkspace(result.workspace);
+      const result = commitManualWorkspace((current) => {
+        const applied = applyResearchExtractionSelection(current, activeResearchDetailObjectId, selectedKeys);
+        return { workspace: applied.workspace, value: applied };
+      }, "保留研究提取");
       if (result.activeObjectIds.length > 0) {
         setSelectedObjectIds(result.activeObjectIds);
         requestObjectFocus(result.activeObjectIds[0]);
       }
     },
-    [activeResearchDetailObjectId, requestObjectFocus, setSelectedObjectIds, setWorkspace, workspace]
+    [activeResearchDetailObjectId, requestObjectFocus, setSelectedObjectIds, commitManualWorkspace]
   );
 
   const handleCopyItemToDraft = useCallback((text: string) => {
@@ -1779,6 +1724,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     canMutateWorkspace,
     workspace,
     updateWorkspace: setWorkspace,
+    commitManualWorkspace,
     blobStore: indexedDbBlobStore,
     onViewCreatedFragment: handleViewCreatedDocumentFragment
   });
@@ -1972,7 +1918,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
        onContinueProposalDiscussion={() => { const object = toolbarObjects.find((item) => item.type === "proposalDraft"); if (object?.type === "proposalDraft") continueDiscussion(object.proposalId); }}
       onOpenDesignDefinitionDetail={() => { const object = toolbarObjects.find((item) => item.type === "designDefinition"); if (object?.type === "designDefinition") openDesignDefinitionDetail(object.id); }}
       onOpenConceptDirectionDetail={() => { const object = toolbarObjects.find((item) => item.type === "conceptDirection"); if (object?.type === "conceptDirection") openConceptDirectionDetail(object.id); }}
-      onSetCurrentDesignDefinition={() => { const object = toolbarObjects.find((item) => item.type === "designDefinition"); if (object?.type === "designDefinition") setWorkspace((current) => setCurrentDesignDefinition(current, object.id)); }}
+      onSetCurrentDesignDefinition={() => { const object = toolbarObjects.find((item) => item.type === "designDefinition"); if (object?.type === "designDefinition") setManualWorkspace((current) => setCurrentDesignDefinition(current, object.id)); }}
       onReviseDirection={handleReviseDirectionIntent}
       onSplitDirection={handleSplitDirectionIntent}
       onMergeDirections={handleMergeDirectionsIntent}
@@ -2071,6 +2017,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onSelectionChange={handleSelectionChange}
         onInstancesChange={handleInstancesChange}
         onStageRegionsChange={handleStageRegionsChange}
+        onCanvasLayoutChange={handleCanvasLayoutChange}
         onViewChange={handleCanvasViewChange}
         onLiveViewChange={handleCanvasLiveViewChange}
         onImportRequest={importRequest}
@@ -2173,6 +2120,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       <TopControls
         projectTitle={workspace.project.title}
+        canUndo={canUndo} canRedo={canRedo}
+        onUndo={undoLastObjectOperation} onRedo={redoLastObjectOperation}
         canMutateWorkspace={canMutateWorkspace}
         persistenceError={
           persistenceState.phase === "error" && persistenceState.error && !persistenceState.migrationError
@@ -2790,4 +2739,3 @@ function truncateForTitle(input: string, fallback: string): string {
 
   return trimmed.length > 28 ? `${trimmed.slice(0, 28)}…` : trimmed;
 }
-

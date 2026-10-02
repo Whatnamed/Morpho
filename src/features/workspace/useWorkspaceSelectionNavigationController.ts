@@ -410,6 +410,19 @@ export function useWorkspaceSelectionNavigationController({
     [isCurrentSession, projectId, session, updateWorkspace]
   );
 
+  useEffect(() => {
+    const returnFromDetail = (event: KeyboardEvent) => {
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.key !== "ArrowLeft") return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (!undoDetailNavigation()) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener("keydown", returnFromDetail, { capture: true });
+    return () => window.removeEventListener("keydown", returnFromDetail, { capture: true });
+  }, [undoDetailNavigation]);
+
   return {
     selectedObjectIds,
     selectionRequest,

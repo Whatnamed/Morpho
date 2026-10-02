@@ -106,8 +106,9 @@ type MorphoCanvasProps = {
   ) => ReactNode;
   onReferenceIntent: (objectIds: string[]) => void;
   onSelectionChange: (objectIds: string[]) => void;
-  onInstancesChange: (instances: CanvasInstance[]) => void;
-  onStageRegionsChange: (regions: StageRegionRecord[]) => void;
+  onInstancesChange: (instances: CanvasInstance[], manual?: boolean) => void;
+  onStageRegionsChange: (regions: StageRegionRecord[], manual?: boolean) => void;
+  onCanvasLayoutChange?: (instances: CanvasInstance[], regions: StageRegionRecord[]) => void;
   onViewChange: (view: CanvasView) => void;
   onLiveViewChange?: (view: CanvasView) => void;
   onImportRequest: (request: CanvasImportRequest) => void;
@@ -204,6 +205,7 @@ export function MorphoCanvas({
   onSelectionChange,
   onInstancesChange,
   onStageRegionsChange,
+  onCanvasLayoutChange,
   onViewChange,
   onLiveViewChange,
   onReferenceIntent,
@@ -218,6 +220,12 @@ export function MorphoCanvas({
   }, []);
   const lastSelectionRef = useRef("");
   const pendingInstancesRef = useRef<CanvasInstance[] | null>(null);
+  const pendingInstanceSizeIdsRef = useRef(new Set<string>());
+  const pendingMeasurementsRef = useRef<CanvasInstance[] | null>(null);
+  const measurementsTimerRef = useRef<number | null>(null);
+  const canvasPointerActiveRef = useRef(false);
+  const pendingInstancesManualRef = useRef(false);
+  const pendingStageRegionsManualRef = useRef(false);
   const instancesPersistTimerRef = useRef<number | null>(null);
   const pendingStageRegionsRef = useRef<StageRegionRecord[] | null>(null);
   const stageRegionsPersistTimerRef = useRef<number | null>(null);
@@ -397,6 +405,20 @@ export function MorphoCanvas({
     };
   }, [applyWheelZoomFrame]);
 
+  const flushCanvasMeasurements = useCallback(() => {
+    if (measurementsTimerRef.current !== null) window.clearTimeout(measurementsTimerRef.current);
+    measurementsTimerRef.current = null;
+    const measurements = pendingMeasurementsRef.current;
+    pendingMeasurementsRef.current = null;
+    if (!measurements) return;
+    // A delayed measurement owns size only, never a now-stale position.
+    const current = latestWorkspaceRef.current.canvas.instances;
+    onInstancesChange(measurements.flatMap((measurement) => {
+      const instance = current.find((item) => item.id === measurement.id);
+      return instance ? [{ ...instance, size: measurement.size }] : [];
+    }), false);
+  }, [onInstancesChange]);
+
   const flushPendingInstances = useCallback(() => {
     if (instancesPersistTimerRef.current !== null) {
       window.clearTimeout(instancesPersistTimerRef.current);
@@ -408,9 +430,19 @@ export function MorphoCanvas({
       return;
     }
 
+    flushCanvasMeasurements();
     pendingInstancesRef.current = null;
-    onInstancesChange(instances);
-  }, [onInstancesChange]);
+    pendingInstanceSizeIdsRef.current.clear();
+    const regions = pendingStageRegionsRef.current;
+    if (regions && pendingInstancesManualRef.current && pendingStageRegionsManualRef.current && onCanvasLayoutChange) {
+      if (stageRegionsPersistTimerRef.current !== null) window.clearTimeout(stageRegionsPersistTimerRef.current);
+      stageRegionsPersistTimerRef.current = null;
+      pendingStageRegionsRef.current = null;
+      onCanvasLayoutChange(instances, regions);
+      return;
+    }
+    onInstancesChange(instances, pendingInstancesManualRef.current);
+  }, [onInstancesChange, onCanvasLayoutChange, flushCanvasMeasurements]);
 
   const flushPendingStageRegions = useCallback(() => {
     if (stageRegionsPersistTimerRef.current !== null) {
@@ -422,30 +454,53 @@ export function MorphoCanvas({
       return;
     }
     pendingStageRegionsRef.current = null;
-    onStageRegionsChange(regions);
+    onStageRegionsChange(regions, pendingStageRegionsManualRef.current);
   }, [onStageRegionsChange]);
 
   const scheduleInstancesPersist = useCallback(
-    (instances: CanvasInstance[]) => {
-      pendingInstancesRef.current = instances;
+    (instances: CanvasInstance[], manual: boolean) => {
+      if (!manual) {
+        // Projection measurements must neither split a gesture nor capture its
+        // positions. Preserve pending manual fields; refresh untouched geometry.
+        pendingInstancesRef.current = pendingInstancesRef.current?.map((pending) => {
+          const measured = instances.find((item) => item.id === pending.id);
+          const current = latestWorkspaceRef.current.canvas.instances.find((item) => item.id === pending.id);
+          if (!measured || !current) return pending;
+          return { ...pending,
+            position: pending.position.x === current.position.x && pending.position.y === current.position.y ? measured.position : pending.position,
+            size: pendingInstanceSizeIdsRef.current.has(pending.id) ? pending.size : measured.size
+          };
+        }) ?? null;
+        pendingMeasurementsRef.current = [...new Map([...(pendingMeasurementsRef.current ?? []), ...instances].map((instance) => [instance.id, instance])).values()];
+        if (measurementsTimerRef.current !== null) window.clearTimeout(measurementsTimerRef.current);
+        measurementsTimerRef.current = window.setTimeout(flushCanvasMeasurements, 140);
+        return;
+      }
+      if (pendingInstancesRef.current && pendingInstancesManualRef.current !== manual) flushPendingInstances();
+      pendingInstancesManualRef.current = manual;
+      pendingInstancesRef.current = [...new Map([...(pendingInstancesRef.current ?? []), ...instances].map((instance) => [instance.id, instance])).values()];
       if (instancesPersistTimerRef.current !== null) {
         window.clearTimeout(instancesPersistTimerRef.current);
       }
 
       instancesPersistTimerRef.current = window.setTimeout(() => {
+        if (pendingInstancesManualRef.current && canvasPointerActiveRef.current) return;
         flushPendingInstances();
       }, 140);
     },
-    [flushPendingInstances]
+    [flushPendingInstances, flushCanvasMeasurements]
   );
 
   const scheduleStageRegionsPersist = useCallback(
-    (regions: StageRegionRecord[]) => {
+    (regions: StageRegionRecord[], manual: boolean) => {
+      if (pendingStageRegionsRef.current && pendingStageRegionsManualRef.current !== manual) flushPendingStageRegions();
+      pendingStageRegionsManualRef.current = manual;
       pendingStageRegionsRef.current = regions;
       if (stageRegionsPersistTimerRef.current !== null) {
         window.clearTimeout(stageRegionsPersistTimerRef.current);
       }
       stageRegionsPersistTimerRef.current = window.setTimeout(() => {
+        if (pendingStageRegionsManualRef.current && canvasPointerActiveRef.current) return;
         flushPendingStageRegions();
       }, 140);
     },
@@ -470,7 +525,7 @@ export function MorphoCanvas({
   );
 
   const syncShapesFromEditor = useCallback(
-    (editor: Editor, changedShapes?: Array<MorphoShape | StageRegionShape>) => {
+    (editor: Editor, changedShapes?: Array<MorphoShape | StageRegionShape>, manual = true, previousShapes = new Map<string, MorphoShape | StageRegionShape>()) => {
       const currentWorkspace = latestWorkspaceRef.current;
       const pageMorphoShapes =
         changedShapes?.filter(isMorphoShape) ?? editor.getCurrentPageShapes().filter(isMorphoShape);
@@ -485,21 +540,25 @@ export function MorphoCanvas({
       // Stage drags update their members as Morpho shapes; styling a stage never
       // writes unrelated instance geometry.
       if (morphoShapesChanged) {
-        const allMorpho = editor.getCurrentPageShapes().filter(isMorphoShape);
-        const allInstances = allMorpho
+        const allInstances = pageMorphoShapes
           .filter((shape) => isMorphoShapeActiveInWorkspace(shape, currentWorkspace))
-          .map((shape) => ({
-            id: shape.props.instanceId,
-            objectId: shape.props.objectId,
-            position: { x: shape.x, y: shape.y },
-            size: { w: shape.props.w, h: shape.props.h }
-          }));
+          .map((shape) => {
+            const previous = previousShapes.get(shape.id);
+            if (manual && (!previous || previous.props.w !== shape.props.w || previous.props.h !== shape.props.h)) pendingInstanceSizeIdsRef.current.add(shape.props.instanceId);
+            const baseline = (manual ? pendingInstancesRef.current?.find((instance) => instance.id === shape.props.instanceId) : undefined) ?? currentWorkspace.canvas.instances.find((instance) => instance.id === shape.props.instanceId);
+            return {
+              id: shape.props.instanceId,
+              objectId: shape.props.objectId,
+              position: baseline && (!manual || (previous && previous.x === shape.x && previous.y === shape.y)) ? baseline.position : { x: shape.x, y: shape.y },
+              size: previous && previous.props.w === shape.props.w && previous.props.h === shape.props.h && baseline ? baseline.size : { w: shape.props.w, h: shape.props.h }
+            };
+          });
         if (allInstances.length > 0) {
-          scheduleInstancesPersist(allInstances);
+          scheduleInstancesPersist(allInstances, manual);
         }
       }
 
-      if (stageShapesChanged && !stageOpacityPreviewRef.current) {
+      if (stageShapesChanged && manual && !stageOpacityPreviewRef.current) {
         const stageShapes = editor.getCurrentPageShapes().filter(isStageRegionShape);
         const base = getStageRegions(currentWorkspace);
         const layouts = stageShapes.map((shape) => ({
@@ -517,7 +576,7 @@ export function MorphoCanvas({
         }));
         const nextRegions = mergeStageShapeLayoutsIntoRecords(base, layouts);
         if (!areStageRegionRecordsEqual(base, nextRegions)) {
-          scheduleStageRegionsPersist(nextRegions);
+          scheduleStageRegionsPersist(nextRegions, manual);
         }
       }
 
@@ -548,7 +607,7 @@ export function MorphoCanvas({
       const shapesByInstance = new Map(shapes.map((shape) => [shape.props.instanceId, shape]));
       const renderableInstances = getRenderableCanvasInstances(workspace);
       const renderableInstanceIds = new Set(renderableInstances.map((instance) => instance.id));
-      const pendingInstances = pendingInstancesRef.current;
+      const pendingInstances = [...new Map([...(pendingMeasurementsRef.current ?? []), ...(pendingInstancesRef.current ?? [])].map((instance) => [instance.id, instance])).values()];
       const toCreate: TLShapePartial<MorphoShape>[] = [];
       const toUpdate: MorphoShape[] = [];
       const toDelete = shapes.filter((shape) => !renderableInstanceIds.has(shape.props.instanceId));
@@ -580,9 +639,13 @@ export function MorphoCanvas({
             isBeingLocallyEdited: object.id === annotatedObjectId,
             isInDesignTrace: traceIdSet.has(object.id)
           };
-          if (!areMorphoShapePropsEqual(existing.props, nextProps)) {
+          const preservePointerPosition = canvasPointerActiveRef.current;
+          const positionChanged = !preservePointerPosition && (Math.abs(existing.x - renderInstance.position.x) > 0.01 || Math.abs(existing.y - renderInstance.position.y) > 0.01);
+          if (positionChanged || !areMorphoShapePropsEqual(existing.props, nextProps)) {
             toUpdate.push({
               ...existing,
+              x: preservePointerPosition ? existing.x : renderInstance.position.x,
+              y: preservePointerPosition ? existing.y : renderInstance.position.y,
               props: nextProps
             });
           }
@@ -643,7 +706,7 @@ export function MorphoCanvas({
       }
       const stagesToDelete = existingStages.filter((shape) => !stageIds.has(shape.id.replace(/^shape:/, "")));
 
-      editor.run(() => {
+      editor.store.mergeRemoteChanges(() => editor.run(() => {
         if (toCreate.length > 0) {
           editor.createShapes(toCreate);
         }
@@ -674,7 +737,7 @@ export function MorphoCanvas({
           }
           didSendStagesToBackRef.current = true;
         }
-      }, MORPHO_EDITOR_SYNC_RUN_OPTIONS);
+      }, MORPHO_EDITOR_SYNC_RUN_OPTIONS));
       lastAppliedEditorSyncInputsRef.current = latestEditorSyncInputsRef.current;
     },
     []
@@ -754,6 +817,10 @@ export function MorphoCanvas({
     editor.updateInstanceState({ isReadonly: readOnly });
     if (!readOnly) return;
     pendingInstancesRef.current = null;
+    pendingMeasurementsRef.current = null;
+    pendingInstanceSizeIdsRef.current.clear();
+    if (measurementsTimerRef.current !== null) window.clearTimeout(measurementsTimerRef.current);
+    measurementsTimerRef.current = null;
     pendingStageRegionsRef.current = null;
     if (instancesPersistTimerRef.current !== null) window.clearTimeout(instancesPersistTimerRef.current);
     if (stageRegionsPersistTimerRef.current !== null) window.clearTimeout(stageRegionsPersistTimerRef.current);
@@ -922,10 +989,18 @@ export function MorphoCanvas({
   useEffect(() => {
     // Single flush path for instances + stage regions + camera (no duplicate onMount listeners).
     const flushInteractionState = (event?: Event) => {
+      if (event?.type === "pointerup" || event?.type === "pointercancel") canvasPointerActiveRef.current = false;
       // Toolbar pointerup must reach its native click before persistence can
       // remount canvas chrome. Pending canvas writes still have their timers.
       if (event?.type === "pointerup" && event.target instanceof Element && event.target.closest(".selection-toolbar")) return;
+      if (event?.type === "pointerup") {
+        // Store listeners publish on the next frame. Flush after the editor's
+        // final pointer movement so one gesture has one actual commit.
+        window.requestAnimationFrame(() => { if (!canvasPointerActiveRef.current) flushInteractionState(); });
+        return;
+      }
       flushPendingInstances();
+      flushCanvasMeasurements();
       flushPendingStageRegions();
       flushViewPersist();
     };
@@ -935,10 +1010,13 @@ export function MorphoCanvas({
       }
     };
     const handleWindowBlur = () => {
+      canvasPointerActiveRef.current = false;
       flushInteractionState();
     };
+    const startCanvasPointer = (event: PointerEvent) => { if (event.button === 0) canvasPointerActiveRef.current = true; };
     const host = canvasHostRef.current;
 
+    host?.addEventListener("pointerdown", startCanvasPointer, { capture: true });
     host?.addEventListener("pointerup", flushInteractionState, { capture: true });
     host?.addEventListener("pointercancel", flushInteractionState, { capture: true });
     window.addEventListener("blur", handleWindowBlur);
@@ -946,6 +1024,7 @@ export function MorphoCanvas({
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      host?.removeEventListener("pointerdown", startCanvasPointer, { capture: true });
       host?.removeEventListener("pointerup", flushInteractionState, { capture: true });
       host?.removeEventListener("pointercancel", flushInteractionState, { capture: true });
       window.removeEventListener("blur", handleWindowBlur);
@@ -953,7 +1032,7 @@ export function MorphoCanvas({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       flushInteractionState();
     };
-  }, [flushPendingInstances, flushPendingStageRegions, flushViewPersist]);
+  }, [flushPendingInstances, flushCanvasMeasurements, flushPendingStageRegions, flushViewPersist]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -1081,6 +1160,10 @@ export function MorphoCanvas({
           });
 
           const cleanup = editor.store.listen((entry) => {
+            const previousShapes = new Map<string, MorphoShape | StageRegionShape>();
+            for (const [before] of Object.values(entry.changes.updated)) {
+              if ("type" in before && (isMorphoShape(before as TLShape) || isStageRegionShape(before as TLShape))) previousShapes.set(before.id, before as MorphoShape | StageRegionShape);
+            }
             const changedShapes = [
               ...Object.values(entry.changes.added),
               ...Object.values(entry.changes.updated).map(([, after]) => after)
@@ -1088,8 +1171,13 @@ export function MorphoCanvas({
               (record): record is MorphoShape | StageRegionShape =>
                 "type" in record && (isMorphoShape(record as TLShape) || isStageRegionShape(record as TLShape))
             );
-            if (changedShapes.length > 0) {
-              syncShapesFromEditor(editor, changedShapes);
+            const geometryShapes = changedShapes.filter((shape) => {
+              const previous = previousShapes.get(shape.id);
+              return !previous || previous.x !== shape.x || previous.y !== shape.y || previous.props.w !== shape.props.w || previous.props.h !== shape.props.h ||
+                (isStageRegionShape(shape) && JSON.stringify(previous.props) !== JSON.stringify(shape.props));
+            });
+            if (geometryShapes.length > 0) {
+              syncShapesFromEditor(editor, geometryShapes, entry.source === "user", previousShapes);
             }
 
             const changedRecords = [
@@ -1230,7 +1318,7 @@ const CanvasSelectionToolbar = track(function CanvasSelectionToolbar({
     onReferenceIntent?: () => void
   ) => ReactNode;
   onReferenceIntent: (objectIds: string[]) => void;
-  onStageRegionsChange: (regions: StageRegionRecord[]) => void;
+  onStageRegionsChange: (regions: StageRegionRecord[], manual?: boolean) => void;
   onStageOpacityPreviewChange: (stageId: string | null) => void;
 }) {
   const editor = useEditor();
@@ -1462,7 +1550,7 @@ function CanvasStageRegionToolbar({
   placement: SelectionToolbarPlacement;
   openPopover: StageRegionOpenPopover;
   onOpenPopoverChange: (next: StageRegionOpenPopover) => void;
-  onStageRegionsChange: (regions: StageRegionRecord[]) => void;
+  onStageRegionsChange: (regions: StageRegionRecord[], manual?: boolean) => void;
   onStageOpacityPreviewChange: (stageId: string | null) => void;
   onMeasure: (size: { w: number; h: number }) => void;
   isMeasuring: boolean;

@@ -28,6 +28,7 @@ import {
   revokeDocumentSourcePreview,
   type DocumentSourcePreview
 } from "./documentSourcePreview";
+import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import { commitWorkspaceStateNow } from "./workspaceCommitBoundary";
 
 export type DocumentReaderExtractFragmentResult =
@@ -58,6 +59,7 @@ export type UseDocumentReaderControllerInput = {
   canMutateWorkspace?: boolean;
   workspace: MorphoWorkspace;
   updateWorkspace: Dispatch<SetStateAction<MorphoWorkspace>>;
+  commitManualWorkspace?: <T>(transform: WorkspaceCommitTransform<T>, label?: string) => T;
   blobStore?: BlobStore;
   services?: DocumentReaderControllerServices;
   onViewCreatedFragment?: (fragmentId: string) => void;
@@ -110,6 +112,7 @@ export function useDocumentReaderController({
   canMutateWorkspace = true,
   workspace,
   updateWorkspace,
+  commitManualWorkspace,
   blobStore = indexedDbBlobStore,
   services = defaultServices,
   onViewCreatedFragment
@@ -376,7 +379,8 @@ export function useDocumentReaderController({
         return { status: "blocked", reason: "Document reader is not ready." };
       }
 
-      const result = commitWorkspaceStateNow<DocumentReaderExtractFragmentResult>(updateWorkspace, (current) => {
+      const commitFragment = commitManualWorkspace ?? (<T,>(transform: WorkspaceCommitTransform<T>) => commitWorkspaceStateNow(updateWorkspace, transform));
+      const result = commitFragment<DocumentReaderExtractFragmentResult>((current) => {
         if (!isCurrentSession(session) || current.project.id !== session.projectId) {
           return {
             workspace: current,
@@ -450,7 +454,7 @@ export function useDocumentReaderController({
       });
       return result;
     },
-    [canMutateWorkspace, isCurrentSession, session, updateState, updateWorkspace]
+    [canMutateWorkspace, commitManualWorkspace, isCurrentSession, session, updateState, updateWorkspace]
   );
 
   const viewCreatedFragment = useCallback(

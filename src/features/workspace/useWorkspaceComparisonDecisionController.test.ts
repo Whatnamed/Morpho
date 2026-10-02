@@ -257,8 +257,12 @@ function createInput(
       harness.workspace = result.workspace;
       return result.value;
     },
-    pushUndoSnapshot: () => {
+    commitManualWorkspace: <T,>(transform: WorkspaceCommitTransform<T>): T => {
       harness.undoCalls += 1;
+      harness.commitCalls += 1;
+      const result = transform(harness.workspace);
+      harness.workspace = result.workspace;
+      return result.value;
     },
     setSelectedObjectIds: (action) => {
       harness.selected = typeof action === "function" ? action([...harness.selected]) : [...action];
