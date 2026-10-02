@@ -291,7 +291,7 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 | P2A | accepted | Codex | `b1894a5a437ed2d7544ceadb56f39428919b5503`（开工时远端最新 main）；Workspace schema 18 | `temp/prompts/p2a-turn-task-contract-plan.md`（一次性 ignored execution Plan，accepted closeout 后清理） | `02655e829a72aea7bd555917de9fa89519818bfd`（final accepted implementation head） | Acceptance: 2026-10-01 网页复审确认 P2A 达到验收条件，用户授权 accepted closeout、ff-only 合入 main，保留原 4 个 commits。Evidence: turn-local activity / targets / sources / references / exclusions / required facts / grants / expected outputs 接入既有 A+ preparation、Strategy、Method、Context、Provider tools、本地 executor 和 confirmation；Provider-visible tools 与 executable profile 同源，模型/Method/来源不能扩权；Coordinator copy / continuation / Recovery 保留冻结合同；真实 Runner 与 visual core、Chromium UI + IndexedDB + reload 验证 A+B comparison 与仅 A 生成两张共存，B/default 不进入生成，无 Compare write / 主方向变更；simple chat / critique / read 保持轻量只读路径。Review corrections: `402f50a185504dee92aa235703c035998b43f332` activity-local visual scope ownership；`02655e829a72aea7bd555917de9fa89519818bfd` exact legacy in-flight action recovery compatibility，旧 draft/current Workspace 不重建 grants，原 action/body/hash 与 Image Operation Plan 可恢复，拒绝新 child 和新 generate/search/write，旧 Prompt 无法安全继续时明确结束。Final checks: unit 225 files / 2250 tests、Runner 50、targeted 126、Chromium 7、typecheck、lint、production build、diff check 全部通过；final implementation Vercel success（GitHub commit status 已核对）。Limits: 未执行真实 paid Provider；未验证生产 Journal / 实际计费行为，外部接口为模拟；无 Workspace/Journal schema bump；P2B required-read / input coverage / final fulfillment 等边界保持未实施，P2B / P3A 继续未开始；未进入 P4/P5/P6H。 |
 | P2B | accepted | Codex | `d8b7daeea68a085459f87e4755ecb7fd2b9feca0`（开工时最新 origin/main）；schema 18 / Recovery v2 | `temp/prompts/p2b-input-reads-fulfillment-plan.md`（一次性 ignored execution material，accepted closeout 已清理） | `dbd5cd0b2b58f1fc520bd4b9d80da45f70f8e111`（final accepted implementation head，包含主体和有限 review correction） | Acceptance: 2026-10-01 网页复审确认 P2B 达到验收条件，用户授权正式 accepted、closeout 和 ff-only 合入 main，保留已有 commits。Evidence: actual serialized Provider input coverage；object / revision / document range / Delivery section / image pixels 的 bounded source reads；sequence-bound delivered receipts；required reads 接入生产 Runner；legitimate fresh continuation 与 frozen Recovery request 分离；Concept create/revise/split/merge 接通既有 domain semantics；Delivery target / stable references 实际进入 Provider-readable input；显式 generate-then-critique/compare 只读观察新生成 pixels；fulfillment 依据真实 read/effect/Workspace receipts 而非 Provider prose，0/2、1/2、2/2 分别为 notPerformed / partial / fulfilled。Review correction: `dbd5cd0b2b58f1fc520bd4b9d80da45f70f8e111` 关闭原始 scoped pixels 被删除及 payload / coverage 不一致。Final checks: targeted 102 项、Runner 69 项、全量 unit 228 files / 2284 tests、Chromium 7 条、typecheck / lint / production build / git diff --check 通过；final implementation commit Vercel status success（GitHub commit status 已核对）。Limits: 外部 Provider / Image / Journal 为模拟；未执行真实 paid Provider，未验证真实计费行为，未执行生产 Journal migration / fault injection；旧 coverage / fulfillment 保持 absent / unknown；无 schema bump；P3A / P3B / P4 / P5 属于后续 package，这些限制不阻止 P2B 当前合同 accepted。 |
 | P3A | accepted | Codex | `ab25612d7af3ee091bbce194146c69b577ade972`（开工时最新 origin/main）；external effect contract v1 / Recovery v2 / Workspace schema 18 | `temp/prompts/p3a-effect-observation.md`（一次性 ignored execution Plan，accepted closeout 已清理） | `ccf4561c8c422d3b5a01c8146e63287023ab6a79`（final accepted implementation head） | Acceptance: 2026-10-01 网页复审确认 P3A 达到验收条件，用户授权正式 accepted、closeout 和 ff-only 合入 main，保留已有 commits。Evidence: stable logical effect / attempt / exact Provider namespace；frozen request 先登记再提交；known task / response identity 可继续 observation；unknown 不误判 failed、不自动 resubmit；running → late success；durable cancel intent 与 local abort / Provider cancellation 分离，cancel 后 late success 保留真实成功和 cancelRequestedAt；legacy / in-flight 不反造 Provider identity；确认后非 A+ image、A+ Image/Text/Compaction 与独立 Chat/Image 接线；P3S ambiguous paid POST stop-loss 保持。Review correction: `ccf4561c8c422d3b5a01c8146e63287023ab6a79` 使 old Turn administrative terminal 不再阻断 exact unknown/running effect 的 durable cancel intent；confirmed Provider terminal 和 legacy no-effect 只读；先 durable intent 成功再 instance-local abort，不 reopen Turn、不恢复 paid retry/fallback。Final checks: targeted cancellation / Journal / observation / Runner / Recovery 7 files / 190 tests、全量 unit 229 files / 2313 tests、Chromium cancellation slice 1、typecheck / lint / production build / git diff --check 通过；final implementation commit Vercel success（GitHub commit status 已核对）；主体阶段另有 targeted 18 files / 401 tests、本地 PostgreSQL WASM SQL 22 checks、Chromium 6 条。Limits: 未执行真实 paid Provider；未应用/验证生产 external-effect migration；未做真实多实例宿主或计费验证；Provider idempotency / lookup / reliable cancel / cross-node scope / retention 未证明能力不作保证；P3B result escrow / redelivery / retention / hosting / ACK 未开始。 |
-| P3B | validating | Codex | `6a2d220bd308783867f53628935246ff66b1935e` (execution-time main); Workspace 18 / Recovery v2 | `temp/prompts/p3b-implementation-plan.md` (ignored) | `codex/p3b-result-delivery`; storage `1ac76cf933b4de03090301a105e1f9a35558cd9d`, integration `c86f1dc0913f6fa3a8a051f88b59f3085abf0fb7`; canonical record in Git history | Image/Text/Compaction finite escrow + original Journal/claims publication, exact result identity/version/hash, local persistence ACK/outbox, owner isolation, payload bounds, raw dedupe/retention and cleanup implemented. No Production migration, paid Provider, main merge or accepted claim; final validation record below. |
+| P3B | accepted | Codex | `6a2d220bd308783867f53628935246ff66b1935e` (execution-time main); Workspace 18 / Recovery v2 | `temp/prompts/p3b-implementation-plan.md` (transient; accepted closeout cleanup) | `3ee90f751df778fba05d8ca4e447a5ac7b20544e` (final accepted implementation head; includes both bounded Image review corrections) | 2026-10-02 网页最终复审 ACCEPTED；用户授权 docs-only closeout、ff-only 合入 main，保留原 5 个 implementation commits。Bounded service-only Image/Text/Compaction escrow、immutable identity/version/SHA-256、same-result redelivery、durable local persistence ACK/outbox、owner isolation、capacity/raw dedupe/retention/cleanup；accepted validation and production limits below。P4 未开始。 |
 | P4, P5, P6H, P6I, P7 | not_started | 未分配 | `0c04ec8`（planning code baseline，待各自开工绑定新 main） | — | — | 本地图仅完成规划 |
 | P3-Facts | not_started（D） | 未分配 | EXT 中明确的未知项 | — | — | 不阻止止损 |
 | O1（CI enforcement / branch protection） | optional_process_decision | — | 见第 7.3 节 | — | — | 可选流程加固；不阻塞任何 remediation package |
@@ -442,59 +442,28 @@ Closeout 仅更新 Program Map 与必要 accepted 引用、清理本任务 ignor
 多实例宿主、计费及未证明 Provider 能力的 validation limits 保留，P3B 仍未开始。
 
 
-P3B implementation (2026-10-02; **validating**, waiting for web review):
+P3B accepted closeout (2026-10-02):
 
-- Existing Supabase service-only SQL chunks/immutable manifest; complete hash/completeness check,
-  original Text Journal/Tool claims publication transaction, identical result redelivery and ACK.
-  Provider execution, server publication and local persistence remain independent; P3S/P3A,
-  unknown/late success/cancel intent, legacy authority and P1/P2 boundaries are preserved.
-- All A+ Image/Text/Compaction plus independent Image/Chat producers escrow; Recovery/local
-  Image/summary/conversation saves consume it. Confirmed independent Image writes an exact local
-  intent before POST and reload uses GET only. Saved object/revision/request identities prevent
-  duplicate local effects. HTTP/read/display does not ACK; local ACK loss only repeats the ACK.
-- 4 MiB ingress, 8 MiB frozen Provider body, 2/2.5 MiB decoded image bounds, 16/8 MiB Image/JSON
-  results and 512 KiB chunks; 64/128 MiB per-owner input/result capacity with pre-submit reservation.
-  Ordinary attempt first-body duplication removed. Raw/result payload TTLs are fixed 24h; expiry
-  preserves stop-loss tombstones. Lazy cleanup + existing-pg_cron integration; absent production
-  scheduling and backup retention are separately unverified rollout requirements.
-- Local SQL harness uses actual migrations/RPCs and checks reapplication, owner/grants, corruption,
-  partial staging, publication/claims, duplicate ACK, expiry/cleanup and admission capacity; P3A
-  regression runs against the forward schema too. Production Provider/DB/hosting behavior is not
-  inferred from these fakes/temporary PostgreSQL tests. Local final gate results appear below.
-- No Provider idempotency/retrieve/retention/billing guarantee, background completion guarantee,
-  production migration/hosting acceptance or P4 work. A killed invocation before complete capture
-  can still leave Text/Compaction unavailable; result access cannot recreate unknown executions.
-
-P3B validation evidence (2026-10-02, implementation head `c86f1dc0913f6fa3a8a051f88b59f3085abf0fb7`):
-actual local PostgreSQL migrations/RPCs: P3B **38 checks**, P3A **22 checks** against the forward schema;
-full unit **235 files / 2349 tests**; lint, typecheck, production build and diff whitespace check passed.
-Full Chromium acceptance **38 passed**, plus the added Compaction reload/ACK case **1 passed**.
-Failure paths cover partial/corrupt staging, lost publish/response/ACK, expiration, capacity admission,
-owner isolation, independent-image asset/Workspace save failure, same-object/revision dedupe and original
-frozen recovery. Browser tests use real local persistence with mocked external services; they do not
-prove production PostgREST/concurrent DB sessions/cleanup schedule/hosting/Provider capabilities.
-The package remains **validating** for web review; no accepted/merge-main/Production migration/P4 action.
-
-P3B bounded Image review correction (2026-10-02; still **validating**): incomplete/unpublished
-Image staging no longer blocks trusted P3A same-task GET-only retrieval. Recovery validates the
-original immutable manifest and fills existing chunks without prepare/rebinding, retaining the
-original A+ Journal binding; expiry and conflicts remain fail closed. Image delivery pending
-preserves restored Actions across reload. Text/Compaction contracts and schema are unchanged.
-No paid Provider or Production migration; validation evidence is recorded in the review-fix commit.
-Review-fix validation: targeted result/handler/Provider/local-recovery tests passed; final full unit
-**235 files / 2361 tests**, local actual PostgreSQL P3B **49 checks** and P3A **22 checks**, Chromium
-**6 slices** (including consecutive partial-staging reloads, one local Image, identical replay body
-and persistence ACK), typecheck/lint/production build/git diff --check passed. Provider and browser
-responses are deterministic fakes; no production retrieval or hosting reliability claim is made.
-
-P3B final bounded Image error-classification review fix (2026-10-02; **validating**): explicit
-transient code allowlist preserves pending/reconciliation across pre-admission result read/probe/
-observation and post-success escrow errors. Image publication no longer masks permanent errors;
-conflict/expiry/oversize keep accurate non-pending codes/statuses. Clients still require an explicit
-server pending signal. No schema, Text/Compaction, P3A identity or paid-submission changes.
-Validation: targeted **10 files / 166 tests** plus final fixture checks **58 tests**; full unit
-**235 files / 2396 tests**; actual local PostgreSQL P3B **49 checks**, P3A forward schema **22 checks**;
-Chromium **7 slices**, including original response loss followed by two consecutive transient
-store failures, unchanged Action body, same local Image and persistence ACK. Typecheck/lint/
-production build/git diff --check passed. No Production migration or real paid Provider calls;
-production storage/hosting/retrieval limits remain unverified. No main merge or accepted claim.
+- 网页最终复审 **ACCEPTED**。Base: `6a2d220bd308783867f53628935246ff66b1935e`；
+  final accepted implementation head: `3ee90f751df778fba05d8ca4e447a5ac7b20544e`。
+  用户授权单独 Program Map closeout commit、ff-only 合入 main，保留原 5 个 implementation
+  commits，不 squash/rebase/force push；一次性 ignored Plan/任务临时材料清理。
+- Accepted scope: bounded service-only Image/Text/Compaction result escrow、immutable result
+  identity/version/SHA-256、same-result redelivery、durable local persistence ACK + ACK outbox；
+  execution / server delivery / local save 分离，owner isolation 与 server-only access；统一
+  request/ingress/Recovery/Journal/result capacity、ordinary frozen-request dedupe、bounded raw/
+  result retention/cleanup。P3S/P3A stop-loss、unknown、late success、cancel intent 保持。
+- 两轮 bounded Image review correction 已纳入 acceptance：trusted known-task GET-only partial
+  staging repair，保留 original immutable manifest / A+ binding，不 prepare/rebind/paid resubmit；
+  explicit transient/permanent delivery classification 保留合法恢复中的 restored Action，
+  conflict/expiry/oversize fail closed，不无限 pending。
+- Accepted evidence: targeted final classification **166 tests**；full unit **235 files / 2396 tests**；
+  local PostgreSQL P3B **49 checks**；P3A forward-schema **22 checks**；Chromium **7 slices**；
+  typecheck/lint/production build/git diff --check 通过；网页复审记录 final implementation
+  Vercel commit status **success**。Closeout 不修改实现、不重跑完整测试。
+- Validation / rollout limits: 未执行 real paid Provider 或 Production migration；真实生产
+  Supabase/PostgREST concurrency、多 session / hosting reliability、production cleanup scheduling
+  与 Provider retrieval guarantees 未验证，mock/local SQL/browser evidence 不证明这些能力。
+  这些限制不影响代码 package acceptance；不承诺 exactly-once 或 durable background completion。
+  **P4 尚未开始**；不扩大到其他 package。Supabase CLI ignored cache 此前受环境删除策略限制，
+  closeout 保留并如实记录，不扩大清理范围。
