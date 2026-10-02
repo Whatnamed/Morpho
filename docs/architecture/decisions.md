@@ -1340,3 +1340,24 @@ external maintenance when it is absent. Keep small immutable identity/result tom
 P3S stop-loss after expiry. Never reconstruct legacy identity/authority or mutate current project
 truth from delivery metadata. Production migration/paid calls/hosting/cleanup acceptance remain
 unverified; P3B stays validating and P4 is not started.
+
+
+## 2026-10-03: P6H session-local operation-owned manual history (validating)
+
+Decision: replace normal whole-Workspace Undo restoration with deltas captured at explicit manual
+commit ports. Store owned before/after fields and keyed lifecycle/membership/order plus object,
+owner, revision and semantic lifecycle guards. Apply a checked inverse atomically to the current
+Workspace; transfer the same entry between Undo/Redo stacks only after deep validation succeeds.
+
+Reason: an unrelated AI result, message or runtime write must not block or disappear when undoing
+an earlier manual visibility/edit action. Same-field or identity/currentness conflicts must retain
+both third-party state and the history entry. Keep Decision/history/revision payloads append-only;
+complete compensation with existing P1B effects/lifecycle and qualified derived projections.
+
+Boundary: session-only 20-entry stacks; no persistent Undo service, generic command framework,
+CRDT, Event Sourcing, Provider effect replay or schema/migration change. Detail return uses Alt+Left
+and does not consume mutation shortcuts. Keep the old snapshot stop-loss helper isolated and
+unchanged. Renderer-only auto-grow can complete an exact-match creation/restoration baseline;
+manual resize and independent content changes cannot use that exception. P4 visual lineage,
+P5 freshness/provenance and P6I surface/keyboard redesign remain outside this package. Acceptance
+and cross-package integration belong to web review; the task branch stays validating.

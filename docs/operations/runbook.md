@@ -1437,3 +1437,31 @@ Only service_role can invoke it; no browser endpoint exposes global cleanup. Laz
 also runs during reads/registration. Expired access is immediate, while physical deletion requires
 the next cleanup run; verify both and database backup retention separately before production release.
 No cleanup schedule, production capability, billing or full recovery guarantee has been verified here.
+
+
+### P6H Manual History validation (2026-10-03)
+
+Use the isolated `D:\Morpho-Worktrees\p6h-manual-history` worktree. Build after the last source,
+test or canonical-document edit because the production server verifies build provenance.
+
+```powershell
+npm.cmd test
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run build
+$env:MORPHO_E2E_PORT = '3116'
+npx.cmd playwright test e2e/manual-history.spec.ts e2e/canvas-object.spec.ts e2e/truth-evidence-authority.spec.ts e2e/persistence.spec.ts --project=chromium --workers=2 --retries=0
+git diff --check
+```
+
+The P6H suite exercises real mutation shortcuts, one-entry pointer drag, independent mocked Agent results, create/delete,
+Direction status/retained conflict, source navigation return, Delivery edits and Editable Backup
+inspection/reload. Core tests additionally deep-validate and JSON/backup round-trip successful
+inverses, guard identity/revision/currentness and preserve later generated-image metadata/assets.
+All Provider calls use local deterministic fixtures; these checks do not execute paid requests.
+Reload intentionally clears session history. A blocked action leaves Workspace and history intact;
+Ctrl/Cmd+Z, Shift+Z and Ctrl/Cmd+Y do not undo detail/viewport navigation. Native editable controls
+retain their own text undo; TopControls can always request the manual stack.
+
+P6H remains validating until web review. Push only its task branch; do not merge main or parallel
+P4 code, and do not change P4/P5/P6I contracts to make a history inverse succeed.

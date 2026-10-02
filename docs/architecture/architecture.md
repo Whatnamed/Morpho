@@ -89,14 +89,16 @@ Important module boundaries:
   changed.
 - WorkspaceClient decomposition phase 5 moves the project-aware selection session, persisted
   selection hydration, canvas selection/focus request nonces, live versus committed canvas View,
-  and detail-location undo into `useWorkspaceSelectionNavigationController.ts`. Manual object
-  Snapshot History and the Ctrl/Cmd undo/redo boundary live in the generic
-  `useWorkspaceObjectHistoryController.ts`; it delegates page-specific snapshot capture and
-  restoration back to `WorkspaceClient.tsx`, while preserving detail-navigation priority and AI
-  content protection. Both controllers clear transient history across project/readiness changes,
+  and detail-location return into `useWorkspaceSelectionNavigationController.ts`. P6H replaces
+  the original snapshot history with operation-owned manual deltas in
+  `useWorkspaceObjectHistoryController.ts` / `workspaceManualHistory.ts`. Ctrl/Cmd+Z, Shift+Z
+  and Ctrl/Cmd+Y belong to mutation history; detail return uses Alt+Left. Editable DOM inputs
+  retain native text editing history. Navigation no longer consumes mutation Undo. Both controllers
+  clear transient history across project/readiness changes,
   and keep same-project ready updates intact. `WorkspaceClient.tsx` remains responsible for
   canvas Trace, surface coordination, domain mutations, AI state, confirmations, and component
-  composition. No visible UI, schema, persistence format, or domain contract changed.
+  composition. The original decomposition preserved UI; P6H supersedes only the history/shortcut
+  behavior above, without schema or persistence-format changes.
 - WorkspaceClient decomposition phase 6-A moves Visual Generation Execution into the React-free
   `workspaceVisualGenerationExecution.ts` core and the
   `useWorkspaceVisualGenerationController.ts` React wiring layer. The core owns plan validation,
@@ -178,9 +180,9 @@ Important module boundaries:
   and optional-reason actions still require confirmation. Final metadata uses the current saved
   analysis, while a key conclusion keeps only its candidate text-evidence sources. The controller
   owns a project-scoped session so A/B/A2 stale callbacks fail closed, same-project rerenders keep
-  pending confirmation, and a successful confirmation creates exactly one undo snapshot before
-  applying the existing domain action. Compare elimination no longer uses the comparison-specific
-  text prompt; ordinary canvas elimination remains on its existing prompt path. No schema,
+  pending confirmation, and a successful local confirmation commits the existing domain action
+  with exactly one operation-owned manual history entry. Compare elimination no longer uses the
+  comparison-specific text prompt; ordinary canvas elimination remains on its existing prompt path. No schema,
   provider, or A+ runtime contract changed.
 - WorkspaceClient decomposition phase 6-F moves the shared Pending Confirmation model into the
   neutral `workspaceConfirmation.ts` module and gives the page one project-scoped confirmation
@@ -515,7 +517,7 @@ P1A deletion/reference roles use the existing v17 shapes:
 | DocumentFragment source File | Historical source identity: retain extracted body, file identity/title and extract asset; a missing File is legal, an existing wrong-type endpoint is rejected. Queries report missing availability. |
 | Artifact Proposal sources/targets; Decision/Continuity sources | Existing historical source snapshots remain readable; existing application/review rules are retained, without a new dependency schema. |
 
-Session-only snapshot Undo/Redo remains conservative. It compares persisted AI message content/status/trace, summaries/compaction/Provider frames/Compare records, operations, assets, citations, proposals, pending Delivery drafts, revisions, Decisions, lineage, Memory/Stage history and file/image runtime output fields. New or changed protected content blocks restoration and preserves the history entry. A successful restore records a session-only baseline so an unchanged restored object is not mistaken for new independent content by Redo. Ordinary safe snapshots remain supported; manual changes that add protected history may also block when ownership cannot be distinguished. This is stop-loss, not P6H operation-scoped history.
+P1A snapshot stop-loss is retained unchanged in `workspaceSnapshotHistory.ts` for legacy safety tests; the normal Workspace UI does not call it. P6H manual history below supersedes whole-Workspace restoration without weakening those historical guards.
 - deterministic projection and controlled semantic entries meet in one Memory Kernel, with consecutive equivalent revisions collapsed during migration so reload is idempotent;
 - Agent messages record prompt-contract version, task strategy, specific memory/stage update keys, citations, and Agent Trace provenance;
 - `src/domain/morpho/agentContextPolicy.ts` is the only production Context Policy source: 256,000 window, 204,800 prepare, 230,400 compact, 16,000 uncompressed-tail target, and a separate 16,000 response reserve. `prepare` never trims history; only `compact` advances a validated summary boundary;
@@ -564,9 +566,49 @@ No new runtime dependency or external service was introduced for schema v17.
   labeled Stage risk diagnostics, not default claims. Superseded/historical Decision events remain
   history. Empty Memory/Stage descriptors clear, preserving revisions; equivalent replay does not
   append, and restoring an equivalent cleared projection reuses its historical value.
-- Snapshot Undo recognizes newly produced current projections as derived from already guarded
-  authority. Edits to existing historical revisions and unrelated added historical revisions still
-  block restore; this is compatibility with eager projection completion, not P6H change-set history.
+- The earlier snapshot stop-loss recognized eagerly completed projections. P6H instead keeps
+  current historical stores, checks touched immutable revision payloads, and completes qualified
+  projections from the checked inverse; unrelated new history does not block a manual delta.
+
+### P6H operation-owned Manual History (2026-10-03, validating)
+
+- History is session-local, project/readiness-scoped and bounded to 20 entries per stack. A
+  successful explicit manual commit records only its actual field changes, keyed-record lifecycle,
+  ID membership/order changes and identity/currentness guards. It stores no Workspace snapshot.
+- Undo/Redo check all expected present-side values, object incarnation/type, CanvasInstance binding,
+  Delivery/Branch owner identity, touched immutable revision payloads and semantic lifecycle
+  evidence before applying anything. Single-primary/current-definition/default-reference collisions
+  and current-schema validation also fail closed. A conflict leaves the entire Workspace and entry
+  intact and shows a retained-history notice. Redo uses the same delta in the opposite direction.
+- AI messages/results, Provider operations, assets, proposals, citations, historical revisions,
+  Decisions and Continuity events come from the current Workspace. Inverses neither call Provider
+  nor remove those independent stores. `manualHistoryMutation.ts` appends compensating identity-bound
+  Decision effects using the existing P1B vocabulary, updates only the affected current revision
+  flags and semantic user-action lifecycle, then reconciles qualified Memory/Stage projections.
+- Explicit user mutations are wired through the current functional commit boundary: imports/paste,
+  Reader fragment creation, hide/restore/delete, project title, Canvas layout/layers/Region edits,
+  Direction status, current Definition, reference/visual review and existing Branch organization,
+  Research extraction/manual Conclusion creation/category, Continuity manual lifecycle, local
+  Compare/confirmation writes and Delivery section/reference/editorial/gap/draft edits. Independent
+  Agent/Proposal/runtime execution retains its existing commit ports and is not captured.
+- Caption and note own separate fields even when editorial was initially absent. Keyed membership
+  edits preserve independently added references. Object creation owns its logical object/instance
+  and necessary Region membership, but not one-way Region activation. Renderer auto-grow may complete
+  that entry's instance-size baseline only after an exact prior instance match with unchanged owned
+  content; manual resize or independently changed content still conflicts. Geometry callbacks
+  carry only actually changed fields/instances. Debounced renderer measurements cannot capture
+  stale positions or split a manual pointer gesture; coordinate restoration projects back to the
+  editor. A Region/member drag commits both geometry parts through one manual boundary.
+- Viewport, reading/detail navigation and selection are not historical mutation fields; only invalid
+  live selections are pruned when an inverse removes/hides their target. TopControls expose manual
+  Undo/Redo availability; text inputs retain native edit shortcuts. No navigation UI redesign.
+- Intentionally excluded: paid/external execution, Agent writes/confirmation, AI Proposal apply,
+  asynchronous file parsing/recovery, assets/byte storage, conversation/runtime bookkeeping and
+  project archive restore. A created/deleted whole record changed by such an independent writer may
+  conservatively block; new dependencies or identity/currentness changes also block instead of merging.
+  Reload/project change clears the stacks. Workspace schema 18, migrations and backup format remain
+  unchanged. P4 visual lineage is not modified; concurrent integration of shared composition/docs
+  is deferred to web review, with no dependency on P4's unaccepted contracts.
 
 ## Local-First Persistence
 
