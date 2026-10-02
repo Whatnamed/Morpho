@@ -1339,4 +1339,24 @@ fixed non-extending clocks, service-only cleanup, optional existing pg_cron inte
 external maintenance when it is absent. Keep small immutable identity/result tombstones to preserve
 P3S stop-loss after expiry. Never reconstruct legacy identity/authority or mutate current project
 truth from delivery metadata. Production migration/paid calls/hosting/cleanup acceptance remain
-unverified; P3B stays validating and P4 is not started.
+unverified; package acceptance and current status are maintained in the Program Map.
+
+## 2026-10-03: Freeze Visual Identity Separately From References And Observation
+
+Decision: P4 uses versioned optional lineage and actual-input snapshots within Workspace schema 18.
+A task has one identity parent or explicit new identity; auxiliary references carry task-local
+roles/requirements/exclusions. Only task ownership or the parent supplies Direction/Branch, never
+reference order or count. Historical generation snapshots are immutable; current membership is a
+separate organizational fact. Unknown legacy parent/roles/pixels stay unknown.
+
+Reason: a CMF/environment reference can supply useful pixels while belonging to another Direction;
+it must not change the result's identity, lose its version relation or rewrite historical Trace.
+Required pixels block before submission. Optional loss is disclosed, and the actual prompt/input
+order/edit mode are frozen together with per-reference provenance. Original request recovery
+consumes these facts and original settings rather than reconstructing them from today's Workspace.
+
+Boundary: P1B retains Truth/evidence authority, P2A retains scope/targets/references/exclusions/grants,
+P2B retains materialization/read/fulfillment and P3 retains execution/result delivery/ACK. A P2B
+delivered pixels receipt may be linked to the matching image, but is no quality verdict. Ordinary
+generation does not authorize review/regeneration. P4 adds only factual details to existing UI;
+Delivery handoff, operation-level manual history and broader interaction changes remain P5/P6.

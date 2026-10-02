@@ -1437,3 +1437,38 @@ Only service_role can invoke it; no browser endpoint exposes global cleanup. Laz
 also runs during reads/registration. Expired access is immediate, while physical deletion requires
 the next cleanup run; verify both and database backup retention separately before production release.
 No cleanup schedule, production capability, billing or full recovery guarantee has been verified here.
+
+## P4 visual lineage validation (2026-10-03; validating)
+
+No Workspace schema bump, DB migration or paid request is needed. Existing schema 18 projects and
+Editable Backups keep missing lineage/roles/observation as legacy/unknown; do not populate these
+fields from current defaults, representatives, Branch roots or reference ordering.
+
+Focused deterministic checks, with no real Provider/Journal traffic:
+
+```powershell
+npm.cmd exec vitest run src/features/workspace/visualLineage.test.ts src/domain/operations/imagePromptCompiler.test.ts src/domain/operations/visualGenerationPlan.test.ts src/domain/morpho/generation.test.ts src/domain/morpho/designTrace.test.ts src/features/workspace/workspaceVisualGenerationExecution.test.ts src/features/workspace/turnTaskResolver.test.ts src/features/workspace/agentTurnRunner.test.ts
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd test
+npm.cmd run build
+npm.cmd exec playwright test e2e/visual-lineage.spec.ts e2e/turn-task-contract.spec.ts e2e/task-fulfillment.spec.ts e2e/external-effect-observation.spec.ts e2e/external-result-delivery.spec.ts -- --project=chromium --workers=2
+git diff --check
+```
+
+Browser tests use real production UI/Runner/local persistence and fake external services; the
+fixtures place readable PNGs in IndexedDB. They assert actual Image payload versus saved lineage,
+roles/omissions, Direction/Branch, one version parent, generate-only observation absence and reload.
+P2B review trajectories assert actual continuation pixels and delivered receipts; P3 recovery tests
+continue to query/redeliver the original effect and repeat only the same local ACK.
+
+Interpret Image success as generated/saved, not visually verified. The Source detail shows intended
+purpose, identity parent, auxiliary reference roles, omitted inputs and generation-time ownership.
+“图像已供 AI 观察” requires a matching P2B delivered pixels record and is not a quality verdict.
+A missing required reference is a pre-submit failure; repair the source or explicitly change the
+authorized task, rather than silently sending text-to-image. Optional omissions are inspectable.
+Operation planned/materialized input is not P3 execution proof. Exact Recovery never rereads current
+references or creates new paid authority, even if current Direction/Branch state changed.
+
+These checks do not verify real image quality, Provider role adherence, production migrations,
+hosting, retention or billing. P4 stays validating pending web review; do not start P5.
