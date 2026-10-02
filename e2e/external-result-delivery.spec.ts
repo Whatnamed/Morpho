@@ -4,7 +4,7 @@ import { installAgentMock, setAgentRequestScript, agentCalls } from "./fixtures/
 import { toolCallTurnScript } from "./support/agentSse";
 const pixel = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFh0AAAAASUVORK5CYII=";
 
-for (const fault of ["lost_response", "asset_abort", "partial_staging"] as const) test(`P3B ${fault}: reload saves same escrowed image, ACK loss only repeats ACK`, async ({ page }) => {
+for (const fault of ["lost_response", "asset_abort", "partial_staging", "store_transient"] as const) test(`P3B ${fault}: reload saves same escrowed image, ACK loss only repeats ACK`, async ({ page }) => {
   const seed = await seedProject(page);
   await installAgentMock(page);
   await page.addInitScript(({ base64, fault }) => {
@@ -31,6 +31,11 @@ for (const fault of ["lost_response", "asset_abort", "partial_staging"] as const
         bodies.push(String(init.body)); sessionStorage.setItem("p3b-image-bodies", JSON.stringify(bodies));
         sessionStorage.setItem("p3b-agent-state", JSON.stringify(window.__morphoAgentMock));
         if (bodies.length === 1) sessionStorage.setItem("p3b-provider-count", "1");
+        if (fault === "store_transient") {
+          if (bodies.length === 1) throw new TypeError("Original Image response lost after partial staging");
+          if (bodies.length <= 3) return Response.json({ code: bodies.length === 2 ? "result_store_unavailable" : "result_store_deadline_exceeded",
+            deliveryPending: true, recoverable: false }, { status: 503 });
+        }
         if (fault === "partial_staging" && bodies.length <= 2) return Response.json({
           code: "external_result_unavailable", deliveryPending: true, recoverable: false
         }, { status: 503 });
@@ -73,8 +78,8 @@ for (const fault of ["lost_response", "asset_abort", "partial_staging"] as const
   expect(await page.evaluate(() => sessionStorage.getItem("p3b-acks"))).toBeNull();
   expect((await agentCalls(page)).filter((c) => c.url.endsWith("/requests") && c.method === "POST")).toHaveLength(1);
   await page.reload();
-  if (fault === "partial_staging") {
-    await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem("p3b-image-bodies") ?? "[]").length)).toBe(2);
+  for (let attempt = 0; attempt < (fault === "store_transient" ? 2 : fault === "partial_staging" ? 1 : 0); attempt++) {
+    await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem("p3b-image-bodies") ?? "[]").length)).toBe(2 + attempt);
     await expect.poll(() => page.evaluate(() => Object.entries(localStorage)
       .filter(([k]) => k.startsWith("morpho.agent-runtime-a-plus.recovery.v2"))
       .some(([,v]) => v.includes('"actionKind":"image"')))).toBe(true);
@@ -89,7 +94,7 @@ for (const fault of ["lost_response", "asset_abort", "partial_staging"] as const
   await expect.poll(() => page.evaluate(() => JSON.parse(sessionStorage.getItem("p3b-acks") ?? "[]").length)).toBeGreaterThanOrEqual(2);
   const facts = await page.evaluate(() => ({ bodies: JSON.parse(sessionStorage.getItem("p3b-image-bodies") ?? "[]") as string[],
     acks: JSON.parse(sessionStorage.getItem("p3b-acks") ?? "[]") as string[], provider: sessionStorage.getItem("p3b-provider-count") }));
-  expect(facts.bodies).toHaveLength(fault === "partial_staging" ? 3 : 2); expect(new Set(facts.bodies).size).toBe(1);
+  expect(facts.bodies).toHaveLength(fault === "store_transient" ? 4 : fault === "partial_staging" ? 3 : 2); expect(new Set(facts.bodies).size).toBe(1);
   expect(new Set(facts.acks).size).toBe(1); expect(facts.provider).toBe("1");
   expect(Object.values((await readStoredWorkspace(page)).objects).filter((o) => !before.includes(o.id) && o.type === "image")).toHaveLength(1);
 });

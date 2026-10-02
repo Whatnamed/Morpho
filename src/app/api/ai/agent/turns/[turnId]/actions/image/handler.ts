@@ -1,3 +1,4 @@
+import { imageResultDeliveryErrorResponse } from "@/server/ai/imageResultDeliveryError";
 import { externalResultStore, externalResultResponse, saveExternalResult, jsonResult, ExternalResultError, type ExternalResultPort } from "@/server/ai/externalResultStore";
 import { createHash } from "node:crypto";
 import { createEffectExecution, externalEffectId, type EffectIdentity, type EffectExecution } from "@/server/ai/externalEffectJournal";
@@ -110,7 +111,8 @@ export function createAgentTurnImageActionPostHandler(
       }
       const existing = await dependencies.observeExisting?.(effectIdentity, request.signal);
       if (existing) return existing;
-    } catch {
+    } catch (error) {
+      if (error instanceof ExternalResultError) return imageResultDeliveryErrorResponse(error.code);
       return NextResponse.json({ code: "effect_observation_unavailable", recoverable: false }, { status: 503 });
     }
     const inputUnknown = unknownKeys(parsed.value.input, [
@@ -245,10 +247,7 @@ export function createAgentTurnImageActionPostHandler(
         }
       });
     } catch (error) {
-      if (error instanceof ExternalResultError) {
-        return NextResponse.json({ code: error.code, recoverable: false, deliveryPending: true,
-          error: "同一图像结果尚未完成交付；保留原 Action，只查询同一任务。" }, { status: 503 });
-      }
+      if (error instanceof ExternalResultError) return imageResultDeliveryErrorResponse(error.code);
       const cancelled = request.signal.aborted || (error instanceof Error && error.name === "AbortError");
       const settled = await settleWithRetry(dependencies, {
         ...identity,

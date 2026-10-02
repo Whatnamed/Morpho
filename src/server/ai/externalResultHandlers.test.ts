@@ -1,3 +1,4 @@
+import { ExternalResultError, type ExternalResultPort } from "./externalResultStore";
 import { createMorphoAgentContextPolicy } from "@/domain/morpho/agentContextPolicy";
 import { describe, expect, it, vi } from "vitest";
 import { createExternalResultFake } from "@/test/externalResultFake";
@@ -9,8 +10,13 @@ import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol
 import type { AgentTurnExternalActionSnapshot } from "@/shared/agentTurnExternalActionProtocol";
 const turnId = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const summary = { threadGoal: "goal", establishedContext: [], decisionsAndReasons: [], activeWork: [], unresolvedQuestions: [], referencedObjects: [] };
-function fixture(kind: "image" | "text" | "compaction", retrieveImage?: () => Promise<Blob | undefined>) {
+function fixture(kind: "image" | "text" | "compaction", retrieveImage?: () => Promise<Blob | undefined>, fault?: { operation: string; code: string }) {
   const fake = createExternalResultFake();
+  const results: ExternalResultPort = { call: async (operation, identity, payload) => {
+    if (fault?.operation === operation) throw new ExternalResultError(fault.code);
+    return fake.port.call(operation, identity, payload);
+  } };
+  const observeExisting = vi.fn(async (): Promise<Response | undefined> => undefined);
   const journal: AgentTurnJournalSnapshot = { serverTurnId: turnId, localProjectId: "project", status: "created",
     latestRequestId: null, latestStepSequence: 0, counters: { provider: 0, webSearch: 0, image: 0 },
     createdAt: "2026-10-02T00:00:00Z", updatedAt: "2026-10-02T00:00:00Z", terminalAt: null };
@@ -29,7 +35,7 @@ function fixture(kind: "image" | "text" | "compaction", retrieveImage?: () => Pr
     checkPrivilegedSettlement: () => ({ status: "ok" }), results: fake.port,
     acquireRequest: vi.fn(async () => ({ status: "ok" as const, executionGranted: true, replayed: false, snapshot: journal })),
     settleRequest: vi.fn(async () => ({ status: "ok" as const, replayed: false, snapshot: { ...journal, status: "externallyCompleted" as const } })), streamProvider: provider })
-    : kind === "image" ? createAgentTurnImageActionPostHandler({ authenticate: auth, acquire, settle, results: fake.port, retrieveImage,
+    : kind === "image" ? createAgentTurnImageActionPostHandler({ authenticate: auth, acquire, settle, results, retrieveImage, observeExisting,
       loadConfig: () => ({ status: "ok", config: { apiKey: "fake", baseUrl: "https://fake.test", model: "gpt-image-2" } }), generate: imageProvider })
       : createAgentTurnCompactionActionPostHandler({ authenticate: auth, acquire, settle, results: fake.port,
         loadConfig: textConfig, execute: compactionProvider });
@@ -39,9 +45,59 @@ function fixture(kind: "image" | "text" | "compaction", retrieveImage?: () => Pr
       : { ...commonBody, mode: "manual", sourceStartMessageId: "user", sourceEndMessageId: "assistant",
         messages: [{ id: "user", role: "user", body: "hello" }, { id: "assistant", role: "assistant", body: "world" }] };
   const call = () => handler(new Request("http://test", { method: "POST", body: JSON.stringify(body) }), { params: Promise.resolve({ turnId }) });
-  return { fake, call, provider, imageProvider, compactionProvider, textConfig, acquire };
+  return { fake, call, provider, imageProvider, compactionProvider, textConfig, acquire, observeExisting, settle };
 }
 describe("P3B consumed handler contracts", () => {
+  it.each(["read", "publish"])("Image %s transient reconciliation twice preserves same result/action then resumes", async (operation) => {
+    const fault = { operation: "", code: "result_store_unavailable" };
+    const retrieve = vi.fn(async () => new Blob(["original image"], { type: "image/png" }));
+    const f = fixture("image", retrieve, fault); f.fake.failNext("write"); await f.call();
+    const record = [...f.fake.records.values()][0], manifest = { ...record.manifest }, binding = record.binding;
+    fault.operation = operation;
+    for (let i = 0; i < 2; i++) {
+      const response = await f.call(); expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({ code: fault.code, deliveryPending: true, recoverable: false });
+    }
+    expect(f.acquire).toHaveBeenCalledOnce(); expect(f.imageProvider).toHaveBeenCalledOnce(); expect(f.settle).not.toHaveBeenCalled();
+    fault.operation = ""; expect((await f.call()).status).toBe(200);
+    expect(record.manifest).toEqual(manifest); expect(record.binding).toEqual(binding); expect(f.fake.records.size).toBe(1);
+    expect(f.imageProvider).toHaveBeenCalledOnce();
+  });
+  it.each(["probe", "observation"])("pre-admission %s deadline keeps pending without acquiring execution", async (operation) => {
+    const fault = { operation, code: "result_store_deadline_exceeded" }, f = fixture("image", undefined, fault);
+    if (operation === "observation") f.observeExisting.mockRejectedValue(new ExternalResultError(fault.code));
+    for (let i = 0; i < 2; i++) expect(await (await f.call()).json()).toMatchObject({ code: fault.code, deliveryPending: true });
+    expect(f.acquire).not.toHaveBeenCalled(); expect(f.imageProvider).not.toHaveBeenCalled();
+  });
+  it.each([["result_identity_conflict",409], ["result_chunk_conflict",409], ["external_result_expired",410],
+    ["result_payload_too_large",413], ["result_contract_invalid",502]] as const)("%s is permanent before admission and after Provider success", async (code, status) => {
+    const fault = { operation: "read", code }, f = fixture("image", undefined, fault);
+    let response = await f.call(); expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({ code });
+    response = await f.call(); expect(await response.json()).not.toHaveProperty("deliveryPending");
+    expect(f.imageProvider).not.toHaveBeenCalled();
+    fault.operation = "prepare";
+    response = await f.call(); expect(response.status).toBe(status);
+    expect(await response.json()).not.toHaveProperty("deliveryPending"); expect(f.imageProvider).toHaveBeenCalledOnce();
+    // Recovery observes the same execution; a permanent error cannot re-admit generation.
+    fault.operation = "read"; response = await f.call(); expect(response.status).toBe(status);
+    expect(f.imageProvider).toHaveBeenCalledOnce(); expect(f.acquire).toHaveBeenCalledOnce();
+  });
+  it("expired staged Image never retrieves or resurrects", async () => {
+    const retrieve = vi.fn(async () => new Blob(["original image"], { type: "image/png" }));
+    const f = fixture("image", retrieve); f.fake.failNext("write"); await f.call();
+    const staged = [...f.fake.records.values()][0];
+    staged.manifest = { ...staged.manifest, expiresAt: "2000-01-01T00:00:00Z" };
+    const response = await f.call(); expect(response.status).toBe(410);
+    expect(await response.json()).not.toHaveProperty("deliveryPending"); expect(retrieve).not.toHaveBeenCalled(); expect(f.imageProvider).toHaveBeenCalledOnce();
+  });
+  it("actual oversized Image output fails with 413 rather than indefinite pending", async () => {
+    const f = fixture("image"); f.imageProvider.mockResolvedValue({ status: "ok", blob: new Blob([new Uint8Array(16*1024*1024+1)], { type: "image/png" }), mimeType: "image/png" });
+    const first = await f.call(); expect(first.status).toBe(413); expect(await first.json()).not.toHaveProperty("deliveryPending");
+    f.observeExisting.mockRejectedValue(new ExternalResultError("result_payload_too_large"));
+    const replay = await f.call(); expect(replay.status).toBe(413); expect(await replay.json()).not.toHaveProperty("deliveryPending");
+    expect(f.imageProvider).toHaveBeenCalledOnce(); expect(f.acquire).toHaveBeenCalledOnce();
+  });
   it("A+ partial Image staging resumes original bound result without acquisition or generate", async () => {
     const retrieve = vi.fn(async () => new Blob(["original image"], { type: "image/png" }));
     const f = fixture("image", retrieve); f.fake.failNext("write");

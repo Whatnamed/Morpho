@@ -341,15 +341,29 @@ describe("workspace visual generation execution core", () => {
     expect(operation?.status).toBe("running");
   });
 
-  it("keeps a restored Action pending on incomplete Image delivery instead of consuming failure", async () => {
-    const harness = createExecutionHarness({ respond: () => Response.json({ code: "external_result_unavailable", deliveryPending: true }, { status: 503 }) });
+  it.each(["external_result_unavailable", "result_store_unavailable", "result_store_deadline_exceeded"])("keeps restored Action pending across two %s delivery failures", async (code) => {
+    const harness = createExecutionHarness({ respond: () => Response.json({ code, deliveryPending: true }, { status: 503 }) });
     const actionId = await buildAPlusImageChildActionId("parent-call", "item-a");
     const requestBody = JSON.stringify({ input: { prompt: "original", images: [], referenceObjectIds: [] } });
     const input = createAPlusInput(harness, 1, { restoredExternalAction: { actionId, actionKind: "image", requestBody,
       requestHash: await hashAPlusExternalActionBody(requestBody), callId: "parent-call" } });
-    await expect(executeWorkspaceVisualGenerationPlan(input, resolveGenerationSettings({ aspectRatio: "1:1" }), harness.ports))
+    for (let i = 0; i < 2; i++) await expect(executeWorkspaceVisualGenerationPlan(input, resolveGenerationSettings({ aspectRatio: "1:1" }), harness.ports))
       .rejects.toMatchObject({ code: "external_action_running", action: expect.objectContaining({ actionId, requestBody }) });
     expect(harness.imageTaskStatuses.at(-1)).toMatchObject({ state: "waiting" });
+    expect(harness.requests.map(r => r.body)).toEqual([requestBody, requestBody]);
+    expect(Object.values(harness.workspace.operations).filter(o => o.type === "imageGeneration").every(o => o.status === "running")).toBe(true);
+  });
+
+  it.each([["result_identity_conflict",409], ["result_chunk_conflict",409], ["external_result_expired",410],
+    ["result_payload_too_large",413], ["result_contract_invalid",502]] as const)("permanent %s without server pending signal cannot become a running barrier", async (code,status) => {
+    const harness = createExecutionHarness({ respond: () => Response.json({ code, error: code, recoverable: false }, { status }) });
+    const actionId = await buildAPlusImageChildActionId("parent-call", "item-a");
+    const requestBody = JSON.stringify({ input: { images: [], referenceObjectIds: [] } });
+    const input = createAPlusInput(harness, 1, { restoredExternalAction: { actionId, actionKind: "image", requestBody,
+      requestHash: await hashAPlusExternalActionBody(requestBody), callId: "parent-call" } });
+    await expect(executeWorkspaceVisualGenerationPlan(input, resolveGenerationSettings({ aspectRatio: "1:1" }), harness.ports)).rejects.toThrow(code);
+    expect(harness.imageTaskStatuses.at(-1)).toMatchObject({ state: "failed" });
+    expect(harness.requests).toHaveLength(1); // Client does not infer retry from 5xx or permanent errors.
   });
 
   it("reuses an existing A+ result without another fetch or generated object", async () => {

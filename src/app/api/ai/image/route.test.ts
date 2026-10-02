@@ -1,3 +1,4 @@
+import { ExternalResultError } from "@/server/ai/externalResultStore";
 import { createExternalResultFake } from "@/test/externalResultFake";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -47,6 +48,17 @@ vi.mock("@/server/image/grsProvider", () => ({
 }));
 
 describe("AI image route auth guard", () => {
+  it.each([["result_store_unavailable",503,true], ["result_identity_conflict",409,false], ["result_chunk_conflict",409,false],
+    ["external_result_expired",410,false], ["result_payload_too_large",413,false]] as const)("independent Image classifies %s without re-admission", async (code,status,pending) => {
+    observeExistingMock.mockRejectedValue(new ExternalResultError(code));
+    for (let i=0;i<2;i++) {
+      const response = await POST(new Request("http://localhost/api/ai/image", { method: "POST",
+        body: JSON.stringify({ prompt: "original", images: [], clientRequestId: "same-image" }) }));
+      expect(response.status).toBe(status); const body = await response.json(); expect(body.code).toBe(code);
+      if (pending) expect(body.deliveryPending).toBe(true); else expect(body).not.toHaveProperty("deliveryPending");
+    }
+    expect(guardAiRouteMock).not.toHaveBeenCalled(); expect(resolveGrsImageResultMock).not.toHaveBeenCalled();
+  });
   it("rejects a new paid request with no stable key and reuses known effects before reserving quota", async () => {
     const make = (clientRequestId?: string) => new Request("http://localhost/api/ai/image", { method: "POST",
       body: JSON.stringify({ prompt: "test", images: [], ...(clientRequestId ? { clientRequestId } : {}) }) });

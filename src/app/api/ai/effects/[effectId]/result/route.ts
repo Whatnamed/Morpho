@@ -1,3 +1,4 @@
+import { imageResultDeliveryErrorResponse } from "@/server/ai/imageResultDeliveryError";
 import { requireAiRouteUser, aiAccessDeniedResponse } from "@/server/auth/aiAccess";
 import { externalResultStore, externalResultResponse, ExternalResultError } from "@/server/ai/externalResultStore";
 import { observeExternalEffect, retrieveExistingImage } from "@/server/ai/externalEffectObservation";
@@ -51,7 +52,10 @@ export async function GET(request: Request, context: Context): Promise<Response>
       }
     }
     return Response.json({ code: "external_result_unavailable", recoverable: false }, { status: 404 });
-  } catch (error) { return failure(error); }
+  } catch (error) {
+    if (id.kind === "image" && error instanceof ExternalResultError) return imageResultDeliveryErrorResponse(error.code);
+    return failure(error);
+  }
 }
 
 /** Client persistence claim only; does not set Provider execution or P2 fulfillment. */

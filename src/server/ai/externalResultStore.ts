@@ -1,3 +1,4 @@
+import { classifyImageResultDeliveryError } from "./imageResultDeliveryError";
 import "server-only";
 import { createHash } from "node:crypto";
 import { createPrivilegedServerSupabaseClient } from "@/infrastructure/supabase/privilegedServer";
@@ -102,6 +103,8 @@ export async function externalResultResponse(
     // Complete chunks survive a lost publish/Journal response. Resume only stored publication.
     try { row = await store.call("publish", identity, { resultId: row.manifest.resultId }); }
     catch (error) {
+      // Image errors must retain their exact classification; Text/Compaction stay unchanged.
+      if (identity.kind === "image" && (!(error instanceof ExternalResultError) || error.code !== "result_incomplete")) throw error;
       // Only incomplete Image staging may retrieve the trusted same Provider task.
       if (identity.kind === "image" && error instanceof ExternalResultError && error.code === "result_incomplete" && retrieveImage) {
         const image = await retrieveImage().catch(() => undefined);
@@ -112,7 +115,7 @@ export async function externalResultResponse(
           } catch (writeError) {
             if (writeError instanceof ExternalResultError && writeError.code === "external_result_expired") row = { state: "expired" };
             else if (!(writeError instanceof ExternalResultError) ||
-              !["result_store_unavailable", "result_store_deadline_exceeded", "external_result_unavailable"].includes(writeError.code)) throw writeError;
+              !classifyImageResultDeliveryError(writeError.code).pending) throw writeError;
             // Temporary storage failure retains the same pending manifest, never a generation failure.
           }
         }

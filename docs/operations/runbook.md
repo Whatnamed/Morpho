@@ -1404,6 +1404,12 @@ Operational interpretation:
   resultId/version/SHA-256/size/MIME/chunk count before filling the same escrow. No new prepare,
   binding, logical effect or paid POST is allowed. Missing retrieval stays unavailable; conflicting
   bytes/chunks fail closed. Image `deliveryPending: true` keeps restored A+ Actions pending.
+  Image error classification is an explicit code allowlist: result_store_unavailable,
+  result_store_deadline_exceeded, external_result_unavailable and result_incomplete use 503/pending.
+  Identity/chunk/Journal binding conflicts use 409 without pending; expiry uses 410; permanently
+  oversized payload uses 413; invalid manifest/chunk/identity uses 400; capacity uses 507;
+  unknown result errors use 502 without pending. This applies before admission and after Provider
+  success. Clients must not infer pending from arbitrary 5xx responses.
   Never change effect/request/action IDs
   to compensate automatically. `external_result_expired` (410) is permanent for that result;
   reads/ACK never extend its lifetime or recreate it from the Provider.

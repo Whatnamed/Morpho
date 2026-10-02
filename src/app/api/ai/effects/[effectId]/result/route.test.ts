@@ -24,6 +24,17 @@ beforeEach(() => {
   store.mockReset().mockResolvedValue({ acknowledged: true }); read.mockReset(); observe.mockReset(); retrieve.mockReset();
 });
 describe("result transport auth and persistence ACK boundary", () => {
+  it.each([["result_store_unavailable",503,true], ["result_store_deadline_exceeded",503,true],
+    ["result_identity_conflict",409,false], ["result_chunk_conflict",409,false], ["external_result_expired",410,false],
+    ["result_payload_too_large",413,false]] as const)("Image result GET classifies %s explicitly", async (code,status,pending) => {
+    read.mockRejectedValue(new ExternalResultError(code));
+    for (let i=0;i<2;i++) {
+      const response = await GET(request("kind=image"), context); expect(response.status).toBe(status);
+      const body = await response.json(); expect(body.code).toBe(code);
+      if (pending) expect(body.deliveryPending).toBe(true); else expect(body).not.toHaveProperty("deliveryPending");
+    }
+    expect(observe).not.toHaveBeenCalled(); expect(retrieve).not.toHaveBeenCalled();
+  });
   it("Image manifest GET completes staged bytes with original binding through same-task retrieval", async () => {
     const fake = createExternalResultFake(), id = { actorUserId: "verified-owner", effectId, kind: "image" as const };
     const blob = new Blob(["original"], { type: "image/png" }); fake.failNext("write");

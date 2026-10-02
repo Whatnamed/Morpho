@@ -42,6 +42,16 @@ describe("bounded external result delivery", () => {
 });
 
 describe("Image partial staging recovery", () => {
+  it.each(["result_identity_conflict", "result_chunk_conflict", "external_result_expired", "result_payload_too_large", "result_store_unavailable", "result_store_deadline_exceeded"])("Image publish preserves %s rather than swallowing it as incomplete", async (code) => {
+    const f = createExternalResultFake(); f.failNext("write");
+    await expect(saveExternalResult(f.port, id, new Blob(["original"], { type: "image/png" }))).rejects.toThrow();
+    const query = async () => { throw new Error("must not retrieve for non-incomplete publication"); };
+    const port = { call: async (...args: Parameters<typeof f.port.call>) => {
+      if (args[0] === "publish") throw new ExternalResultError(code);
+      return f.port.call(...args);
+    } };
+    await expect(externalResultResponse(id, port, query)).rejects.toMatchObject({ code });
+  });
   const blob = () => new Blob([new Uint8Array(600_000).fill(123)], { type: "image/png" });
   async function partial() {
     const f = createExternalResultFake(); f.failNext("publish");

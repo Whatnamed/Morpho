@@ -486,3 +486,15 @@ Review-fix validation: targeted result/handler/Provider/local-recovery tests pas
 **6 slices** (including consecutive partial-staging reloads, one local Image, identical replay body
 and persistence ACK), typecheck/lint/production build/git diff --check passed. Provider and browser
 responses are deterministic fakes; no production retrieval or hosting reliability claim is made.
+
+P3B final bounded Image error-classification review fix (2026-10-02; **validating**): explicit
+transient code allowlist preserves pending/reconciliation across pre-admission result read/probe/
+observation and post-success escrow errors. Image publication no longer masks permanent errors;
+conflict/expiry/oversize keep accurate non-pending codes/statuses. Clients still require an explicit
+server pending signal. No schema, Text/Compaction, P3A identity or paid-submission changes.
+Validation: targeted **10 files / 166 tests** plus final fixture checks **58 tests**; full unit
+**235 files / 2396 tests**; actual local PostgreSQL P3B **49 checks**, P3A forward schema **22 checks**;
+Chromium **7 slices**, including original response loss followed by two consecutive transient
+store failures, unchanged Action body, same local Image and persistence ACK. Typecheck/lint/
+production build/git diff --check passed. No Production migration or real paid Provider calls;
+production storage/hosting/retrieval limits remain unverified. No main merge or accepted claim.

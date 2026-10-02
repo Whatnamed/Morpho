@@ -1,3 +1,4 @@
+import { imageResultDeliveryErrorResponse } from "@/server/ai/imageResultDeliveryError";
 import { EXTERNAL_REQUEST_MAX_BYTES } from "@/shared/externalResultProtocol";
 import { externalResultStore, externalResultResponse, saveExternalResult, jsonResult, ExternalResultError, type ExternalResultPort } from "@/server/ai/externalResultStore";
 import { NextResponse } from "next/server";
@@ -49,6 +50,7 @@ export async function POST(request: Request) {
     const existing = await existingImageEffectResponse(effectIdentity, request.signal);
     if (existing) return existing;
   } catch (error) {
+    if (error instanceof ExternalResultError) return imageResultDeliveryErrorResponse(error.code);
     return NextResponse.json({ code: "effect_observation_unavailable", recoverable: false }, { status: 503 });
   }
   if (request.headers.get("X-Morpho-Effect-Contract") !== "1") {
@@ -108,6 +110,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ result: delivery }, { headers: { "Cache-Control": "no-store",
       "X-Morpho-Provider-Task-Id": result.providerTaskId ?? "" } });
   } catch (error) {
+    if (error instanceof ExternalResultError) return imageResultDeliveryErrorResponse(error.code);
     return NextResponse.json(
       {
         error: EXTERNAL_EXECUTION_STATE_UNKNOWN.message,
