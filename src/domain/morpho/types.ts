@@ -417,6 +417,19 @@ export type VisualReviewMark = {
 };
 
 export type ImageGenerationMetadata = {
+  lineage?: import("../operations/types").VisualLineageSnapshot;
+  providerInputs?: import("../operations/types").VisualProviderInputManifest;
+  /** P2B delivered pixels receipts, not a quality verdict or generation authority. */
+  observations?: Array<{
+    receiptId: string;
+    objectId: string;
+    incarnationId?: string;
+    assetId: string;
+    contentHash: string;
+    representation: "pixels" | "contactSheet";
+    requestId: string;
+    stepSequence: number;
+  }>;
   /** Transport receipt only; never Project Truth or Provider execution authority. */
   delivery?: import("@/shared/externalResultProtocol").ExternalResultManifest;
   operationId?: string;

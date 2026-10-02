@@ -2,6 +2,7 @@ import { acknowledgePersistedExternalResult, flushPendingExternalResultAcks } fr
 import { evaluateAgentTaskFulfillment, taskFulfillmentNotice } from "./agentTaskFulfillment";
 import { requirementCovered } from "./agentSourceReads";
 import { materializeContinuationImages } from "./agentContinuationImages";
+import { recordDeliveredVisualObservations } from "@/domain/morpho/visualObservation";
 import { advanceRequiredAgentReadState, buildRequiredAgentReadReminder } from "./agentTaskStrategy";
 import { buildTurnTaskContexts, buildProviderTaskContext, buildProviderComparisonTaskContext } from "./taskContext";
 import { buildConversationCompactionPlan } from "@/domain/morpho/conversationCompaction";
@@ -1433,6 +1434,10 @@ function markDeliveredReads(session: APlusSession): void {
   if (!output || output.stepSequence !== session.recovery.metadata.runtime.pendingReadStepSequence || output.requestId !== session.coordinator.getServerSnapshot()?.latestRequestId) return;
   const ids = new Set(session.recovery.metadata.runtime.pendingReadIds ?? []);
   session.prepared.runtimeState.readReceipts.forEach((receipt) => { if (ids.has(receipt.id)) receipt.delivered = true; });
+  session.host.commitWorkspace((workspace) => ({
+    workspace: recordDeliveredVisualObservations(workspace, session.prepared.runtimeState.readReceipts.filter((receipt) => ids.has(receipt.id)), output.requestId, output.stepSequence),
+    value: undefined
+  }));
   const state = session.prepared.runtimeState.requiredReadState;
   for (const tool of state.requiredTools) {
     const requirements = state.requirements.filter((requirement) => requirement.tool === tool);

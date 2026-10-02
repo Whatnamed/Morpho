@@ -5,11 +5,14 @@ import type {
   VisualReferenceReason,
   VisualReferenceResolution
 } from "./types";
+import type { VisualReferenceRole } from "./types";
 
 type CandidateInput = {
   objectId: string;
   reason: VisualReferenceReason;
   priority: number;
+  role: VisualReferenceRole;
+  required: boolean;
 };
 
 export function resolveVisualReferences(input: {
@@ -19,13 +22,23 @@ export function resolveVisualReferences(input: {
   projectReferenceObjectIds?: readonly string[];
   providerLimit?: number;
   allowedReferenceObjectIds?: readonly string[];
+  excludedReferenceObjectIds?: readonly string[];
 }): VisualReferenceResolution {
   const providerLimit = Math.max(0, input.providerLimit ?? GRS_REFERENCE_IMAGE_LIMIT);
   const candidates: CandidateInput[] = [];
+  const parentId = input.intent.identityParentObjectId;
+  const bindings = new Map((input.intent.referenceBindings ?? []).map((binding) => [binding.objectId, binding]));
   const append = (objectIds: readonly string[], reason: VisualReferenceReason, priority: number) => {
-    objectIds.forEach((objectId) => candidates.push({ objectId, reason, priority }));
+    objectIds.forEach((objectId) => {
+      const binding = bindings.get(objectId);
+      candidates.push({ objectId, reason, priority,
+        role: objectId === parentId ? "identity" : binding?.role ?? "unspecified",
+        required: objectId === parentId || Boolean(binding?.required) });
+    });
   };
 
+  if (parentId) append([parentId], "identityParent", 0);
+  append([...bindings.keys()], "roleBinding", 1);
   append(input.intent.requestedReferenceObjectIds, "userExplicit", 1);
   append(input.selectedSourceObjectIds, "selectedSource", 2);
 
@@ -33,7 +46,6 @@ export function resolveVisualReferences(input: {
   if (branch?.rootObjectId) {
     append([branch.rootObjectId], "branchRoot", 3);
   }
-  append(resolveDirectParentIds(input.workspace, input.selectedSourceObjectIds), "directParent", 3);
 
   const representative = resolveDirectionRepresentative(input.workspace, input.intent.targetDirectionId);
   if (representative) {
@@ -48,9 +60,14 @@ export function resolveVisualReferences(input: {
 
   const seen = new Set<string>();
   let includedCount = 0;
+  const excluded = new Set([...(input.intent.excludedReferenceObjectIds ?? []), ...(input.excludedReferenceObjectIds ?? [])]);
+  append([...excluded], "userExplicit", 1);
   const resolvedCandidates: VisualReferenceResolution["candidates"] = candidates
-    .sort((left, right) => left.priority - right.priority)
+    .sort((left, right) => Number(right.required) - Number(left.required) || left.priority - right.priority)
     .map((candidate) => {
+      if (excluded.has(candidate.objectId)) {
+        return { ...candidate, included: false, omissionReason: "explicitExcluded" as const };
+      }
       if (input.allowedReferenceObjectIds && !input.allowedReferenceObjectIds.includes(candidate.objectId)) {
         return { ...candidate, included: false, omissionReason: "taskScopeExcluded" as const };
       }
@@ -58,7 +75,7 @@ export function resolveVisualReferences(input: {
       if (!object || object.type !== "image" || object.visibility !== "active" || !object.assetId) {
         return { ...candidate, included: false, omissionReason: "unavailable" as const };
       }
-      const isExplicitSelection = candidate.reason === "userExplicit" || candidate.reason === "selectedSource";
+      const isExplicitSelection = candidate.reason === "userExplicit" || candidate.reason === "selectedSource" || candidate.reason === "identityParent" || candidate.reason === "roleBinding";
       if (
         input.intent.excludeDefaultReference &&
         defaultReference?.id === candidate.objectId &&
@@ -101,27 +118,6 @@ export function resolveVisualReferences(input: {
   };
 }
 
-function resolveDirectParentIds(workspace: MorphoWorkspace, sourceObjectIds: readonly string[]): string[] {
-  const result: string[] = [];
-  for (const sourceObjectId of sourceObjectIds) {
-    const object = workspace.objects[sourceObjectId];
-    if (object?.type !== "image") {
-      continue;
-    }
-    for (const referenceObjectId of object.generation?.referenceObjectIds ?? []) {
-      if (!result.includes(referenceObjectId)) {
-        result.push(referenceObjectId);
-      }
-    }
-    for (const relation of workspace.relations) {
-      if (relation.kind === "version" && relation.toObjectId === object.id && !result.includes(relation.fromObjectId)) {
-        result.push(relation.fromObjectId);
-      }
-    }
-  }
-  return result;
-}
-
 function resolveDirectionRepresentative(workspace: MorphoWorkspace, directionId: string | undefined): ImageObject | undefined {
   if (!directionId) {
     return undefined;
@@ -159,7 +155,7 @@ function imageRepresentativeRank(image: ImageObject): number {
 }
 
 function isStrongCrossDirectionReference(reason: VisualReferenceReason): boolean {
-  return reason === "userExplicit" || reason === "selectedSource" || reason === "branchRoot" || reason === "directParent" || reason === "defaultReference";
+  return reason === "identityParent" || reason === "roleBinding" || reason === "userExplicit" || reason === "selectedSource" || reason === "branchRoot" || reason === "defaultReference";
 }
 
 function crossDirectionRetentionReason(reason: VisualReferenceReason): string {

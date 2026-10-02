@@ -59,6 +59,7 @@ function reconcileLegacyMultiReferenceVersionRelations(
     Object.values(objects)
       .filter((object): object is ImageObject => object.type === "image")
       .filter((object) => {
+        if (object.generation?.lineage) return false;
         const imageReferenceCount = new Set(
           (object.generation?.referenceObjectIds ?? []).filter(
             (referenceObjectId) => objects[referenceObjectId]?.type === "image"

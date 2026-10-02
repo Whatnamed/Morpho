@@ -20,6 +20,7 @@ import {
   type AssignableKeyConclusionCategory
 } from "@/domain/morpho/types";
 import type { DesignTraceResult } from "@/domain/morpho/designTrace";
+import { hasDeliveredVisualObservation } from "@/domain/morpho/visualObservation";
 import type { ResearchKeyConclusionSource } from "@/domain/morpho/workspace";
 import {
   resolveDocumentFragmentLocation,
@@ -115,6 +116,7 @@ export function getAvailableDetailTabs(input: DetailTabAvailabilityInput): Detai
   const available: DetailTab[] = ["信息"];
   const hasSource =
     buildSourceDetailRows(input).length > 0 ||
+    (input.object.type === "image" && Boolean(input.object.generation)) ||
     (input.object.type === "research" && hasResearchSourceData(input.object)) ||
     input.object.type === "documentFragment";
   const hasVersion =
@@ -170,7 +172,8 @@ export function buildVersionDetailRows(input: Pick<DetailTabAvailabilityInput, "
   const versionRelations = input.relations.filter((relation) => relation.kind === "version");
   const parentRows = versionRelations
     .filter((relation) => relation.toObjectId === input.object.id)
-    .map((relation) => buildObjectDetailRow(input.workspace, relation.fromObjectId, "父版本"));
+    .map((relation) => buildObjectDetailRow(input.workspace, relation.fromObjectId,
+      input.object.type === "image" && input.object.generation && !input.object.generation.lineage ? "旧版本关系（身份来源未确认）" : "父版本"));
   const childRows = versionRelations
     .filter((relation) => relation.fromObjectId === input.object.id)
     .map((relation) => buildObjectDetailRow(input.workspace, relation.toObjectId, "子版本"));
@@ -825,12 +828,15 @@ function renderDetail(input: {
     }
 
     return (
-      <DetailRelationRows
-        rows={buildSourceDetailRows({ workspace, object, relations })}
-        assetUrls={assetUrls}
-        onPreviewObject={onPreviewObject}
-        onLocateObject={onLocateObject}
-      />
+      <>
+        {object.type === "image" && object.generation ? <VisualGenerationFacts image={object} /> : null}
+        <DetailRelationRows
+          rows={buildSourceDetailRows({ workspace, object, relations })}
+          assetUrls={assetUrls}
+          onPreviewObject={onPreviewObject}
+          onLocateObject={onLocateObject}
+        />
+      </>
     );
   }
 
@@ -884,6 +890,26 @@ function renderDetail(input: {
   }
 
   return <DecisionDetailRows decisionRecords={decisionRecords} />;
+}
+
+function VisualGenerationFacts({ image }: { image: ImageObject }) {
+  const generation = image.generation!;
+  const lineage = generation.lineage;
+  const roles = { identity: "身份父图", structure: "结构参考", cmf: "CMF 参考", environment: "环境参考",
+    composition: "构图参考", style: "风格参考", unspecified: "辅助参考（作用未指定）" };
+  const omissions = { providerLimit: "参考数量限制", duplicate: "重复参考", unavailable: "来源不可用", directionMismatch: "方向范围不符",
+    defaultExcluded: "已排除默认参考", taskScopeExcluded: "不在本次范围", explicitExcluded: "本次明确排除", missingPixels: "未能读取图像", invalidPixels: "图像不可用", providerBytes: "图像输入大小限制" };
+  return <section aria-label="图像生成来源">
+    <span className="detail-meta">生成目的（计划）：{generation.purpose ?? generation.visualIntent?.purpose ?? image.summary}</span>
+    <span className="detail-meta">{hasDeliveredVisualObservation(image) ? "图像已供 AI 观察；不表示质量已验证。" : "尚无图像观察记录。"}</span>
+    {lineage ? <>
+      <span className="detail-meta">{lineage.identityParent ? `身份父图：${lineage.identityParent.title}` : "独立新方案：未继承身份父图。"}</span>
+      <span className="detail-meta">生成时方向：{lineage.direction?.title ?? "未归属方向"} · 分支：{lineage.branch?.label ?? "未归属分支"}</span>
+    </> : <span className="detail-meta">旧生成记录：身份父图与参考作用未知。</span>}
+    {generation.providerInputs ? generation.providerInputs.references.map((entry) => <span className="detail-meta" key={entry.source.objectId}>
+      {roles[entry.role]}：{entry.source.title} · {entry.status === "sent" ? "已用于本次生成" : `未使用：${omissions[entry.omissionReason!]}`}
+    </span>) : <span className="detail-meta">实际输入记录未知。</span>}
+  </section>;
 }
 
 function MultiSelectionDetail({ selectedCount }: { selectedCount: number }) {

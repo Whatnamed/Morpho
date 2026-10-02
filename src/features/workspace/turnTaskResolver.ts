@@ -79,7 +79,7 @@ export function resolveTurnTaskContract(input: Input): TurnTaskContract {
     if (!parts.some((part) => visualClauses.includes(part))) continue;
     for (const part of parts) {
       const kind = resolveAgentTaskStrategy({ draft: part, taskMode: "chatAnalysis", workIntent: "discussion", selectedObjects: selected, workspace: input.workspace }).kind;
-      if (kind === "discussion" && /不用|不使用|不要|排除|默认参考|仅|只/.test(part) && !/批评|评价/.test(part) && !visualClauses.includes(part)) visualClauses.push(part);
+      if (kind === "discussion" && /不用|不使用|不要|排除|默认参考|仅|只|参考|借用|环境|构图|风格|结构/.test(part) && !/批评|评价/.test(part) && !visualClauses.includes(part)) visualClauses.push(part);
     }
   }
   if (input.executionTaskMode === "imageGeneration") {
@@ -106,10 +106,15 @@ export function resolveTurnTaskContract(input: Input): TurnTaskContract {
     const mentioned = visual ? [] : selected.filter((object) => mentionsObject(instruction, object)).map((object) => object.id);
     const explicitExclusions = visual ? selected.filter((object) => instruction.split(/[，,；;]/).some((clause) => /(?:不要|别).{0,8}(?:用|参考|沿用|继续|基于)|不用|不使用|排除/.test(clause) && mentionsObject(clause, object))).map((object) => object.id) : [];
     const sourceObjectIds = (narrow?.ids ?? (mentioned.length ? mentioned : selectedIds)).filter((id) => !explicitExclusions.includes(id));
-    const excludedObjectIds = selectedIds.filter((id) => !sourceObjectIds.includes(id));
+    // Task-local auxiliary mentions authorize references, not targets or identity.
+    // A comparison source cannot enter generation merely because it was selected.
+    const explicitAuxiliaryIds = visual ? selected.filter((object) => object.type === "image" && !explicitExclusions.includes(object.id) &&
+      instruction.split(/[，,。；;！？!?\n]+/).some((clause) => /参考|借用|材质|CMF|环境|构图|风格|结构/i.test(clause) && mentionsObject(clause, object) &&
+        !/(?:不要|不用|不使用|排除)/.test(clause))).map((object) => object.id) : [];
+    const excludedObjectIds = selectedIds.filter((id) => !sourceObjectIds.includes(id) && !explicitAuxiliaryIds.includes(id));
     const includeDefaultReference = kind !== "comparison" && (visual ? !narrow : /默认参考|保持.*一致|延续.*默认|reference/i.test(instruction)) &&
       !/(?:不要|不使用|不用|排除).{0,8}默认参考/.test(instruction);
-    const referenceObjectIds = visual ? resolveReferenceScope(input.workspace, sourceObjectIds, includeDefaultReference, Boolean(narrow)).filter((id) => !excludedObjectIds.includes(id)) : [];
+    const referenceObjectIds = visual ? [...new Set([...resolveReferenceScope(input.workspace, sourceObjectIds, includeDefaultReference, Boolean(narrow)), ...explicitAuxiliaryIds])].filter((id) => !excludedObjectIds.includes(id)) : [];
     const effectGrants: TurnEffectGrant[] = [...allowedTools].flatMap<TurnEffectGrant>((tool) => {
       if (tool === "request_confirmation") {
         const actions = baseAuthority.allowedConfirmationActions.filter((action) => action === "batchGenerateVisuals" ? kind === visualKind : kind === "discussion");

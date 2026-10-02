@@ -65,18 +65,33 @@ export function collectDirectCanvasEdges(workspace: MorphoWorkspace): DirectCanv
   };
 
   for (const relation of workspace.relations) {
+    const target = workspace.objects[relation.toObjectId];
+    if (target?.type === "image" && target.generation?.lineage && ["version", "source", "usesReference"].includes(relation.kind)) continue;
+    if (target?.type === "image" && target.generation && ["source", "usesReference"].includes(relation.kind)) {
+      add(relation.fromObjectId, relation.toObjectId, relation.kind, false);
+      continue;
+    }
     add(relation.fromObjectId, relation.toObjectId, relation.kind);
   }
 
   for (const object of Object.values(workspace.objects)) {
     if (object.type === "image") {
-      object.generation?.referenceObjectIds.forEach((referenceObjectId, index) => {
-        add(referenceObjectId, object.id, "generationReference", index === 0);
-      });
+      const lineage = object.generation?.lineage;
+      if (lineage) {
+        const parent = lineage.identityParent;
+        const currentParent = parent ? workspace.objects[parent.objectId] : undefined;
+        if (parent && currentParent?.type === "image" && parent.assetId === currentParent.assetId &&
+          (!parent.incarnationId || parent.incarnationId === currentParent.incarnationId)) add(parent.objectId, object.id, "version", true);
+        for (const entry of object.generation?.providerInputs?.references ?? []) {
+          const reference = workspace.objects[entry.source.objectId];
+          if (entry.status === "sent" && reference?.type === "image" && reference.assetId === entry.source.assetId &&
+            (!entry.source.incarnationId || reference.incarnationId === entry.source.incarnationId)) add(entry.source.objectId, object.id, "generationReference", false);
+        }
+      } else object.generation?.referenceObjectIds.forEach((referenceObjectId) => add(referenceObjectId, object.id, "generationReference", false));
       add(object.directionId, object.id, "directionOwnership");
 
       const branch = object.visualBranchId ? workspace.visualBranches[object.visualBranchId] : undefined;
-      add(branch?.rootObjectId, object.id, "visualBranchRoot");
+      add(lineage ? lineage.branch?.rootObjectId : branch?.rootObjectId, object.id, "visualBranchRoot", false);
       continue;
     }
 

@@ -129,7 +129,7 @@ export function validateVisualGenerationPlan(
         return { status: "blocked", reason: "图片视觉迭代必须引用至少一张已选来源图。" };
       }
 
-      const referenceDirections = item.referenceObjectIds
+      const referenceDirections = (item.lineage ? [] : item.referenceObjectIds)
         .map((objectId) => workspace.objects[objectId])
         .filter((object) => object?.type === "image")
         .map((object) => object.directionId)
@@ -147,6 +147,7 @@ export function validateVisualGenerationPlan(
     if (visualBranchId) {
       const branch = workspace.visualBranches[visualBranchId];
       if (!branch || branch.archivedAt || (item.targetDirectionId && branch.directionId !== item.targetDirectionId)) {
+        if (item.lineage) return { status: "blocked", reason: "视觉计划冻结的分支已不可用，不能改由辅助参考决定分支。" };
         visualBranchId = input.plan.kind === "visualDevelopment" ? undefined : item.visualBranchId;
       }
 

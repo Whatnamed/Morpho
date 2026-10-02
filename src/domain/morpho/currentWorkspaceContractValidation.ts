@@ -1,5 +1,6 @@
 import { isExternalResultManifest } from "@/shared/externalResultProtocol";
 import { normalizeAgentTaskFulfillment, isAgentReadReceipt } from "@/shared/agentReadCoverage";
+import { isVisualLineageSnapshot, isVisualProviderInputManifest } from "../operations/visualLineage";
 import type {
   AgentActivityKind,
   AgentTaskStrategyKind,
@@ -137,6 +138,7 @@ const EDIT_MODES = values<GrsImageEditMode>([
   "textToImage", "imageToImage", "directedEdit", "maskedLocalEdit"
 ]);
 const VISUAL_REFERENCE_REASONS = values<VisualReferenceReason>([
+  "identityParent", "roleBinding",
   "userExplicit", "selectedSource", "branchRoot", "directParent", "directionRepresentative",
   "defaultReference", "projectReference"
 ]);
@@ -239,7 +241,7 @@ function validateMorphoObject(value: unknown, path: string, add: WorkspaceContra
       optionalId(item.visualBranchId, `${path}.visualBranchId`, add);
       optionalBoolean(item.isDefaultReference, `${path}.isDefaultReference`, add);
       optional(item.pendingReview, `${path}.pendingReview`, add, validateVisualReviewMark);
-      optional(item.generation, `${path}.generation`, add, validateImageGenerationMetadata);
+      optional(item.generation, `${path}.generation`, add, (raw, metadataPath, issue) => validateImageGenerationMetadata(raw, metadataPath, issue, item));
       break;
     case "file":
       enumValue(item.fileKind, `${path}.fileKind`, ["pdf", "imageSet", "document"], add);
@@ -335,7 +337,7 @@ function validateVisualReviewMark(value: unknown, path: string, add: WorkspaceCo
   string(item.markedAt, `${path}.markedAt`, add);
 }
 
-function validateImageGenerationMetadata(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
+function validateImageGenerationMetadata(value: unknown, path: string, add: WorkspaceContractIssueAdder, owner?: Record<string, unknown>): void {
   const item = record(value, path, add); if (!item) return;
   if (item.delivery !== undefined && (!isExternalResultManifest(item.delivery) || item.delivery.kind !== "image")) {
     add(`${path}.delivery`, "Invalid image result receipt.");
@@ -353,6 +355,39 @@ function validateImageGenerationMetadata(value: unknown, path: string, add: Work
   optionalEnum(item.role, `${path}.role`, IMAGE_ROLES, add);
   optional(item.visualIntent, `${path}.visualIntent`, add, validateVisualIntent);
   optional(item.visualPlan, `${path}.visualPlan`, add, validateVisualPlan);
+  validateFrozenVisualFacts(item, path, add, true);
+  optionalArray(item.observations, `${path}.observations`, add, (raw, observationPath, issue) => {
+    const observation = record(raw, observationPath, issue); if (!observation) return;
+    for (const key of ["receiptId", "objectId", "assetId", "requestId"] as const) id(observation[key], `${observationPath}.${key}`, issue);
+    optionalId(observation.incarnationId, `${observationPath}.incarnationId`, issue);
+    if (owner && (observation.objectId !== owner.id || (owner.incarnationId !== undefined && observation.incarnationId !== owner.incarnationId))) {
+      issue(observationPath, "Observation must bind the generated object incarnation.");
+    }
+    string(observation.contentHash, `${observationPath}.contentHash`, issue);
+    enumValue(observation.representation, `${observationPath}.representation`, ["pixels", "contactSheet"], issue);
+    nonNegativeNumber(observation.stepSequence, `${observationPath}.stepSequence`, issue);
+  });
+}
+
+function validateFrozenVisualFacts(item: Record<string, unknown>, path: string, add: WorkspaceContractIssueAdder, generated = false): void {
+  if (item.lineage !== undefined && !isVisualLineageSnapshot(item.lineage)) add(`${path}.lineage`, "Invalid frozen visual lineage.");
+  if (item.providerInputs !== undefined && !isVisualProviderInputManifest(item.providerInputs)) add(`${path}.providerInputs`, "Invalid actual visual input manifest.");
+  if (generated && item.lineage !== undefined && item.providerInputs === undefined) add(`${path}.providerInputs`, "New lineage requires actual input provenance.");
+  if (isVisualProviderInputManifest(item.providerInputs)) {
+    const sent = item.providerInputs.references.filter((entry) => entry.status === "sent");
+    if (!Array.isArray(item.referenceObjectIds) || sent.length !== item.referenceObjectIds.length || sent.some((entry, index) => entry.source.objectId !== (item.referenceObjectIds as unknown[])[index])) {
+      add(`${path}.referenceObjectIds`, "References must match actual payload order.");
+    }
+    if (generated && item.providerInputs.references.some((entry) => entry.required && entry.status !== "sent")) add(`${path}.providerInputs`, "Generated results cannot omit required pixels.");
+    if (isVisualLineageSnapshot(item.lineage)) {
+      const identity = item.providerInputs.references.find((entry) => entry.role === "identity");
+      if (identity?.source.objectId !== (item.lineage.identityParent?.objectId ?? undefined)) add(`${path}.lineage.identityParent`, "Parent must match the identity input.");
+      if (identity && item.lineage.identityParent && (identity.source.incarnationId !== item.lineage.identityParent.incarnationId || identity.source.assetId !== item.lineage.identityParent.assetId)) {
+        add(`${path}.lineage.identityParent`, "Parent incarnation/asset must match actual input.");
+      }
+    }
+    if (sent.length === 0 && item.editMode !== "textToImage") add(`${path}.editMode`, "No pixels cannot claim image-to-image provenance.");
+  }
 }
 
 function validateResearchEvidence(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
@@ -438,6 +473,14 @@ function validateVisualIntent(value: unknown, path: string, add: WorkspaceContra
   id(item.id, `${path}.id`, add);
   optionalId(item.targetDirectionId, `${path}.targetDirectionId`, add);
   optionalId(item.visualBranchId, `${path}.visualBranchId`, add);
+  if (item.identityParentObjectId !== null) optionalId(item.identityParentObjectId, `${path}.identityParentObjectId`, add);
+  if (item.excludedReferenceObjectIds !== undefined) idArray(item.excludedReferenceObjectIds, `${path}.excludedReferenceObjectIds`, add);
+  optionalArray(item.referenceBindings, `${path}.referenceBindings`, add, (raw, bindingPath, issue) => {
+    const binding = record(raw, bindingPath, issue); if (!binding) return;
+    id(binding.objectId, `${bindingPath}.objectId`, issue);
+    enumValue(binding.role, `${bindingPath}.role`, ["structure", "cmf", "environment", "composition", "style", "unspecified"], issue);
+    boolean(binding.required, `${bindingPath}.required`, issue);
+  });
   string(item.title, `${path}.title`, add);
   string(item.purpose, `${path}.purpose`, add);
   idArray(item.requestedReferenceObjectIds, `${path}.requestedReferenceObjectIds`, add);
@@ -461,10 +504,12 @@ function validateVisualReferenceResolution(value: unknown, path: string, add: Wo
     optionalId(candidate.sourceDirectionId, `${candidatePath}.sourceDirectionId`, issue);
     optionalId(candidate.targetDirectionId, `${candidatePath}.targetDirectionId`, issue);
     optionalBoolean(candidate.crossDirection, `${candidatePath}.crossDirection`, issue);
+    optionalEnum(candidate.role, `${candidatePath}.role`, ["identity", "structure", "cmf", "environment", "composition", "style", "unspecified"], issue);
+    optionalBoolean(candidate.required, `${candidatePath}.required`, issue);
     optionalString(candidate.retentionReason, `${candidatePath}.retentionReason`, issue);
     boolean(candidate.included, `${candidatePath}.included`, issue);
     optionalEnum(candidate.omissionReason, `${candidatePath}.omissionReason`, [
-      "providerLimit", "duplicate", "unavailable", "directionMismatch", "defaultExcluded"
+      "providerLimit", "duplicate", "unavailable", "directionMismatch", "defaultExcluded", "taskScopeExcluded", "explicitExcluded"
     ], issue);
   });
   nonNegativeNumber(item.providerLimit, `${path}.providerLimit`, add);
@@ -477,6 +522,7 @@ function validateVisualPlan(value: unknown, path: string, add: WorkspaceContract
   array(item.items, `${path}.items`, add, (raw, itemPath, issue) => {
     const planItem = record(raw, itemPath, issue); if (!planItem) return;
     id(planItem.id, `${itemPath}.id`, issue);
+    optionalString(planItem.userInstruction, `${itemPath}.userInstruction`, issue);
     optionalId(planItem.targetDirectionId, `${itemPath}.targetDirectionId`, issue);
     optionalId(planItem.visualBranchId, `${itemPath}.visualBranchId`, issue);
     for (const key of ["title", "purpose", "prompt"] as const) string(planItem[key], `${itemPath}.${key}`, issue);
@@ -486,6 +532,7 @@ function validateVisualPlan(value: unknown, path: string, add: WorkspaceContract
     optional(planItem.visualIntent, `${itemPath}.visualIntent`, issue, validateVisualIntent);
     optional(planItem.referenceResolution, `${itemPath}.referenceResolution`, issue, validateVisualReferenceResolution);
     optionalString(planItem.promptContractVersion, `${itemPath}.promptContractVersion`, issue);
+    validateFrozenVisualFacts(planItem, itemPath, issue);
   });
 }
 
@@ -679,6 +726,7 @@ function validateImageGenerationOperationMetadata(value: unknown, path: string, 
   optionalNonNegativeNumber(item.requestedPreviewCount, `${path}.requestedPreviewCount`, add);
   if (item.resultObjectIds !== undefined) idArray(item.resultObjectIds, `${path}.resultObjectIds`, add);
   optional(item.plan, `${path}.plan`, add, validateVisualPlan);
+  if (item.materializedItems !== undefined) validateVisualPlan({ kind: "visualDevelopment", items: item.materializedItems }, `${path}.materializedItems`, add);
   optionalArray(item.failedItems, `${path}.failedItems`, add, (raw, failedPath, issue) => {
     const failed = record(raw, failedPath, issue); if (!failed) return;
     id(failed.planItemId, `${failedPath}.planItemId`, issue);

@@ -993,12 +993,27 @@ function validateGenerateVisualsArgs(toolName: string, value: unknown): asserts 
         "composition",
         "viewpoint",
         "userPromptRemainder",
-        "editMode"
+        "editMode",
+        "identityParentObjectId", "referenceBindings", "excludedReferenceObjectIds"
       ]
     );
     requireString(`${toolName}.items[${index}]`, item, "id");
     requireOptionalString(`${toolName}.items[${index}]`, item, "targetDirectionId");
     requireOptionalString(`${toolName}.items[${index}]`, item, "visualBranchId");
+    if (item.identityParentObjectId !== null) requireOptionalString(`${toolName}.items[${index}]`, item, "identityParentObjectId");
+    if (item.excludedReferenceObjectIds !== undefined) requireStringArray(`${toolName}.items[${index}]`, item, "excludedReferenceObjectIds");
+    if (item.referenceBindings !== undefined) {
+      const bindings = requireArray(`${toolName}.items[${index}]`, item, "referenceBindings");
+      const seen = new Set<string>();
+      bindings.forEach((raw, bindingIndex) => {
+        const path = `${toolName}.items[${index}].referenceBindings[${bindingIndex}]`;
+        const binding = requireExactObject(path, raw, ["objectId", "role", "required"]);
+        requireString(path, binding, "objectId");
+        requireEnum(path, binding, "role", ["structure", "cmf", "environment", "composition", "style", "unspecified"]);
+        if (typeof binding.required !== "boolean" || seen.has(String(binding.objectId))) throw new Error("参考角色需要唯一对象和 required 标记。");
+        seen.add(String(binding.objectId));
+      });
+    }
     requireString(`${toolName}.items[${index}]`, item, "title");
     requireString(`${toolName}.items[${index}]`, item, "purpose");
     requireStringArray(`${toolName}.items[${index}]`, item, "requestedReferenceObjectIds");

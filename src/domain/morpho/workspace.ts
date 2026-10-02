@@ -1129,14 +1129,15 @@ export function collectDefaultReferenceReviewTargets(
       continue;
     }
 
-    const linkedByGeneration = object.generation?.referenceObjectIds?.includes(previousReferenceId) ?? false;
+    const lineage = object.generation?.lineage;
+    const linkedByGeneration = lineage ? lineage.identityParent?.objectId === previousReferenceId : object.generation?.referenceObjectIds?.includes(previousReferenceId) ?? false;
     const linkedByRelation = workspace.relations.some(
       (relation) =>
         DERIVATIVE_LINK_RELATION_KINDS.has(relation.kind) &&
         relation.fromObjectId === previousReferenceId &&
         relation.toObjectId === object.id
     );
-    if (linkedByGeneration || linkedByRelation) {
+    if (linkedByGeneration || (!lineage && linkedByRelation)) {
       derivedImageIds.add(object.id);
     }
   }

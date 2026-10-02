@@ -190,6 +190,9 @@ export function getAgentToolAuthorizationBlockReason(profile: AgentToolAuthority
 function getVisualScopeBlockReason(activity: TurnTaskActivity, args: GenerateVisualsArgs, workspace?: MorphoWorkspace): string | undefined {
   for (const item of args.items) {
     if (item.requestedReferenceObjectIds.some((id) => !activity.referenceObjectIds.includes(id)) ||
+        (item.identityParentObjectId && !activity.sourceObjectIds.includes(item.identityParentObjectId)) ||
+        item.referenceBindings?.some((binding) => !activity.referenceObjectIds.includes(binding.objectId)) ||
+        (item.identityParentObjectId && activity.excludedObjectIds.includes(item.identityParentObjectId)) ||
         (item.targetDirectionId && !activity.targetObjectIds.includes(item.targetDirectionId)) ||
         (item.visualBranchId && !activity.sourceObjectIds.some((id) => {
           const object = workspace?.objects[id];

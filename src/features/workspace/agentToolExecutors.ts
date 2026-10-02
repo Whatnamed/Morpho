@@ -881,8 +881,9 @@ function executeRequestConfirmation(
         workspace: input.readWorkspace(),
         kind: args.visualPlan.kind,
         intents: args.visualPlan.items,
-        selectedSourceObjectIds: input.context.objectIds,
+        selectedSourceObjectIds: visualActivity?.sourceObjectIds ?? input.selectedObjectIds,
         allowedReferenceObjectIds: visualActivity?.referenceObjectIds,
+        excludedReferenceObjectIds: visualActivity?.excludedObjectIds,
         modelId: input.imageGenerationModelId,
         currentUserInput: visualActivity?.instruction ?? input.draft
       })

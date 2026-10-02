@@ -8,8 +8,9 @@ import type {
   VisualReferenceResolution
 } from "./types";
 import { resolveVisualReferences } from "./visualReferenceResolver";
+import { freezeVisualLineage } from "./visualLineage";
 
-export const IMAGE_PROMPT_CONTRACT_VERSION = "morpho-image-prompt-v3";
+export const IMAGE_PROMPT_CONTRACT_VERSION = "morpho-image-prompt-v4";
 
 export type CompiledImagePrompt = {
   prompt: string;
@@ -42,7 +43,17 @@ export function compileImagePrompt(input: {
   const references = input.referenceResolution.resolvedObjectIds
     .map((objectId) => input.workspace.objects[objectId])
     .filter((object) => object?.type === "image")
-    .map((object) => object.title);
+    .map((object, index) => {
+      const candidate = input.referenceResolution.candidates.find((candidate) => candidate.included && candidate.objectId === object.id);
+      const role = candidate?.role ?? "unspecified";
+      const policy = role === "identity" ? "产品身份、比例和关键结构的唯一直接父图" :
+        role === "structure" ? "只借用结构，不取得方案父版本或归属" :
+        role === "cmf" ? "只借用材料、颜色和表面工艺，不继承几何" :
+        role === "environment" ? "只借用环境、光线和尺度关系，不继承产品身份" :
+        role === "composition" ? "只借用构图和视角，不继承产品身份" :
+        role === "style" ? "只借用视觉风格，不继承产品身份" : "辅助参考；未指定继承维度，不赋予父版本语义";
+      return `参考图 ${index + 1}：${object.title}（${policy}）`;
+    });
 
   const rolePolicy = imageRolePolicy(input.intent.role);
   const taskPolicy = imageTaskPolicy(input.intent);
@@ -78,7 +89,7 @@ export function compileImagePrompt(input: {
       : "",
     memorySection("当前 Design Brief", designBrief?.sections),
     memorySection("项目级用户偏好", userPreferences?.sections),
-    references.length > 0 ? `参考图语义优先级已经由 Morpho 解析：${references.join("；")}` : "本轮无可用参考图。",
+    references.length > 0 ? `参考图与实际 images[] 顺序一一对应：\n${references.join("\n")}` : "本轮无可用参考图。",
     input.intent.excludeDefaultReference ? "本轮明确排除项目默认参考。" : "",
     modelAdapterInstruction(input.modelId),
     "只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。"
@@ -102,36 +113,44 @@ export function compileVisualGenerationPlan(input: {
   currentUserInput: string;
   providerReferenceLimit?: number;
   allowedReferenceObjectIds?: readonly string[];
+  excludedReferenceObjectIds?: readonly string[];
 }): VisualGenerationPlan {
   return {
     kind: input.kind,
     items: input.intents.map((intent): VisualGenerationPlanItem => {
+      const lineage = freezeVisualLineage({ workspace: input.workspace, intent, kind: input.kind,
+        sourceObjectIds: input.selectedSourceObjectIds });
+      const scopedIntent: VisualIntentItem = { ...intent, identityParentObjectId: lineage.identityParent?.objectId ?? null,
+        targetDirectionId: lineage.direction?.objectId, visualBranchId: lineage.branch?.id };
       const referenceResolution = resolveVisualReferences({
         workspace: input.workspace,
-        intent,
+        intent: scopedIntent,
         selectedSourceObjectIds: input.selectedSourceObjectIds,
         projectReferenceObjectIds: input.projectReferenceObjectIds,
         providerLimit: input.providerReferenceLimit,
-        allowedReferenceObjectIds: input.allowedReferenceObjectIds
+        allowedReferenceObjectIds: input.allowedReferenceObjectIds,
+        excludedReferenceObjectIds: input.excludedReferenceObjectIds
       });
       const compiled = compileImagePrompt({
         workspace: input.workspace,
-        intent,
+        intent: scopedIntent,
         referenceResolution,
         modelId: input.modelId,
         currentUserInput: input.currentUserInput
       });
       return {
         id: intent.id,
-        targetDirectionId: intent.targetDirectionId,
-        visualBranchId: intent.visualBranchId,
+        userInstruction: input.currentUserInput,
+        lineage,
+        targetDirectionId: lineage.direction?.objectId,
+        visualBranchId: lineage.branch?.id,
         title: intent.title,
         purpose: intent.purpose,
         prompt: compiled.prompt,
         referenceObjectIds: referenceResolution.resolvedObjectIds,
         role: input.kind === "directionPreview" ? "conceptImage" : intent.role,
         editMode: compiled.editMode,
-        visualIntent: intent,
+        visualIntent: scopedIntent,
         referenceResolution,
         promptContractVersion: compiled.promptContractVersion
       };

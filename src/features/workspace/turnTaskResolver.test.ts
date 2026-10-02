@@ -25,6 +25,15 @@ function setup(draft: string, overrides: Partial<AgentToolAuthorityInput> = {}) 
 }
 
 describe("Turn Task / scope / authority", () => {
+  it("admits explicit auxiliary roles under existing reference authority without expanding generation targets", () => {
+    const { images: [a, b], contract } = setup("比较 A/B；然后只继续 A，生成一张，借用 B 作为 CMF 参考，不使用默认参考。");
+    const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;
+    expect(visual.sourceObjectIds).toEqual([a!.id]);
+    expect(visual.referenceObjectIds).toEqual([a!.id, b!.id]);
+    expect(visual.excludedObjectIds).toEqual([]);
+    expect(visual.targetObjectIds).not.toContain(b!.id);
+    expect(visual.includeDefaultReference).toBe(false);
+  });
   it.each([
     "只针对 A 和 B 做比较；然后只继续 A，生成两张 CMF 图。",
     "只针对 A 和 B 做比较，不用 A，不使用默认参考；然后生成两张 CMF 图。"

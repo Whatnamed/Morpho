@@ -32,7 +32,8 @@ const strategyPolicies: Record<AgentTaskStrategyKind, readonly string[]> = {
   visualDevelopment: [
     "视觉意图必须区分改变目标、必须保留、允许变化、构图、视角、产品形态、CMF、场景光线和避免项。",
     "从一张选中图探索多个视觉变体属于 visualDevelopment，不要在没有真实 targetDirectionId 时误写成 directionPreview。",
-    "用户本轮显式参考和允许变化优先；用户说不使用默认参考时必须设置 excludeDefaultReference。"
+    "用户本轮显式参考和允许变化优先；用户说不使用默认参考时必须设置 excludeDefaultReference。",
+    "视觉计划必须区分 identityParentObjectId（唯一方案父图；新方案用 null）与 referenceBindings（逐图辅助作用和 required）；explicit exclusions 写入 excludedReferenceObjectIds。辅助 CMF、环境或跨方向参考不决定方案归属。生成成功只证明已保存；只有本轮实际 delivered 的 pixels 读取才支持视觉观察，不能称为质量验证。"
   ],
   comparison: [
     "Compare 只分析明确选择对象，默认直接在聊天中给出差异、权衡与建议，不创建 Compare 记录。",

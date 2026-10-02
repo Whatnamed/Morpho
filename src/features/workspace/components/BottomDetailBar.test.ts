@@ -362,7 +362,7 @@ describe("BottomDetailBar selected object surface", () => {
     );
 
     expect(html).toContain("来源");
-    expect(html).toContain("关联");
+    expect(html).not.toContain(">关联<"); // legacy references do not establish Direction ownership
     expect(html).not.toContain(">版本<");
     expect(html).not.toContain("GrsAI 视觉发展使用该图作为本次明确来源");
   });

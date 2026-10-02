@@ -1,3 +1,4 @@
+import { hasDeliveredVisualObservation } from "@/domain/morpho/visualObservation";
 import type {
   AiContextTask,
   ConceptDirectionRevision,
@@ -752,7 +753,10 @@ function detailForObject(object: MorphoObject): string | undefined {
         `role=${object.role}`,
         object.directionId ? `direction=${object.directionId}` : "",
         object.visualBranchId ? `visualBranch=${object.visualBranchId}` : "",
-        object.generation ? `generatedBy=${object.generation.modelLabel}` : ""
+        object.generation ? `generatedBy=${object.generation.modelLabel}` : "",
+        object.generation ? `generationPurposeIsIntent=${object.generation.purpose ?? object.generation.visualIntent?.purpose ?? "unknown"}` : "",
+        object.generation ? `visualObservation=${hasDeliveredVisualObservation(object) ? "pixelsDeliveredNotQualityVerified" : "unknownOrUnobserved"}` : "",
+        object.generation?.lineage ? `identityParent=${object.generation.lineage.identityParent?.objectId ?? "newIdentity"}` : object.generation ? "identityParent=legacyUnknown" : ""
       ]
         .filter(Boolean)
         .join(" / ");
