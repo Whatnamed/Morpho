@@ -55,7 +55,7 @@ export function inspectDeliveryReference(workspace: MorphoWorkspace, reference: 
     sourceFreshness: updated ? "sourceUpdated" : source && reference.sourceFingerprint && resolved?.identity === "same" ? "current" : "unknown",
     sourceExistence: missing ? "sourceMissing" : "present",
     sourceVisibility: missing ? "unknown" : hidden ? "sourceHidden" : "active",
-    assetAvailability: reference.snapshot.sourceType === "link" ? "referenceOnly" : needsBinary ? assetId && workspace.assets[assetId] ? "metadataAvailable" : "assetMissing" : "noBinaryExpected",
+    assetAvailability: reference.snapshot.sourceType === "link" || (assetId && workspace.assets[assetId]?.sourceType === "originalLink") ? "referenceOnly" : needsBinary ? assetId && workspace.assets[assetId] ? "metadataAvailable" : "assetMissing" : "noBinaryExpected",
     binaryAvailability: "notChecked",
     copyReview: reference.copyReview === "needsReview" ? "needsReview" : !hasCopy ? "noCopy" : reference.copyReview ?? "unknown",
     provenance: reference.snapshot.provenance ?? { status: "unknown" }

@@ -6,7 +6,6 @@ import type {
   DeliveryReferenceId,
   DeliveryReferenceSnapshot,
   DeliverySectionDraft,
-  MorphoObject,
   MorphoObjectId,
   MorphoWorkspace
 } from "./types";
@@ -237,7 +236,6 @@ export function createDeliveryOutputManifest(
       );
     }
 
-    const source = reference.sourceObjectId ? workspace.objects[reference.sourceObjectId] : undefined;
     const facts = inspection.references[referenceId];
     if (facts?.sourceExistence === "sourceMissing") {
       diagnostics.push(
@@ -259,7 +257,8 @@ export function createDeliveryOutputManifest(
 
     const assetId = resolveReferenceAssetId(reference);
     const asset = assetId ? workspace.assets[assetId] : undefined;
-    const referenceAvailability = resolveReferenceAvailability(reference, source, asset);
+    const referenceAvailability: DeliveryOutputAvailability = facts?.assetAvailability === "referenceOnly" ? "referenceOnly"
+      : facts?.assetAvailability === "noBinaryExpected" ? "noBinaryExpected" : "missingBinary";
     const outputAssetPath =
       asset && referenceAvailability !== "referenceOnly" && referenceAvailability !== "noBinaryExpected"
         ? outputAssetPathForAsset(asset)
@@ -746,24 +745,6 @@ export function countMissingDeliveryOutputAssets(manifest: DeliveryOutputManifes
   const missing = new Set(manifest.assets.filter((asset) => asset.availability === "missingBinary" || asset.availability === "sizeMismatch").map((asset) => `asset:${asset.assetId}`));
   for (const ref of manifest.references) if (ref.availability === "missingBinary" || ref.availability === "sizeMismatch") missing.add(ref.sourceAssetId ? `asset:${ref.sourceAssetId}` : `reference:${ref.referenceId}`);
   return missing.size;
-}
-
-function resolveReferenceAvailability(
-  reference: DeliveryReference,
-  source: MorphoObject | undefined,
-  asset: AssetRecord | undefined
-): DeliveryOutputAvailability {
-  if (asset?.sourceType === "originalLink" || source?.type === "link" || reference.snapshot.sourceType === "link") {
-    return "referenceOnly";
-  }
-  const assetId = resolveReferenceAssetId(reference);
-  if (assetId) {
-    return "missingBinary";
-  }
-  if (["image", "file"].includes(reference.snapshot.sourceType)) {
-    return "missingBinary";
-  }
-  return "noBinaryExpected";
 }
 
 function resolveReferenceAssetId(reference: DeliveryReference): AssetId | undefined {

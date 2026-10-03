@@ -94,6 +94,17 @@ describe("P5 generation baseline and applicability", () => {
 });
 
 describe("P5 inspection, ordering, output and manual history", () => {
+  it("classifies frozen materials through inspection rather than a later same-ID source's type", () => {
+    const f = fixture();
+    const next: MorphoWorkspace = { ...f.workspace, objects: { ...f.workspace.objects, a: { id: "a", incarnationId: "replacement-link", type: "link", title: "later link", summary: "different object", url: "https://example.test/", domain: "example.test", visibility: "active", createdBy: "user" } } };
+    const facts = inspectDeliveryReference(next, next.deliveryReferences[f.ids[0]]);
+    expect(facts.assetAvailability).toBe("noBinaryExpected");
+    const output = createDeliveryOutputManifest(next, { deliveryObjectId: f.deliveryId });
+    if (output.status === "blocked") throw new Error(output.reason);
+    expect(output.manifest.references[0].availability).toBe("noBinaryExpected");
+    expect(output.manifest.references[0].inspection).toEqual(facts);
+  });
+
   it("preserves copy on refresh, exposes review across surfaces, and Undo/Redo preserves later runtime writes", () => {
     const f = fixture();
     let before = updated(updateDeliveryReferenceEditorial(f.workspace, { deliveryObjectId: f.deliveryId, referenceId: f.ids[0], caption: "old caption", note: "old note" })).workspace;
