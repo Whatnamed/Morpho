@@ -1,0 +1,178 @@
+{
+  "schemaVersion": "p7a-closeout-1",
+  "date": "2026-10-03",
+  "authority": "User supplied final web acceptance of reviewed P7A state",
+  "programStatus": "validating",
+  "p7aStatus": "complete",
+  "webAcceptance": "accepted",
+  "p7bStatus": "not_started",
+  "blockers": {
+    "D1": "closed",
+    "D2": "closed"
+  },
+  "base": "ba81e6d2e126c67e825b52c5700a38c332199738",
+  "reviewedPreCleanHead": "6a1c56c03bb385a2c2c95191ebf6c9d4bc8321eb",
+  "cleanRewrittenHead": "207426debf60186ac2393664f9a484baee93e973",
+  "cleanD1": "8ae57a64ac97f9e16b497a53bac7f6de5c126fa6",
+  "cleanD2": "0f1c5923449f1f9df621dfb02f56a5d277d3b861",
+  "mapping": [
+    {
+      "old": "cba8b7752f867bbe40a99d0b7bae24ac46613d83",
+      "clean": "cba8b7752f867bbe40a99d0b7bae24ac46613d83",
+      "subject": "test(eval): freeze versioned P7 trajectories and independent oracles"
+    },
+    {
+      "old": "445ffa2e438c62f1b11071e8f515f31da5e12ddd",
+      "clean": "445ffa2e438c62f1b11071e8f515f31da5e12ddd",
+      "subject": "test(eval): add continuous deterministic T2 to T4 browser baseline"
+    },
+    {
+      "old": "e62aca59d42aac634a2d8daffc6ab3e69360513b",
+      "clean": "e62aca59d42aac634a2d8daffc6ab3e69360513b",
+      "subject": "test(eval): capture the integrated compaction divergence without repairing product state"
+    },
+    {
+      "old": "9c415903c4b79a91c12b68018ad7a9cd8f289ce2",
+      "clean": "30f1efa4791ace9fafe5de2b8aa6bd1e01c103e4",
+      "subject": "docs(eval): record the failing P7A deterministic baseline and evidence"
+    },
+    {
+      "old": "1bb15d28aea5ed40c8500cf1623a6b8e095323e6",
+      "clean": "8ae57a64ac97f9e16b497a53bac7f6de5c126fa6",
+      "subject": "fix(compaction): separate current summary identity from usable content"
+    },
+    {
+      "old": "f795ed8fec0cb7500200e18555ac6e438ed3a394",
+      "clean": "0a3a00c44649b7bcb747d41304a677736c42e375",
+      "subject": "test(eval): target the live default-reference confirmation card"
+    },
+    {
+      "old": "6a76bec0d5f2040ee5569830dd46cbe92f6e0177",
+      "clean": "cf482d46e1edc57ae01da8199549a99912d654bd",
+      "subject": "docs(eval): record D1 fix, passing frozen trajectory and unresolved browser gates"
+    },
+    {
+      "old": "345bdac5bba57cfad356b4c87deeea6a2f47b8cb",
+      "clean": "0f1c5923449f1f9df621dfb02f56a5d277d3b861",
+      "subject": "fix(runtime): persist exact provider request intent before POST"
+    },
+    {
+      "old": "6a1c56c03bb385a2c2c95191ebf6c9d4bc8321eb",
+      "clean": "207426debf60186ac2393664f9a484baee93e973",
+      "subject": "docs(eval): record D2 durability fix and clean P7A gates"
+    }
+  ],
+  "integration": {
+    "status": "pending ff-only main integration; actual SHA recorded by subsequent docs-only receipt"
+  },
+  "equivalence": {
+    "perCommitNonArtifactPatchesIdentical": true,
+    "finalTreeOnlyTwoArtifactRemovals": true,
+    "frozenHashesUnchanged": true,
+    "removedBlobNotReachable": true,
+    "removedPathsNotReachable": true,
+    "allNonDocsFinalFilesIdenticalToReviewedHead": true,
+    "scope": "src/, e2e/, scripts/, all root/config files and every other non-docs tracked file",
+    "rangeDiff": "Nine commits: eight equal patches; only the original evidence commit loses the two artifact additions",
+    "rangeDiffSha256": "0dc5e8865203cfe8463cf95bd2839cbb7c7675ca436aed179632871e43359c3d",
+    "closeoutChangeScope": "docs-only metadata, links, acceptance and history receipt",
+    "fullGatesRerun": false,
+    "reason": "Previously executed implementation/Eval/config tree is byte-equivalent; no new build or paid execution claimed",
+    "closeoutDiffCheck": "pass"
+  },
+  "hygiene": {
+    "removedPaths": [
+      "docs/operations/p7a-evidence/evidence.zip",
+      "docs/operations/p7a-evidence/unpack-evidence.mjs"
+    ],
+    "removedBlobOid": "acc36f21f6f27721a1275e6dd98efff37d82cfcc",
+    "historicalArchiveSha256": "ccbf8d667f324f048285ba08234b6c98de6fbf87f7c0671af42ad023977a3de0",
+    "historicalArchiveBytes": 32290596,
+    "retainedInGit": false,
+    "reachableGraph": "Entire clean head graph, not merely the final tree or base..head range",
+    "rawDiagnosticsLocation": "D:/Morpho-Diagnostics/P7A-2026-10-03",
+    "retention": "Local archive, last passing P7 run, engineering logs and rewrite receipts; raw run artifacts are not Git evidence"
+  },
+  "executedEvidence": {
+    "receipt": "d2-durability.json",
+    "build": {
+      "schemaVersion": 2,
+      "sourceSha": "345bdac5bba57cfad356b4c87deeea6a2f47b8cb",
+      "sourceTreeSha256": "5fc17185cd9bd3ea88b58bc2461737e0480a5efde1790df45401e4c0faaadfaf",
+      "sourceTreeFileCount": 1068,
+      "buildId": "O6ExjyEH8DuauiCJRfqNK",
+      "artifactSha256": "338c9ea62976c2ec9f70727870e10125e8319bf4228870e9694bae7d42aaac06",
+      "artifactFileCount": 773,
+      "isDirty": false,
+      "nodeVersion": "v22.23.2",
+      "builtAt": "2026-10-03T13:09:31.608Z"
+    },
+    "p7Run": {
+      "originalDirectory": "output/playwright/p7/2026-10-03T13-10-37-542Z-26528",
+      "manifest": {
+        "path": "output/playwright/p7/2026-10-03T13-10-37-542Z-26528/run-manifest.json",
+        "sha256": "197a55cc952c8d4dbf441be6cb310ee1a44e2d04e9a0c72b6b8afb64758b13f2",
+        "byteLength": 2023166
+      },
+      "fixtureHash": "c40e93e49781e0926064f2236eec19e2a5d8d6d7504eeede2793171800952193",
+      "verdict": "pass",
+      "checkpointsPassed": 17,
+      "retries": 0,
+      "rescue": 0
+    },
+    "normalChromium": {
+      "passed": 76,
+      "failed": 0,
+      "retries": 0
+    },
+    "stability": "Text reload and writer-tab: 10 each serial; 10 each default parallel; all clean",
+    "targetedAdjacent": {
+      "files": 18,
+      "tests": 330,
+      "status": "pass"
+    },
+    "fullUnit": {
+      "files": 241,
+      "tests": 2556,
+      "status": "pass"
+    },
+    "static": {
+      "typecheck": "pass",
+      "lint": "pass",
+      "productionBuild": "pass",
+      "diffCheck": "pass"
+    },
+    "nextFirstDivergence": null
+  },
+  "frozen": {
+    "version": "p7-trajectories-1",
+    "encoding": "utf8-LF",
+    "files": {
+      "e2e/eval/contracts.ts": "2b67cbacce32bd923ded0d8231811b9a826cd47176700189d690d8dff4aa3247",
+      "e2e/eval/kitchen-materials.json": "3d9f388257b7cacb07399343db4f22f23d1fae0ad67008c0a9f483fff042e3e8",
+      "e2e/support/p7Seed.ts": "9f6880f94c460db4788aca7e09cef400b99a677359c6a7632d12000a56711521",
+      "src/domain/morpho/caseStudy/currentCaseWorkspace.generated.json": "75d01687f1b294accaf3ab3ef6738e13306dae77bd962157f31d7a79d3b5e931",
+      "src/domain/morpho/caseStudy/currentCaseAssets.generated.json": "bba61ccbff44f04983762992dc6eb43a5eb833c3e61317ec070cf03d925104c8"
+    },
+    "lock": {
+      "path": "e2e/eval/contract-lock.json",
+      "sha256": "b54207b1c5fe29b3959ddb7d48c007976798e5df0f419f34e11216e5f7ef3a72",
+      "byteLength": 655
+    },
+    "independentOracleAndAllEvalFilesIdentical": true
+  },
+  "schemaChangesDuringCloseout": false,
+  "paidProviderCalls": 0,
+  "paidCost": 0,
+  "limits": [
+    "T1 full execution not_run",
+    "T3 full execution not_run",
+    "L1b real Journal/routes/RPC not_run",
+    "L2 real model not_run",
+    "L3 real image not_run",
+    "L4 human handoff not_run",
+    "Production Journal fault injection not_run",
+    "T2 new-angle/real visual fidelity not assessed",
+    "Client serialized inputs only; actual Server final Provider wire not observed"
+  ]
+}

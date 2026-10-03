@@ -1,7 +1,9 @@
 # P7A-D2 — Provider Request pre-send durability（2026-10-03）
 
 **D2 已修复，normal Chromium 76/76 clean pass，冻结 T2→T4 17 checkpoints pass。**
-P7 保持 `validating`；没有进入 closeout、P7B 或 merge main。
+P7A 已通过网页最终复审，D1/D2 已关闭；P7 保持 `validating`，P7B `not_started`。
+[Closeout 与 clean history SHA mapping](./p7a-closeout.md)。以下保留 D2 实测阶段的原始
+build/run identity；clean D2 fix 为 `0f1c5923449f1f9df621dfb02f56a5d277d3b861`。
 
 - Reviewed base：`6a76bec0d5f2040ee5569830dd46cbe92f6e0177`。
 - Fix / 实际被测 implementation：`345bdac5bba57cfad356b4c87deeea6a2f47b8cb`。
@@ -59,6 +61,7 @@ first divergence；此前历史尝试仍保留。Paid Provider calls / cost = **
 
 新 raw screenshots/state/wire/output zip 仅在 ignored `output/playwright/`，工程 logs 在 ignored
 `output/`；Git 仅新增本报告、最小文本 metadata / hashes / artifact index。既有 32.3 MB
-`evidence.zip` SHA-256 未变，本轮没有 history rewrite；最终 closeout 仍必须从将要合入
-main 的完整 commit graph 移除该 blob。T1/T3 全轨迹、真实 Journal/Provider/model/image、
+`evidence.zip` SHA-256 当时未变，D2 实测阶段没有 history rewrite；最终 closeout 已从
+可合入的完整 commit graph 移除该 blob 与 unpack script，仅保留本机诊断材料。
+T1/T3 全轨迹、真实 Journal/Provider/model/image、
 human handoff 和 P7B 未执行。

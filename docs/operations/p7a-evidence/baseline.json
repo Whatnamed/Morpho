@@ -8,9 +8,10 @@
   "verdict": "fail",
   "status": "validating",
   "archive": {
-    "file": "evidence.zip",
+    "historicalArtifact": "evidence.zip",
+    "retainedInGit": false,
+    "location": "local diagnostic archive; see closeout.json",
     "encoding": "p7-lossless-string-interning-1",
-    "decoder": "unpack-evidence.mjs",
     "sha256": "ccbf8d667f324f048285ba08234b6c98de6fbf87f7c0671af42ad023977a3de0",
     "byteLength": 32290596,
     "entries": 340

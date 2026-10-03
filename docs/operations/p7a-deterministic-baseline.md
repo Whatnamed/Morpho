@@ -1,8 +1,10 @@
-# P7A deterministic baseline — validating（2026-10-03）
+# P7A deterministic baseline — complete / web accepted（2026-10-03）
 
 当前结果见 [P7A-D2 pre-send durability report](./p7a-d2-durability.md)：D2 已修复，两条
 Chromium case 串行及默认并行各十次通过；完整 normal Chromium 76/76 clean pass，冻结
-T2→T4 17 checkpoints pass。P7 仍 `validating`。以下保留 D1 阶段的历史证据。
+T2→T4 17 checkpoints pass。P7A 已通过网页最终复审，D1/D2 已关闭；P7 仍 `validating`，
+P7B `not_started`。[Closeout 与 clean history SHA mapping](./p7a-closeout.md)。以下保留
+D1 阶段及原始失败的历史证据；其中 build identity / pre-clean SHA 不改写为未执行的新 build。
 
 ## D1 修复与原冻结轨迹重跑（历史结果）
 
@@ -50,11 +52,10 @@ requestId 的 `/requests` POST（预期一个）。与 D1 的关系及产品/dri
 两次失败，不修第二产品问题，不继续第三次完整运行取最好结果。`f795ed8…` commit 正文
 提前写成首次 Chromium 76 pass 是记录错误；实际结果以本报告及 log hashes 为准。
 
-本轮 raw screenshots/state/wire/output zip 均仅留在 ignored `output/playwright/`，未新增
-raw archive 到 Git；原 `evidence.zip` SHA-256 未变。本轮**没有 history rewrite**。最终 P7A
-closeout 准备 ff 到 main 前，必须统一重建 task commit graph，使该既有 binary blob 完全不在
-将要合入的历史中，仅追加 `git rm` 不够。L1b/L2/L3/L4、production Journal、human acceptance
-与 P7B 仍未执行。
+D1 阶段的新 raw screenshots/state/wire/output zip 仅留在 ignored `output/playwright/`，
+当时没有 history rewrite。最终 closeout 已重建 task commit graph，移除历史 archive blob
+及其 unpack script；诊断材料仅保留本机，Git 保留最小文本证据与 hashes。L1b/L2/L3/L4、
+production Journal、human acceptance 与 P7B 仍未执行。
 
 ## 原始冻结后基线（历史失败证据）
 
@@ -71,16 +72,17 @@ closeout 准备 ff 到 main 前，必须统一重建 task commit graph，使该�
 - 干净 production build：`R4L4bxDM4UtKYSUpYOrtE`；source-tree SHA-256
   `45b95c991676c54e4169005d5812e6f42bf0b72bebb88052eda3ca99f74e1d02`；
   artifact SHA-256 `05fdf5a5a8d2caa046f7926fbcaf86ab013a4f03c30cee8ccb6f72c23422a88f`。
-- [机器可读 baseline / 全部尝试 / artifact index](./p7a-evidence/baseline.json)、
-  [原始 evidence archive](./p7a-evidence/evidence.zip)、[无损还原及 hash 校验](./p7a-evidence/unpack-evidence.mjs)。
+- [机器可读 baseline / 全部尝试 / artifact index](./p7a-evidence/baseline.json)。
 
-Archive 使用 `p7-lossless-string-interning-1` 去重重复的像素与长文本，保留原始 JSON 的
-SHA-256。解包实际还原并校验 **262 个 evidence 文件**。早期整个历史会话的 DOM dump
+诊断期间曾生成 raw archive（SHA-256
+`ccbf8d667f324f048285ba08234b6c98de6fbf87f7c0671af42ad023977a3de0`），使用
+`p7-lossless-string-interning-1` 去重，解包当时实际还原并校验 **262 个 evidence 文件**。
+Archive 及专用 unpack script 已从可合入历史移除，不再作为 Git 内的复现入口。
+早期整个历史会话的 DOM dump
 不长期保存；其 hash / 排除原因列在 index，对应状态、wire、截图仍保留。未保存新模型
 chain-of-thought，没有给产品持久化添加日志。
 
 ```powershell
-node docs/operations/p7a-evidence/unpack-evidence.mjs
 npm.cmd run build
 npm.cmd run test:p7
 node scripts/diagnose-p7-compaction.mjs

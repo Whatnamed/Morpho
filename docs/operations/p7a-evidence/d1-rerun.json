@@ -1952,16 +1952,18 @@
   "paidProviderCalls": 0,
   "paidCost": 0,
   "hygiene": {
+    "scope": "historical D1 stage receipt; current hygiene is in closeout.json",
     "newRawArtifactsCommitted": false,
     "rawArtifacts": "ignored output/playwright/p7 and output logs",
     "existingArchiveUnchanged": true,
     "historyRewritePerformed": false,
     "existingArchive": {
-      "path": "docs/operations/p7a-evidence/evidence.zip",
+      "historicalArtifact": "evidence.zip",
+      "retainedInGitAtCloseout": false,
       "sha256": "ccbf8d667f324f048285ba08234b6c98de6fbf87f7c0671af42ad023977a3de0",
       "byteLength": 32290596
     },
-    "pendingCloseout": "Remove evidence.zip blob from the entire commit graph to be fast-forwarded to main before eventual integration; no rewrite in this D1 task"
+    "pendingCloseout": "Historical D1 requirement fulfilled by closeout.json: binary blob removed from the entire mergeable graph"
   },
   "limits": [
     "T1 full execution",

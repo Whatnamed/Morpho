@@ -549,15 +549,17 @@
     "recoveryVersion": 2
   },
   "hygiene": {
+    "scope": "historical D2 stage receipt; current hygiene is in closeout.json",
     "newRawArtifactsCommitted": false,
     "rawArtifactsLocation": "ignored output/playwright and output logs",
     "existingArchive": {
-      "path": "docs/operations/p7a-evidence/evidence.zip",
+      "historicalArtifact": "evidence.zip",
+      "retainedInGitAtCloseout": false,
       "sha256": "ccbf8d667f324f048285ba08234b6c98de6fbf87f7c0671af42ad023977a3de0",
       "byteLength": 32290596
     },
     "historyRewrite": false,
-    "eventualCloseout": "Existing binary blob must be absent from the entire commit graph to be merged; no history rewrite in this D2 task"
+    "eventualCloseout": "Historical D2 requirement fulfilled by closeout.json: binary blob removed from the entire mergeable graph"
   },
   "stop": {
     "nextIndependentBlocker": null,
