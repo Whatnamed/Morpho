@@ -15,9 +15,76 @@ import {
   type ProjectBundleResolvedAsset
 } from "./projectBundles";
 import type { AssetRecord, MorphoWorkspace } from "./types";
-import { createBlankWorkspace } from "./workspace";
+import { createBlankWorkspace, createInitialWorkspace, setConceptDirectionStatus } from "./workspace";
+import { captureManualHistory, createManualHistory, pushManualHistory, redoManualHistory, undoManualHistory } from "@/features/workspace/workspaceUndo";
 
 const NOW = "2026-07-02T12:00:00.000Z";
+
+describe("Archive domain elimination reasons", () => {
+  const directionId = "direction-soft-rail";
+  function eliminationLine(workspace: MorphoWorkspace): string {
+    const bundle = createHumanReadableArchiveBundle(createArchiveManifest(workspace), []);
+    const line = readBundleText(bundle, "project-overview.md").split("\n")
+      .find((value) => value.startsWith(`- ${workspace.objects[directionId].title}｜`));
+    if (!line) throw new Error("eliminated direction missing from archive");
+    return line;
+  }
+
+  test("primary -> eliminated -> Undo -> Redo preserves the real elimination reason", () => {
+    const before = setConceptDirectionStatus(createInitialWorkspace(), directionId, "primary", "primary reason");
+    const after = setConceptDirectionStatus(before, directionId, "eliminated", "business elimination E");
+    const history = pushManualHistory(createManualHistory(), captureManualHistory("淘汰方向", before, after));
+    const undo = undoManualHistory(history, after);
+    expect(undo.status).toBe("restored");
+    if (undo.status !== "restored") throw new Error(undo.status);
+    expect(undo.workspace.objects[directionId]).toMatchObject({ status: "primary" });
+    const redo = redoManualHistory(undo.history, undo.workspace);
+    expect(redo.status).toBe("restored");
+    if (redo.status !== "restored") throw new Error(redo.status);
+    expect(redo.workspace.objects[directionId]).toMatchObject({ status: "eliminated" });
+    expect(redo.workspace.decisionRecords.at(-1)).toMatchObject({
+      id: expect.stringMatching(/^decision-manual-history-/), reason: "重做：淘汰方向"
+    });
+    expect(eliminationLine(redo.workspace)).toContain("原因：business elimination E");
+    expect(eliminationLine(redo.workspace)).not.toMatch(/原因：(重做|撤销)/);
+
+    const restored = setConceptDirectionStatus(redo.workspace, directionId, "alternative", "restore for reconsideration");
+    const eliminatedAgain = setConceptDirectionStatus(restored, directionId, "eliminated", "new business elimination F");
+    expect(eliminationLine(eliminatedAgain)).toContain("原因：new business elimination F");
+  });
+
+  test("two real eliminations use the latest domain reason", () => {
+    const first = setConceptDirectionStatus(createInitialWorkspace(), directionId, "eliminated", "first elimination E");
+    const restored = setConceptDirectionStatus(first, directionId, "alternative", "restoration reason");
+    const second = setConceptDirectionStatus(restored, directionId, "eliminated", "latest elimination F");
+    expect(eliminationLine(second)).toContain("原因：latest elimination F");
+  });
+
+  test("a latest real elimination without a reason never inherits an earlier reason", () => {
+    const first = setConceptDirectionStatus(createInitialWorkspace(), directionId, "eliminated", "first elimination E");
+    const restored = setConceptDirectionStatus(first, directionId, "alternative", "restoration reason");
+    const second = setConceptDirectionStatus(restored, directionId, "eliminated", "  ");
+    const history = pushManualHistory(createManualHistory(), captureManualHistory("淘汰方向", restored, second));
+    const undo = undoManualHistory(history, second);
+    if (undo.status !== "restored") throw new Error(undo.status);
+    const redo = redoManualHistory(undo.history, undo.workspace);
+    if (redo.status !== "restored") throw new Error(redo.status);
+    expect(eliminationLine(redo.workspace)).toContain("原因：未记录明确原因");
+  });
+
+  test.each(["legacy", "other-incarnation", "other-object"] as const)("%s elimination evidence cannot supply a reason", (binding) => {
+    const eliminated = setConceptDirectionStatus(createInitialWorkspace(), directionId, "eliminated", "unreliable reason");
+    const workspace = { ...eliminated, decisionRecords: eliminated.decisionRecords.map((record) => {
+      if (record.effect?.kind !== "setDirectionStatus" || record.effect.status !== "eliminated") return record;
+      return { ...record, summary: "eliminated: unreliable reason", relatedObjectIds: [directionId], effect: {
+        ...record.effect,
+        targetObjectId: binding === "other-object" ? "direction-support-island" : directionId,
+        targetIncarnationId: binding === "legacy" ? undefined : binding === "other-incarnation" ? "another-incarnation" : record.effect.targetIncarnationId
+      } };
+    }) };
+    expect(eliminationLine(workspace)).toContain("原因：未记录明确原因");
+  });
+});
 
 describe("project bundle domain contracts", () => {
   test("creates a human-readable archive bundle with markdown documents and available assets", () => {

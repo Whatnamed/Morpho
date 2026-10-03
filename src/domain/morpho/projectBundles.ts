@@ -791,7 +791,10 @@ function buildRichArchiveProjectOverview(manifest: HumanReadableArchiveManifest)
     ...listOrEmpty(
       eliminatedDirections.map((item) => {
         const decision = [...manifest.archive.decisions].reverse().find((candidate) =>
-          candidate.effect?.kind === "setDirectionStatus" && candidate.effect.targetObjectId === item.id &&
+          // P6H compensation restores state; its reason describes Undo/Redo,
+          // not the business elimination. The prefix is assigned by manualHistoryMutation.
+          !candidate.id.startsWith("decision-manual-history-") &&
+          candidate.effect?.kind === "setDirectionStatus" && candidate.effect.status === "eliminated" && candidate.effect.targetObjectId === item.id &&
           Boolean(item.incarnationId) && candidate.effect.targetIncarnationId === item.incarnationId
         );
         const reason = decision?.effect?.kind === "setDirectionStatus" && decision.effect.status === "eliminated" ? decision.reason?.trim() : undefined;

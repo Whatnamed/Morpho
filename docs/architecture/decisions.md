@@ -1400,5 +1400,7 @@ keeps copy and records review needs; manual review uses P6H operation-owned hist
 lineage/input/observation and qualified P1B evidence are consumed only. Output manifest v1 receives
 additive optional facts; historical Draft dependencies remain readable and backup-safe. Archive
 never infers elimination reasons from titles, primary decisions or unrelated historical records.
+P6H `decision-manual-history-*` compensation restores status but cannot supply an Archive elimination
+reason; resolve the latest real identity-bound elimination, preserving unknown when its reason is absent.
 P5 remains validating pending acceptance; P6I/P7, real paid Provider calls and real user handoff are
 outside this implementation.

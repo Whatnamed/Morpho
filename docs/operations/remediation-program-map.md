@@ -623,3 +623,8 @@ P5 implementation / validation evidence（2026-10-03；状态 `validating`，未
 - 尚未验证：真实 paid Provider 文案/图像质量、实际计费与外部执行、生产 Journal/hosting，
   以及导师/评审/接手设计师在真实 Figma/PPT handoff 中的可用性。静态/模拟验证不代签用户
   handoff acceptance；P5 保持 validating，P4/P6H accepted 状态保留，P6I/P7 不启动。
+- 2026-10-03 有界网页复审修正（基于 `5b2b6f8`）：Archive 解析最近真实、identity/incarnation-bound
+  elimination reason 时排除 `decision-manual-history-*` compensation；Undo/Redo 不覆盖业务理由，
+  后来真实淘汰使用新理由，最近真实淘汰无可靠理由时保留“未记录明确原因”。不修改 P6H 核心模型。
+  新增 6 个 regression；相关 Archive / Manual History / Direction **9 files / 152 tests**、
+  full unit **240 files / 2525 tests**、typecheck、lint 通过。P5 继续 validating，等待网页复审。

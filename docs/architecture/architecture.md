@@ -723,7 +723,9 @@ Morpho now implements a separate delivery output package for taking one prepared
   Markdown and source-map carry the same facts. Missing materials are counted by distinct asset ID,
   including references without Asset metadata (or by reference ID when no asset identity exists).
   Structural `ready` is exportability, never confirmed handoff quality. Archive elimination rationale
-  comes only from the last identity-bound `setDirectionStatus` effect when it is elimination; absent
+  comes only from the latest real identity-bound `setDirectionStatus` elimination effect, excluding
+  P6H `decision-manual-history-*` compensation. The latest real elimination without a reliable reason
+  remains unknown rather than inheriting an older reason; absent
   reliable effect/reason renders `未记录明确原因`.
 
 Delivery output is not an archive or editable backup. It cannot restore a project, does not contain raw workspace JSON, does not use M7 `manifestVersion`/`bundleVersion`, and does not generate PPTX, PDF, Figma files, cloud shares, collaboration state, or final presentation layouts.
