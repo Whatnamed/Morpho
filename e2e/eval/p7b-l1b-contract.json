@@ -1,0 +1,15 @@
+{
+  "version": "p7b-l1b-boundary-1",
+  "budget": { "paidProviderCalls": 0, "scenarioTrials": 1, "automaticRetries": 0 },
+  "environment": "Isolated real TCP PostgreSQL, PostgREST, Supabase Auth and production Next.js A+ routes; controlled local Provider only",
+  "stop": "Preserve and stop on the first meaningful product divergence; setup failures are invalid_run, never L1b pass",
+  "scenarios": [
+    { "id": "A", "name": "Authenticated Turn and isolation", "expected": "Real Auth session creates one durable Turn; exact create replay returns same ID; unauthenticated is 401; wrong owner/project read or mutate is 404; authenticated direct privileged RPC is denied" },
+    { "id": "B", "name": "Exact Text request and completed-result replay", "expected": "One request ID/sequence/hash/Provider execution; exact completed replay returns same result; same request ID with changed Provider body returns 409 conflict and does not return the old result as if valid" },
+    { "id": "C", "name": "Durable client recovery", "expected": "Real client persistence before POST; reload queries/redelivers original request; no second identity or paid POST grant" },
+    { "id": "D", "name": "Ambiguous execution", "expected": "Uncertainty remains explicit; exact replay cannot acquire fresh execution; no new Provider submission" },
+    { "id": "E", "name": "Cancellation and late observation", "expected": "Durable cancel intent; local abort does not prove Provider cancellation; late terminal observation preserves execution facts" },
+    { "id": "F", "name": "P3B escrow/redelivery/ACK", "expected": "Complete immutable result; same-result GET; exact and duplicate ACK converge; conflicting identity/version/hash rejected; incomplete/unavailable/expired remain explicit; zero extra execution" },
+    { "id": "G", "name": "Compaction boundary", "expected": "Exact action/request/source identity through real route/RPC; immutable result and no duplicate execution" }
+  ]
+}
