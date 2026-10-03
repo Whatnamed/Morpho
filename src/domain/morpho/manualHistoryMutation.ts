@@ -60,12 +60,23 @@ export function completeManualHistoryMutation(before: MorphoWorkspace, after: Mo
   for (const record of after.projectContinuity.recordEntries) {
     const previous = before.projectContinuity.recordEntries.find((item) => item.id === record.id);
     if (!previous || previous.manualState === record.manualState) continue;
+    if (record.origin === "deterministicEvent") {
+      // P1B permits deterministic withdrawal via manualState, but semantic
+      // lifecycleEvidence/supersession is reserved for semantic facts.
+      next = { ...next, projectContinuity: { ...next.projectContinuity,
+        recordEntries: next.projectContinuity.recordEntries.map((item) => item.id === record.id ? { ...item, manualState: record.manualState, updatedAt: now } : item), updatedAt: now
+      } };
+      continue;
+    }
     // Use the existing P1B lifecycle use case to record this new user action,
     // rather than attaching stale withdrawal/resolve evidence to restored state.
     next = setConversationSemanticEntryManualState({ ...next, projectContinuity: {
       ...next.projectContinuity, recordEntries: next.projectContinuity.recordEntries.map((item) => item.id === record.id ? { ...item, manualState: previous.manualState, lifecycleEvidence: previous.lifecycleEvidence } : item)
     } }, record.id, record.manualState, now);
   }
+  // Compensation events must not take Current Focus from a later independent
+  // writer. The history boundary already selected the owned inverse or current B.
+  next = { ...next, projectContinuity: { ...next.projectContinuity, currentFocus: after.projectContinuity.currentFocus } };
   // Resolve qualification before rebuilding Memory/Stage projections.
   return reconcileWorkspaceDerivedState(resolveContinuityValidity(reconcileWorkspaceDerivedState(next, now)), now);
 }

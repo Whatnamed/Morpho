@@ -585,6 +585,15 @@ No new runtime dependency or external service was introduced for schema v17.
   nor remove those independent stores. `manualHistoryMutation.ts` appends compensating identity-bound
   Decision effects using the existing P1B vocabulary, updates only the affected current revision
   flags and semantic user-action lifecycle, then reconciles qualified Memory/Stage projections.
+- P6H review correction (2026-10-03): capture the deterministic occurrences appended by one
+  manual commit, guard their non-derived payload/lifecycle, withdraw them on Undo and reactivate
+  the same records on Redo. Retain occurrence identity/content and independent entries; inverse
+  Direction compensation events also belong to that history entry and withdraw on the next flip.
+  Use existing deterministic `manualState` only: P1B reserves lifecycleEvidence/supersession for
+  semantic facts. Current Focus has a small before/after effect guarded by its value and matching
+  original occurrence; later independent Focus relinquishes this entry's focus ownership without
+  blocking entity Undo. Compensation events do not take Focus. Reconcile current Memory/Stage
+  from the resulting authority instead of restoring historical projections or Continuity snapshots.
 - Explicit user mutations are wired through the current functional commit boundary: imports/paste,
   Reader fragment creation, hide/restore/delete, project title, Canvas layout/layers/Region edits,
   Direction status, current Definition, reference/visual review and existing Branch organization,

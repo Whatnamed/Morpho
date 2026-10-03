@@ -16,6 +16,14 @@ async function stored(page: Page, key: string): Promise<MorphoWorkspace> {
   return page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), key);
 }
 
+function currentProjections(workspace: MorphoWorkspace) {
+  return {
+    memory: Object.values(workspace.projectMemory.documents).map((document) => document.currentRevisionId ? workspace.projectMemory.revisions[document.currentRevisionId]?.sections : undefined),
+    stages: Object.values(workspace.projectMemory.stageRecords).map((record) => record.currentRevisionId ? workspace.projectMemory.stageRevisions[record.currentRevisionId]?.sections : undefined),
+    stageMetadata: Object.values(workspace.projectMemory.stageRecords).map((record) => record.currentRevisionId ? workspace.projectMemory.stageRevisions[record.currentRevisionId]?.itemMetadata : undefined)
+  };
+}
+
 async function selectStoredObject(page: Page, key: string, id: string) {
   const instance = (await stored(page, key)).canvas.instances.find((i) => i.objectId === id)!;
   const shape = page.locator(`.tl-shape[data-shape-id="shape:${instance.id}"]`);
@@ -154,6 +162,35 @@ test("Delivery section/reference/editorial mutations undo in order and retain a 
   await expect(page.locator(".restore-preview-card")).toBeVisible();
   await page.reload(); await expect(page.locator(".morpho-shape-host").first()).toBeVisible();
   const reloaded = await stored(page, key); expect(Object.values(reloaded.deliveryReferences)[0].editorial).toEqual({ caption: "P6H caption", note: "P6H note" });
+});
+
+test("Delivery section Undo/Redo compensates its actual Continuity, Current Focus and current projections", async ({ page }) => {
+  const seed = await seedTextOnlyProject(page), key = seed.textOnly.workspaceKey;
+  await page.goto(`/projects/${seed.textOnly.projectId}`); await page.getByRole("button", { name: "知道了", exact: true }).click();
+  await page.getByRole("button", { name: "交付准备", exact: true }).click();
+  const panel = page.locator('section[aria-label="交付准备"]');
+  const initial = await stored(page, key);
+  await panel.getByRole("button", { name: "新建", exact: true }).click();
+  await expect(panel.getByLabel("新增章节标题", { exact: true })).toBeVisible();
+  await expect.poll(async () => (await stored(page, key)).projectContinuity.recordEntries.some((entry) => entry.dedupeKey.startsWith("deliveryPreparationChanged:created:") && !initial.projectContinuity.recordEntries.some((old) => old.id === entry.id))).toBe(true);
+  const before = await stored(page, key);
+  await panel.getByLabel("新增章节标题", { exact: true }).fill("P6H continuity section"); await panel.getByRole("button", { name: "新增章节", exact: true }).click();
+  const hasSection = async () => Object.values((await stored(page, key)).objects).some((object) => object.type === "delivery" && object.sections.some((section) => section.title === "P6H continuity section"));
+  await expect.poll(hasSection).toBe(true);
+  const after = await stored(page, key), entry = after.projectContinuity.recordEntries.find((entry) => !before.projectContinuity.recordEntries.some((old) => old.id === entry.id) && entry.dedupeKey.startsWith("deliveryPreparationChanged:sectionChanged:"))!;
+  expect(entry).toBeDefined();
+  await mutationKey(page); await expect.poll(hasSection).toBe(false);
+  const undo = await stored(page, key);
+  expect(undo.projectContinuity.recordEntries.find((record) => record.id === entry.id)).toMatchObject({ summary: entry.summary, manualState: "withdrawn" });
+  expect(undo.projectContinuity.currentFocus).toEqual(before.projectContinuity.currentFocus);
+  expect(JSON.stringify(currentProjections(undo))).not.toContain(entry.id);
+  expect(JSON.stringify(currentProjections(undo))).not.toContain(entry.summary);
+  await mutationKey(page, "Control+Shift+z"); await expect.poll(hasSection).toBe(true);
+  const redo = await stored(page, key);
+  expect(redo.projectContinuity.recordEntries.find((record) => record.id === entry.id)?.manualState).toBe("active");
+  expect(redo.projectContinuity.currentFocus).toEqual(after.projectContinuity.currentFocus);
+  expect(JSON.stringify(currentProjections(redo))).toContain(entry.summary);
+  expect(JSON.stringify(currentProjections(redo).stageMetadata)).toContain(entry.id);
 });
 
 

@@ -1,5 +1,5 @@
 import { validateCurrentMorphoWorkspace } from "@/domain/morpho/currentWorkspaceValidation";
-import type { MorphoWorkspace } from "@/domain/morpho/types";
+import type { ContinuityRecordEntry, CurrentProjectFocus, MorphoWorkspace } from "@/domain/morpho/types";
 import { completeManualHistoryMutation } from "@/domain/morpho/manualHistoryMutation";
 
 export const MANUAL_HISTORY_LIMIT = 20;
@@ -17,6 +17,8 @@ export type ManualHistoryEntry = {
   identities: Record<string, { type: string; incarnationId?: string }>;
   revisions: Record<string, unknown>;
   semanticGuards: Record<string, { lifecycle: unknown; replacement?: string }>;
+  deterministicContinuity: Record<string, { baseline: ContinuityRecordEntry; original: boolean }>;
+  focus?: { before: CurrentProjectFocus; after: CurrentProjectFocus; expected?: { value: CurrentProjectFocus; entryId?: string } };
   canvasBindings: Record<string, string>;
   owners: { references: Record<string, string | undefined>; drafts: Record<string, string>; branches: Record<string, string | undefined> };
 };
@@ -39,8 +41,19 @@ export function captureManualHistory(label: string, before: MorphoWorkspace, aft
   // region which may now contain independent results on creation Undo.
   const automaticActivation = new Set((after.canvas.stageRegions ?? []).filter((region) => region.memberObjectIds.some((id) => addedObjects.has(id)))
     .map((region) => `.canvas.stageRegions.${region.id}.isActivated`));
-  const changes = diff(manualState(before), manualState(after), "", automaticActivation);
-  if (!changes) return null;
+  const delta = diff(manualState(before), manualState(after), "", automaticActivation);
+  const deterministicContinuity: ManualHistoryEntry["deterministicContinuity"] = {};
+  for (const record of after.projectContinuity.recordEntries) {
+    if (record.origin === "deterministicEvent" && !before.projectContinuity.recordEntries.some((entry) => entry.id === record.id)) {
+      deterministicContinuity[record.id] = { baseline: structuredClone(record), original: true };
+    }
+  }
+  const previousFocus = focusOwner(before), currentFocus = focusOwner(after);
+  const focus = sameValue(previousFocus, currentFocus) ? undefined : {
+    before: previousFocus.value, after: currentFocus.value, expected: currentFocus
+  };
+  if (!delta && !Object.keys(deterministicContinuity).length && !focus) return null;
+  const changes: Change = delta ?? { kind: "fields", fields: {} };
   const identities: ManualHistoryEntry["identities"] = {};
   const objectChanges = changes.kind === "fields" ? changes.fields.objects : undefined;
   for (const id of Object.keys(objectChanges?.kind === "fields" ? objectChanges.fields : {})) {
@@ -92,7 +105,7 @@ export function captureManualHistory(label: string, before: MorphoWorkspace, aft
     const previous = before.projectContinuity.recordEntries.find((item) => item.id === record.id);
     if (previous && previous.manualState !== record.manualState) semanticGuards[record.id] = { lifecycle: lifecycleIdentity(record.lifecycleEvidence), replacement: record.supersededByEntryId };
   }
-  return { label, projectId: before.project.id, changes, identities, revisions, semanticGuards, canvasBindings, owners };
+  return { label, projectId: before.project.id, changes, identities, revisions, semanticGuards, deterministicContinuity, focus, canvasBindings, owners };
 }
 export function undoManualHistory(history: ManualHistory, current: MorphoWorkspace): ManualHistoryResult { return restore(history, current, "undo"); }
 export function redoManualHistory(history: ManualHistory, current: MorphoWorkspace): ManualHistoryResult { return restore(history, current, "redo"); }
@@ -156,9 +169,18 @@ function restore(history: ManualHistory, current: MorphoWorkspace, direction: "u
     const record = current.projectContinuity.recordEntries.find((item) => item.id === id);
     if (!record || record.supersededByEntryId !== guard.replacement || !sameValue(lifecycleIdentity(record.lifecycleEvidence), guard.lifecycle)) conflicts.push(`projectContinuity.${id}.lifecycle`);
   }
+  for (const [id, effect] of Object.entries(entry.deterministicContinuity)) {
+    const record = current.projectContinuity.recordEntries.find((record) => record.id === id);
+    if (!record || !sameValue(continuityIdentity(record), continuityIdentity(effect.baseline))) conflicts.push(`projectContinuity.${id}.ownedEvent`);
+  }
   check(entry.changes, manualState(current), direction, "workspace", conflicts);
   if (conflicts.length) return { status: "blocked", history, conflicts };
   const changed = apply(entry.changes, current, direction) as MorphoWorkspace;
+  const compensationIds = new Set([...history.undo, ...history.redo].flatMap((entry) =>
+    Object.entries(entry.deterministicContinuity).filter(([, effect]) => !effect.original).map(([id]) => id)));
+  // Focus is conditional ownership: a later writer relinquishes this entry's
+  // focus inverse without blocking its entity/event inverse or claiming B's focus.
+  const ownsFocus = !!entry.focus?.expected && sameValue(entry.focus.expected, focusOwner(current, compensationIds));
   // Runtime, revisions, Decisions and projection history come from CURRENT.
   let candidate: MorphoWorkspace = {
     ...current, ...changed,
@@ -169,7 +191,12 @@ function restore(history: ManualHistory, current: MorphoWorkspace, direction: "u
     ui: { ...current.ui, lastSelectionIds: current.ui.lastSelectionIds.filter((id) => changed.objects[id]?.visibility === "active") },
     projectContinuity: {
       ...current.projectContinuity,
-      recordEntries: current.projectContinuity.recordEntries.map((record) => ({ ...record, ...changed.projectContinuity.recordEntries.find((item) => item.id === record.id) }))
+      currentFocus: ownsFocus ? structuredClone(direction === "undo" ? entry.focus!.before : entry.focus!.after) : current.projectContinuity.currentFocus,
+      recordEntries: current.projectContinuity.recordEntries.map((record) => {
+        const restored = { ...record, ...changed.projectContinuity.recordEntries.find((item) => item.id === record.id) };
+        const effect = entry.deterministicContinuity[record.id];
+        return effect ? { ...restored, manualState: effect.original && direction === "redo" ? "active" : "withdrawn" } : restored;
+      })
     }
   };
   // Reconciliation must never demote an independent current owner to fix a collision.
@@ -182,7 +209,20 @@ function restore(history: ManualHistory, current: MorphoWorkspace, direction: "u
   const validation = validateCurrentMorphoWorkspace(candidate);
   if (validation.status === "failed") return { status: "blocked", history, conflicts: validation.issues.map((issue) => issue.path) };
   const inverse = direction === "undo" ? "redo" : "undo";
-  const nextEntry = { ...entry, semanticGuards: { ...entry.semanticGuards } };
+  for (const record of candidate.projectContinuity.recordEntries) {
+    if (!current.projectContinuity.recordEntries.some((entry) => entry.id === record.id)) compensationIds.add(record.id);
+  }
+  const nextEntry = { ...entry, semanticGuards: { ...entry.semanticGuards }, deterministicContinuity: { ...entry.deterministicContinuity },
+    focus: entry.focus ? { ...entry.focus, expected: ownsFocus ? focusOwner(candidate, compensationIds) : undefined } : undefined
+  };
+  // Direction/P1B compensation may append a new deterministic occurrence. It
+  // belongs to this inverse and is withdrawn on the next flip, never deleted.
+  for (const record of candidate.projectContinuity.recordEntries) {
+    const effect = entry.deterministicContinuity[record.id];
+    if (effect || (record.origin === "deterministicEvent" && !current.projectContinuity.recordEntries.some((entry) => entry.id === record.id))) {
+      nextEntry.deterministicContinuity[record.id] = { baseline: structuredClone(record), original: effect?.original ?? false };
+    }
+  }
   for (const id of Object.keys(entry.semanticGuards)) {
     const record = candidate.projectContinuity.recordEntries.find((item) => item.id === id)!;
     nextEntry.semanticGuards[id] = { lifecycle: lifecycleIdentity(record.lifecycleEvidence), replacement: record.supersededByEntryId };
@@ -190,6 +230,19 @@ function restore(history: ManualHistory, current: MorphoWorkspace, direction: "u
   return { status: "restored", workspace: candidate, entry, history: {
     ...history, [direction]: history[direction].slice(0, -1), [inverse]: [...history[inverse].slice(-(MANUAL_HISTORY_LIMIT - 1)), nextEntry]
   } };
+}
+function continuityIdentity(record: ContinuityRecordEntry): unknown {
+  const { validity: _validity, invalidationReasons: _reasons, sourceRefs, ...owned } = record;
+  return { ...owned, sourceRefs: sourceRefs.map(({ sourceAvailability: _availability, ...ref }) => ref) };
+}
+function focusOwner(workspace: MorphoWorkspace, compensationIds = new Set<string>()): { value: CurrentProjectFocus; entryId?: string } {
+  const focus = workspace.projectContinuity.currentFocus;
+  const ids = [...focus.sourceObjectIds].sort();
+  // Same-value, same-timestamp domain actions still have distinct occurrence IDs.
+  const record = [...workspace.projectContinuity.recordEntries].reverse().find((record) =>
+    record.manualState === "active" && !compensationIds.has(record.id) && record.stage === focus.area && (record.createdAt === focus.updatedAt || record.updatedAt === focus.updatedAt) && record.summary === focus.note &&
+    sameValue(record.sourceRefs.filter((ref) => ref.kind === "object").map((ref) => ref.id).sort(), ids));
+  return { value: structuredClone(focus), entryId: record?.id };
 }
 function lifecycleIdentity(value: MorphoWorkspace["projectContinuity"]["recordEntries"][number]["lifecycleEvidence"]): unknown {
   if (!value) return undefined;

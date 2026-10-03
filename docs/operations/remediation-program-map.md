@@ -300,6 +300,12 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 
 实际推进后按 ID 拆成独立行，保留 early slice 的 accepted commit。建议状态限于 `not_started / planning / ready / implementing / validating / accepted / accepted_with_limits / blocked / deferred`。`accepted_with_limits` 必须列出不影响该包承诺的剩余限制；关键证据缺失不允许伪装为有限验收。
 
+P6H bounded review correction（2026-10-03；review base `6bc34f5a33df1f3904865bfe56c659646a0d64fe`；同一独立 worktree / `codex/p6h-manual-history`，保持 `validating`）：
+人工 Undo 原先只恢复 Branch / Delivery / input 实体，遗漏该 operation 新增的 deterministic Continuity 与 Current Focus，导致已撤销动作仍进入 current projections。
+现使用既有 P1B `manualState` 撤回 / 重新激活 operation-owned deterministic occurrences，保留 record identity / history；inverse Direction compensation events 也归该 entry 所有。
+Current Focus 按 value / occurrence 判断 ownership，后来独立 Focus 保留且不被 Redo 重新占有；owned event 独立变更仍原子阻止 inverse。现有 Decision / semantic lifecycle authority 不变，重建 current Memory / Stage，不恢复旧 Continuity / Memory snapshot。
+Evidence: 新增 12 项 deterministic regressions（Branch archive / restore、later event / Focus、同值不同 occurrence 及连续撤销 ownership、conflict、Delivery、manual input、Direction / Default Reference compensation、editorial-only）；targeted history / Continuity / P1B 9 files / 145 tests；full unit 237 files / 2430 tests；Chromium 11 条（P6H 7 + P1B 4），含真实 Delivery Ctrl+Z / Redo 后 Continuity / Focus / current Memory / Stage 一致性；typecheck / lint / production build / git diff --check 通过。Workspace schema / migration / Backup 不变，无 paid Provider，无 main / P4 merge，未扩大到 P4 / P5 / P6I / P7。
+
 P2B implementation 验证及正式验收记录（2026-10-01；accepted implementation head `dbd5cd0b2b58f1fc520bd4b9d80da45f70f8e111`）：
 读取/领域接线 commit `32db875058c7e05f4e0e41d9b05b2bb3942249c5`；Runner/fulfillment commit
 `3935e4e90ce26b562db0d876eb22c51f3d6da142`。下列路径验证现有生产 Runner、领域执行与持久化，
