@@ -1033,8 +1033,10 @@ DB migration, second Truth authority, task scheduler, read-coverage ledger or Pr
   available branch. Auxiliary references cannot establish ownership. Branch creation still uses
   existing explicit domain/UI authority. Archiving during generation does not change the frozen
   result's membership; deletion detaches live membership while retaining historical generation facts.
-- P2A remains the scope/grant owner. Explicit auxiliary mentions may enter its reference set
-  without expanding a narrowed source/target set. Comparison-only sources stay excluded. The
+- P2A remains the scope/grant owner. An explicit reference/borrow/reuse verb bound to an image,
+  or use-as-reference instruction, may add that auxiliary input without expanding a narrowed
+  source/target set. Attribute descriptions and comparison-only mentions grant no reference
+  authority; explicit negation/exclusion wins. The
   compiler (`morpho-image-prompt-v4`) binds each image position to its role and preserves the owning
   activity instruction when recompiling after an optional omission.
 - The existing Image asset-reader boundary materializes references once. Parent and required

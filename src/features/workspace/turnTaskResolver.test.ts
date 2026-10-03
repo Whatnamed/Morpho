@@ -25,6 +25,64 @@ function setup(draft: string, overrides: Partial<AgentToolAuthorityInput> = {}) 
 }
 
 describe("Turn Task / scope / authority", () => {
+  it.each([
+    "借用 B 作为 CMF 参考",
+    "参考 B 的材质",
+    "用 B 的结构作为参考",
+    "沿用 B 的构图",
+    "参考 B 的环境",
+    "参考 B 的风格",
+    "使用方案 B 作为结构参考"
+  ])("authorizes an explicit auxiliary input without adding an identity source: %s", (reference) => {
+    const { workspace, images: [a, b], contract } = setup(`只继续 A，生成一张，${reference}。`);
+    const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;
+    expect(visual.sourceObjectIds).toEqual([a!.id]);
+    expect(visual.referenceObjectIds).toEqual([a!.id, b!.id]);
+    expect(visual.targetObjectIds).not.toContain(b!.id);
+    const profile = resolveAgentToolAuthority({ taskContract: contract });
+    const item = { id: "auxiliary", title: "A CMF", purpose: "Continue A", identityParentObjectId: a!.id,
+      requestedReferenceObjectIds: [b!.id], referenceBindings: [{ objectId: b!.id, role: "structure" as const, required: false }],
+      role: "cmfStudy" as const, changeGoals: [], preserve: [], allowToChange: [], productForm: [], materialsAndCmf: [], environmentAndLighting: [], avoid: [] };
+    expect(getAgentToolAuthorizationBlockReason(profile, { name: "generate_visuals", args: { kind: "visualDevelopment", items: [item] } }, workspace)).toBeUndefined();
+    expect(getAgentToolAuthorizationBlockReason(profile, { name: "generate_visuals", args: { kind: "visualDevelopment", items: [{ ...item, identityParentObjectId: b!.id }] } }, workspace)).toContain("超出");
+  });
+
+  it.each([
+    "B 的结构现在有问题，不要改 B",
+    "B 的环境太暗",
+    "B 的材质不好",
+    "B 的构图需要调整",
+    "B 的风格太杂",
+    "比较 A/B 的结构",
+    "描述 B 的环境",
+    "批评 B 的材质",
+    "分析 B 的结构",
+    "参考 A 的材质，B 的结构现在有问题",
+    "借用 A 的材质来分析 B 的结构"
+  ])("does not authorize a selected image through descriptive/comparison mention: %s", (description) => {
+    const { workspace, images: [a, b], contract } = setup(`只继续 A 生成一张，${description}。`);
+    const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;
+    expect(visual.sourceObjectIds).toEqual([a!.id]);
+    expect(visual.referenceObjectIds).toEqual([a!.id]);
+    expect(visual.excludedObjectIds).toContain(b!.id);
+    expect(visual.targetObjectIds).not.toContain(b!.id);
+    const profile = resolveAgentToolAuthority({ taskContract: contract });
+    const item = { id: "unauthorized", title: "A CMF", purpose: "Model expands references", role: "cmfStudy" as const,
+      changeGoals: [], preserve: [], allowToChange: [], productForm: [], materialsAndCmf: [], environmentAndLighting: [], avoid: [] };
+    for (const references of [
+      { requestedReferenceObjectIds: [b!.id] },
+      { requestedReferenceObjectIds: [a!.id], referenceBindings: [{ objectId: b!.id, role: "structure" as const, required: false }] }
+    ]) expect(getAgentToolAuthorizationBlockReason(profile, { name: "generate_visuals", args: { kind: "visualDevelopment", items: [{ ...item, ...references }] } }, workspace)).toContain("超出");
+  });
+
+  it.each(["不参考 B", "不使用 B", "不要借用 B", "排除 B"])("retains explicit exclusion over an earlier reference request: %s", (exclusion) => {
+    const { images: [a, b], contract } = setup(`只继续 A，生成一张，借用 B 作为 CMF 参考，${exclusion}。`);
+    const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;
+    expect(visual.sourceObjectIds).toEqual([a!.id]);
+    expect(visual.referenceObjectIds).toEqual([a!.id]);
+    expect(visual.excludedObjectIds).toContain(b!.id);
+  });
+
   it("admits explicit auxiliary roles under existing reference authority without expanding generation targets", () => {
     const { images: [a, b], contract } = setup("比较 A/B；然后只继续 A，生成一张，借用 B 作为 CMF 参考，不使用默认参考。");
     const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;

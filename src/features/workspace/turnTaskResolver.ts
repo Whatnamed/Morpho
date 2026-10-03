@@ -16,6 +16,7 @@ const grantKinds: Partial<Record<MorphoAgentToolName, TurnTaskActivityKind>> = {
   revise_selected_proposal_draft: "conceptDirection", create_comparison_analysis: "comparison",
   prepare_delivery_section_draft: "deliveryPreparation", submit_memory_update: "historyAndMemory", request_confirmation: "discussion"
 };
+const VISUAL_REFERENCE_EXCLUSION = /(?:不要|别).{0,8}(?:用|参考|借用|沿用|继续|基于)|不用|不使用|不参考|不借用|不沿用|排除/;
 
 /** Deterministic authority owner. Recommendations/Methods/models never mint grants.
  * Classification is a bounded aid to interpretation, not a full language planner.
@@ -104,13 +105,12 @@ export function resolveTurnTaskContract(input: Input): TurnTaskContract {
     const visual = kind === "visualDevelopment" || kind === "directionPreview";
     const narrow = visual ? resolveVisualScope(instruction, selected) : undefined;
     const mentioned = visual ? [] : selected.filter((object) => mentionsObject(instruction, object)).map((object) => object.id);
-    const explicitExclusions = visual ? selected.filter((object) => instruction.split(/[，,；;]/).some((clause) => /(?:不要|别).{0,8}(?:用|参考|沿用|继续|基于)|不用|不使用|排除/.test(clause) && mentionsObject(clause, object))).map((object) => object.id) : [];
+    const explicitExclusions = visual ? selected.filter((object) => instruction.split(/[，,；;]/).some((clause) => VISUAL_REFERENCE_EXCLUSION.test(clause) && mentionsObject(clause, object))).map((object) => object.id) : [];
     const sourceObjectIds = (narrow?.ids ?? (mentioned.length ? mentioned : selectedIds)).filter((id) => !explicitExclusions.includes(id));
-    // Task-local auxiliary mentions authorize references, not targets or identity.
-    // A comparison source cannot enter generation merely because it was selected.
+    // Only an explicit use/reference relation authorizes an auxiliary input.
+    // Mentioning a selected image's visual attributes never expands authority.
     const explicitAuxiliaryIds = visual ? selected.filter((object) => object.type === "image" && !explicitExclusions.includes(object.id) &&
-      instruction.split(/[，,。；;！？!?\n]+/).some((clause) => /参考|借用|材质|CMF|环境|构图|风格|结构/i.test(clause) && mentionsObject(clause, object) &&
-        !/(?:不要|不用|不使用|排除)/.test(clause))).map((object) => object.id) : [];
+      instruction.split(/[，,。；;！？!?\n]+/).some((clause) => hasExplicitAuxiliaryReferenceIntent(clause, object))).map((object) => object.id) : [];
     const excludedObjectIds = selectedIds.filter((id) => !sourceObjectIds.includes(id) && !explicitAuxiliaryIds.includes(id));
     const includeDefaultReference = kind !== "comparison" && (visual ? !narrow : /默认参考|保持.*一致|延续.*默认|reference/i.test(instruction)) &&
       !/(?:不要|不使用|不用|排除).{0,8}默认参考/.test(instruction);
@@ -180,6 +180,17 @@ function mentionsObject(text: string, object: MorphoObject): boolean {
   if (text.includes(object.id) || (object.title.length > 1 && text.includes(object.title))) return true;
   const letter = object.title.match(/^(?:方向|方案|图(?:片)?)?\s*([A-Z])(?:$|[\s｜|:：])/i)?.[1];
   return Boolean(letter && new RegExp(`(?:^|[^A-Za-z])${letter}(?:$|[^A-Za-z])`, "i").test(text));
+}
+
+function hasExplicitAuxiliaryReferenceIntent(clause: string, object: MorphoObject): boolean {
+  if (VISUAL_REFERENCE_EXCLUSION.test(clause)) return false;
+  const letter = object.title.match(/^(?:方向|方案|图(?:片)?)?\s*([A-Z])(?:$|[\s｜|:：])/i)?.[1];
+  const names = [object.id, ...(object.title.length > 1 ? [object.title] : []), ...(letter ? [letter] : [])];
+  const target = `(?:方案|方向|图(?:片)?)?\\s*(?:${names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![A-Za-z0-9])`;
+  // Bind the verb directly to this object, not another object in the clause.
+  if (new RegExp(`(?:借用|参考|沿用)\\s*${target}`, "i").test(clause)) return true;
+  const attribute = "(?:材质|CMF|环境|构图|风格|结构)";
+  return new RegExp(`(?:使用|用|把|将)\\s*${target}\\s*(?:的\\s*${attribute}\\s*)?(?:作为|用作|当作)\\s*(?:${attribute}\\s*)?(?:参考|生成输入)`, "i").test(clause);
 }
 
 function resolveReferenceScope(workspace: MorphoWorkspace, sources: readonly string[], includeDefault: boolean, narrow: boolean): string[] {
