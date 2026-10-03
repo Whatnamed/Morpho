@@ -254,7 +254,8 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     await page.getByRole("button", { name: "回到项目概览", exact: true }).click(); await selectP7(page, seed, material);
     // Supported upstream metadata change: explicitly replace A and mark its descendants for review.
     await page.locator('[aria-label="选中对象工具"]').getByRole("button", { name: "设为后续默认参考", exact: true }).click();
-    await page.locator(".confirm-card").first().getByRole("button", { name: "替换并标记相关素材待复核", exact: true }).click();
+    await page.locator(".confirm-card").filter({ has: page.getByRole("button", { name: "替换并标记相关素材待复核", exact: true }) })
+      .getByRole("button", { name: "替换并标记相关素材待复核", exact: true }).click();
     await selectP7(page, seed, child.id);
     await page.locator('[aria-label="选中对象工具"]').getByRole("button", { name: "隐藏对象", exact: true }).click();
     await openPackage();
