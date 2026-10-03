@@ -134,6 +134,8 @@ export class AgentTurnCoordinator {
       reducer?: Reducer;
       onDisplayEvent?: (event: AgentTurnRequestStreamEvent) => void;
       onRecoverySnapshotChanged?: (snapshot: AgentTurnCoordinatorRecoverySnapshot) => void;
+      /** Required before any POST; absent/failed durability fails closed. */
+      persistRequestIntent?: (snapshot: AgentTurnCoordinatorRecoverySnapshot) => boolean | Promise<boolean>;
     }>
   ) {}
 
@@ -143,6 +145,7 @@ export class AgentTurnCoordinator {
     createRequestId: () => string;
     onDisplayEvent?: (event: AgentTurnRequestStreamEvent) => void;
     onRecoverySnapshotChanged?: (snapshot: AgentTurnCoordinatorRecoverySnapshot) => void;
+    persistRequestIntent?: (snapshot: AgentTurnCoordinatorRecoverySnapshot) => boolean | Promise<boolean>;
   }>): RestoreAgentTurnCoordinatorResult {
     const parsed = parseCoordinatorRecoverySnapshot(input.snapshot);
     if (parsed.status === "failed") return parsed;
@@ -151,6 +154,7 @@ export class AgentTurnCoordinator {
       creationIdempotencyKey: parsed.value.creationIdempotencyKey,
       host: input.host,
       createRequestId: input.createRequestId,
+      ...(input.persistRequestIntent ? { persistRequestIntent: input.persistRequestIntent } : {}),
       ...(input.onDisplayEvent ? { onDisplayEvent: input.onDisplayEvent } : {}),
       ...(input.onRecoverySnapshotChanged
         ? { onRecoverySnapshotChanged: input.onRecoverySnapshotChanged }
@@ -465,6 +469,24 @@ export class AgentTurnCoordinator {
     active.retryAllowed = false;
     const generation = this.syncGeneration;
     try {
+      // Observation only queues writes. The exact active request must be durable
+      // before initial, continuation, or Journal-authorized exact retry POSTs.
+      this.notifyRecoverySnapshotChanged();
+      const snapshot = this.exportRecoverySnapshot();
+      let durable = false;
+      try {
+        const persisted = snapshot && this.input.persistRequestIntent?.(snapshot);
+        durable = typeof persisted === "boolean" ? persisted : await persisted === true;
+      } catch {
+        // Storage failure must never enter transport recovery or send a POST.
+      }
+      if (generation !== this.syncGeneration || this.activeRequest !== active ||
+        this.lifecycle?.phase === "terminal" || this.lifecycle?.phase === "cancelling") {
+        return this.denied("stale_request_intent", "等待 Recovery 持久化期间 Request 已停止或变化，未发送。");
+      }
+      if (!durable) {
+        return this.denied("request_intent_persistence_failed", "A+ Request identity 和原始 Body 无法持久化，未启动外部请求。");
+      }
       const handshake = await this.input.host.executeExternalRequest(
         {
           serverTurnId: lifecycle.turnId,
@@ -630,9 +652,12 @@ export class AgentTurnCoordinator {
     if (
       this.activeRequest &&
       !this.activeRequest.lifecycleStarted &&
-      snapshot.status === "created" &&
-      snapshot.latestRequestId === null &&
-      snapshot.latestStepSequence === 0
+      ((snapshot.status === "created" &&
+        snapshot.latestRequestId === null && snapshot.latestStepSequence === 0 && this.activeRequest.stepSequence === 1) ||
+       (snapshot.status === "awaitingNextRequest" && this.lastRequest &&
+        snapshot.latestRequestId === this.lastRequest.requestId &&
+        snapshot.latestStepSequence === this.lastRequest.stepSequence &&
+        this.activeRequest.stepSequence === this.lastRequest.stepSequence + 1))
     ) {
       this.activeRequest.retryAllowed = true;
       return this.denied(

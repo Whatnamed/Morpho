@@ -52,6 +52,50 @@ afterEach(() => {
 });
 
 describe("A+ Agent turn runner", () => {
+  it.each([1, 2])("does not send request step %i until Recovery Store has durably saved its intent", async (step) => {
+    const fixture = createFixture(step === 1 ? [{ status: "externallyCompleted", outputText: "正常完成" }] : [
+      { status: "awaitingNextRequest", toolCalls: [{ callId: "read-first", name: "read_selected_context", argumentsText: "{}" }] },
+      { status: "externallyCompleted", outputText: "continuation 完成" }
+    ]);
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    let intent: APlusTurnRecoveryRecord | undefined;
+    const save = fixture.store.save.bind(fixture.store);
+    fixture.store.save = async (record) => {
+      if (record.coordinator.activeRequest?.stepSequence === step && !intent) {
+        intent = structuredClone(record);
+        await barrier;
+      }
+      await save(record);
+    };
+    const running = runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    await waitForCondition(() => Boolean(intent));
+    expect(fixture.coordinatorHost.executions).toHaveLength(step - 1);
+    expect(fixture.store.record?.coordinator.activeRequest?.stepSequence).not.toBe(step);
+    release();
+    await running;
+    const execution = fixture.coordinatorHost.executions[step - 1]!;
+    expect(execution.requestId).toBe(intent?.coordinator.activeRequest?.requestId);
+    expect(execution.stepSequence).toBe(step);
+    expect(execution.providerRequest).toEqual(intent?.coordinator.activeRequest?.providerRequest);
+    expect(latestAssistant(fixture.fake.getWorkspace())?.status).toBe("done");
+  });
+
+  it.each([1, 2])("fails closed on Recovery intent save failure for step %i", async (step) => {
+    const fixture = createFixture(step === 1 ? [] : [
+      { status: "awaitingNextRequest", toolCalls: [{ callId: "read-first", name: "read_selected_context", argumentsText: "{}" }] }
+    ]);
+    const save = fixture.store.save.bind(fixture.store);
+    fixture.store.save = async (record) => {
+      if (record.coordinator.activeRequest?.stepSequence === step) throw new Error("Intent quota failure");
+      await save(record);
+    };
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    expect(fixture.coordinatorHost.executions).toHaveLength(step - 1);
+    expect(latestAssistant(fixture.fake.getWorkspace())?.agentTurnOutcome).not.toBe("success");
+    expect(fixture.fake.getEvents().some((event) => event.name === "failure")).toBe(true);
+  });
+
   it("does not retry an unobserved legacy Text request through the current-only server parser", async () => {
     const fixture = createFixture([{ status: "transportFailure" }]);
     fixture.coordinatorHost.queryError = new Error("Journal temporarily unavailable");

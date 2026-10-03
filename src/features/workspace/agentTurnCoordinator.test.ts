@@ -15,6 +15,7 @@ import {
 import {
   AgentTurnCoordinator,
   type AgentTurnCoordinatorExecutionHandshake,
+  type AgentTurnCoordinatorRecoverySnapshot,
   type AgentTurnCoordinatorHost,
   type AgentTurnCoordinatorTransportResult
 } from "./agentTurnCoordinator";
@@ -22,6 +23,117 @@ import {
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ AgentTurnCoordinator", () => {
+  it.each(["missing", "false", "throw"] as const)("does not POST when the request intent durability barrier is %s", async (mode) => {
+    const host = new FakeHost();
+    const coordinator = new AgentTurnCoordinator({ localProjectId: "project-a", creationIdempotencyKey: "creation-a",
+      host, createRequestId: () => "request-durable",
+      ...(mode === "missing" ? {} : { persistRequestIntent: () => {
+        if (mode === "throw") throw new Error("Recovery write failed");
+        return false;
+      } }) });
+    await coordinator.initialize();
+    expect(await coordinator.startInitialRequest(providerRequest())).toMatchObject({
+      status: "denied", code: "request_intent_persistence_failed", recoverable: false
+    });
+    expect(host.executeExternalRequest).not.toHaveBeenCalled();
+    expect(host.queryServerTurn).not.toHaveBeenCalled();
+  });
+
+  it("holds the first POST until the exact frozen request intent is durable", async () => {
+    const host = new FakeHost();
+    host.queueStarted({ status: "externallyCompleted", output: true });
+    const durability = createDeferred<boolean>();
+    let intent: AgentTurnCoordinatorRecoverySnapshot | undefined;
+    const coordinator = new AgentTurnCoordinator({ localProjectId: "project-a", creationIdempotencyKey: "creation-a",
+      host, createRequestId: () => "request-durable", persistRequestIntent: (snapshot) => {
+        intent = snapshot;
+        return durability.promise;
+      } });
+    await coordinator.initialize();
+    const request = providerRequest();
+    const original = structuredClone(request);
+    const pending = coordinator.startInitialRequest(request);
+    expect(intent).toMatchObject({ serverSnapshot: { serverTurnId: TURN_ID },
+      activeRequest: { requestId: "request-durable", stepSequence: 1, providerRequest: original, lifecycleStarted: false } });
+    Object.assign(request, { mode: "changed after capture" });
+    expect(host.executeExternalRequest).not.toHaveBeenCalled();
+    durability.resolve(true);
+    expect(await pending).toMatchObject({ status: "ok" });
+    expect(host.executions).toHaveLength(1);
+    expect(host.executions[0]?.providerRequest).toEqual(original);
+  });
+
+  it("does not POST after cancellation while the durable intent save is pending", async () => {
+    const host = new FakeHost();
+    const durability = createDeferred<boolean>();
+    const coordinator = new AgentTurnCoordinator({ localProjectId: "project-a", creationIdempotencyKey: "creation-a",
+      host, createRequestId: () => "request-cancel-before-post", persistRequestIntent: () => durability.promise });
+    await coordinator.initialize();
+    const pending = coordinator.startInitialRequest(providerRequest());
+    await coordinator.requestCancellation("cancel before request send");
+    durability.resolve(true);
+    expect(await pending).toMatchObject({ status: "denied", code: "stale_request_intent" });
+    expect(host.executeExternalRequest).not.toHaveBeenCalled();
+  });
+
+  it.each(["initial", "continuation"] as const)("reloads a durable %s intent before POST with the same identity and body", async (kind) => {
+    const host = new FakeHost();
+    host.queueStarted({ status: kind === "initial" ? "externallyCompleted" : "awaitingNextRequest", output: true });
+    if (kind === "continuation") host.queueStarted({ status: "externallyCompleted", output: true });
+    let durable: AgentTurnCoordinatorRecoverySnapshot | undefined;
+    const ids = ["request-first", "request-next"];
+    const coordinator = new AgentTurnCoordinator({ localProjectId: "project-a", creationIdempotencyKey: "creation-a",
+      host, createRequestId: () => ids.shift()!, persistRequestIntent: (snapshot) => {
+        if (kind === "continuation" && snapshot.activeRequest?.stepSequence === 1) return true;
+        durable = structuredClone(snapshot);
+        return new Promise<boolean>(() => {}); // old document dies before sending
+      } });
+    await coordinator.initialize();
+    if (kind === "continuation") await coordinator.startInitialRequest(providerRequest());
+    void (kind === "initial" ? coordinator.startInitialRequest(providerRequest()) : coordinator.startContinuation(providerRequest("exact continuation")));
+    expect(host.executions).toHaveLength(kind === "initial" ? 0 : 1);
+    const createId = vi.fn(() => "must-not-create-another-identity");
+    const restored = AgentTurnCoordinator.restore({ snapshot: JSON.parse(JSON.stringify(durable)), host,
+      createRequestId: createId, persistRequestIntent: () => true });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+    expect(await restored.coordinator.recoverServerExecutionStatus()).toMatchObject({ status: "denied", code: "request_not_observed" });
+    expect(host.queryServerTurn).toHaveBeenCalled();
+    expect(await restored.coordinator.retryActiveRequest()).toMatchObject({ status: "ok" });
+    expect(createId).not.toHaveBeenCalled();
+    const execution = host.executions.at(-1)!;
+    expect(execution.requestId).toBe(durable?.activeRequest?.requestId);
+    expect(execution.stepSequence).toBe(durable?.activeRequest?.stepSequence);
+    expect(execution.providerRequest).toEqual(durable?.activeRequest?.providerRequest);
+    expect(host.executions).toHaveLength(kind === "initial" ? 1 : 2);
+  });
+
+  it("queries and redelivers the original Text result after a lost POST response without another POST", async () => {
+    const host = new FakeHost();
+    let durable: AgentTurnCoordinatorRecoverySnapshot | undefined;
+    const effect = { version: 1 as const, effectId: `effect:${"a".repeat(64)}`, kind: "text" as const,
+      requestDigest: "b".repeat(64), namespace: null, executionState: "succeeded" as const,
+      cancelRequestedAt: null, localAbortObservedAt: null, attemptId: null, taskId: null, responseId: "original" };
+    host.executeExternalRequest.mockImplementation(async (input) => {
+      host.snapshot = snapshot({ status: "externallyCompleted", latestRequestId: input.requestId,
+        latestStepSequence: input.stepSequence, externalEffect: effect });
+      throw new Error("response lost after execution");
+    });
+    const original = new AgentTurnCoordinator({ localProjectId: "project-a", creationIdempotencyKey: "creation-a",
+      host, createRequestId: () => "request-original", persistRequestIntent: (s) => { durable = structuredClone(s); return true; } });
+    await original.initialize();
+    await original.startInitialRequest(providerRequest());
+    const createId = vi.fn(() => "new-identity-forbidden");
+    const readProviderResult = vi.fn(async () => ({ type: "providerOutput" as const, requestId: "request-original", stepSequence: 1,
+      outputText: "original escrow result", producedUserVisibleEffect: true, toolCallIds: [], toolCalls: [] }));
+    const restored = AgentTurnCoordinator.restore({ snapshot: durable, host: { ...host, readProviderResult }, createRequestId: createId });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+    expect(await restored.coordinator.recoverServerExecutionStatus()).toMatchObject({ status: "ok" });
+    expect(readProviderResult).toHaveBeenCalledWith({ effectId: effect.effectId, requestId: "request-original", stepSequence: 1 });
+    expect(host.executeExternalRequest).toHaveBeenCalledOnce();
+    expect(createId).not.toHaveBeenCalled();
+    expect(restored.coordinator.getProviderOutputSnapshot()?.outputText).toBe("original escrow result");
+  });
+
   it("persists the started flag before unavailable-result pause and reloads without starting step 1 twice", async () => {
     const host = new FakeHost();
     const output = { type: "providerOutput" as const, requestId: "request-1", stepSequence: 1,
@@ -38,7 +150,7 @@ describe("A+ AgentTurnCoordinator", () => {
     });
     const observed: NonNullable<ReturnType<AgentTurnCoordinator["exportRecoverySnapshot"]>>[] = [];
     const coordinator = new AgentTurnCoordinator({ localProjectId: "project-a", creationIdempotencyKey: "creation-a",
-      host: enhancedHost, createRequestId: () => "request-1", onRecoverySnapshotChanged: (s) => observed.push(s) });
+      host: enhancedHost, createRequestId: () => "request-1", persistRequestIntent: () => true, onRecoverySnapshotChanged: (s) => observed.push(s) });
     await coordinator.initialize();
     expect(await coordinator.startInitialRequest(providerRequest())).toMatchObject({ status: "denied", code: "external_result_pending" });
     expect(observed.at(-1)?.activeRequest?.lifecycleStarted).toBe(true);
@@ -996,6 +1108,7 @@ function createCoordinator(
     localProjectId: "project-a",
     creationIdempotencyKey: "creation-a",
     host,
+    persistRequestIntent: () => true,
     createRequestId: () => requestIds.shift() ?? "request-fallback",
     ...(reducer ? { reducer } : {}),
     ...(onDisplayEvent ? { onDisplayEvent } : {})

@@ -153,7 +153,8 @@ describe("Stage 3 migration acceptance scenarios", () => {
       localProjectId: "project-test",
       creationIdempotencyKey: "creation-1",
       host,
-      createRequestId: () => "request-exact"
+      createRequestId: () => "request-exact",
+      persistRequestIntent: () => true
     });
     expect((await coordinator.initialize()).status).toBe("ok");
 

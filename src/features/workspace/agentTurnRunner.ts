@@ -133,7 +133,8 @@ export async function runMorphoAgentTurn(
     host: dependencies.coordinatorHost ?? createAgentTurnCoordinatorHttpHost({ fetch: host.fetch }),
     createRequestId: createId,
     onDisplayEvent: createAgentTurnDisplayAdapterAPlus({ host, prepared }),
-    onRecoverySnapshotChanged: (snapshot) => recovery.observe(snapshot)
+    onRecoverySnapshotChanged: (snapshot) => recovery.observe(snapshot),
+    persistRequestIntent: (snapshot) => recovery.persistRequestIntent(snapshot)
   });
   const session: APlusSession = {
     localProjectId,
@@ -240,7 +241,8 @@ export async function recoverMorphoAgentTurn(
       host,
       prepared: restoredProduct.prepared
     }),
-    onRecoverySnapshotChanged: (snapshot) => recovery.observe(snapshot)
+    onRecoverySnapshotChanged: (snapshot) => recovery.observe(snapshot),
+    persistRequestIntent: (snapshot) => recovery.persistRequestIntent(snapshot)
   });
   if (restored.status === "failed") {
     await store.clear(localProjectId);
@@ -459,7 +461,8 @@ export async function runManualCompactionTurn(
     creationIdempotencyKey,
     host: dependencies.coordinatorHost ?? createAgentTurnCoordinatorHttpHost({ fetch: host.fetch }),
     createRequestId: createId,
-    onRecoverySnapshotChanged: (snapshot) => recovery.observe(snapshot)
+    onRecoverySnapshotChanged: (snapshot) => recovery.observe(snapshot),
+    persistRequestIntent: (snapshot) => recovery.persistRequestIntent(snapshot)
   });
   const session: APlusSession = {
     localProjectId,
@@ -878,6 +881,10 @@ async function reconcileRequestResult(
   result: AgentTurnCoordinatorActionResult,
   allowExactRetry: boolean
 ): Promise<RequestReconciliationResult> {
+  if (result.status === "denied" && result.code === "request_intent_persistence_failed") {
+    await failRecoveryPersistence(session);
+    return "failed";
+  }
   syncRecoveryRuntimeFacts(session);
   await session.recovery.flush();
   if (result.status === "ok") {
@@ -1687,6 +1694,13 @@ class RecoveryWriter {
   async flush(): Promise<boolean> {
     await this.queue;
     return !this.failed;
+  }
+
+  async persistRequestIntent(snapshot: AgentTurnCoordinatorRecoverySnapshot): Promise<boolean> {
+    // Explicitly enqueue this exact intent: observer exceptions must not make a
+    // successful flush of an older snapshot authorize a new POST.
+    this.observe(snapshot);
+    return this.flush();
   }
 
   async clear(): Promise<void> {
