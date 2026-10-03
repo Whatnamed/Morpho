@@ -513,3 +513,20 @@ P4 bounded auxiliary-reference authority review correction（2026-10-03；`valid
 - identity parent、lineage schema、roles、planned / actual inputs、missing pixels、Direction /
   Branch、Trace、P2B observation、P3 execution / Recovery / delivery 和 UI 保持原实现。
   无 paid Provider / production migration，无 main merge；等待网页复审，不开始 P5。
+
+P4 bounded auxiliary-reference negation binding correction（2026-10-03；`validating`）：
+
+- Review base: `db448c5b86e6655daf074fd6a616bec6ed317ddc`，同一 task branch。原 exclusion
+  缺少无需 / 无须 / 不必 / 不是要 / 并非，并以“同 clause 存在否定 + 提到对象”宽匹配，
+  会错误授权被否定的 B，或一并排除合法参考 A。
+- Positive / exclusion predicates 共用对象 ID / title / letter alias 匹配和完整标点 / 换行
+  clause 边界。否定 + action 直接绑定目标 object；同 object exclusion 优先，不能跨越
+  其他对象 / 连词把否定绑定到后续 reference。裸“沿用 B”接入既有 visual qualifier。
+- 新增 22 条 unit regression，覆盖自然否定、先引用再排除、跨句 / 同句双对象和 C source
+  下的 A auxiliary；非授权 B 的 requested references / role bindings 继续由 authority gate
+  拒绝。新增 2 条 Chromium negative-reference / object-bound compound trajectory。
+- Final checks: targeted **5 files / 128 tests**（resolver / authority / P4 lineage / P2A
+  adjacent），full unit **236 files / 2464 tests**，Chromium **8 trajectories**（P4 3 / P2A 5），
+  typecheck / lint / production build / `git diff --check` 全部通过。无 paid Provider 或生产
+  migration；P2 task ownership、P3、lineage/schema/Backup/compiler/input manifest/UI 未改变。
+  不合并 main，不开始 P5/P6；P4 等待网页复审。

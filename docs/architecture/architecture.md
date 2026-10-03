@@ -1036,7 +1036,8 @@ DB migration, second Truth authority, task scheduler, read-coverage ledger or Pr
 - P2A remains the scope/grant owner. An explicit reference/borrow/reuse verb bound to an image,
   or use-as-reference instruction, may add that auxiliary input without expanding a narrowed
   source/target set. Attribute descriptions and comparison-only mentions grant no reference
-  authority; explicit negation/exclusion wins. The
+  authority. Positive and negative predicates share object matching and full clause boundaries;
+  exclusion wins for the same object without suppressing another object's reference. The
   compiler (`morpho-image-prompt-v4`) binds each image position to its role and preserves the owning
   activity instruction when recompiling after an optional omission.
 - The existing Image asset-reader boundary materializes references once. Parent and required

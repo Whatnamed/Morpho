@@ -10,11 +10,11 @@ import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegist
 import type { AgentToolAuthorityInput } from "./agentToolAuthority";
 import type { ImageObject } from "@/domain/morpho/types";
 
-function setup(draft: string, overrides: Partial<AgentToolAuthorityInput> = {}) {
+function setup(draft: string, overrides: Partial<AgentToolAuthorityInput> = {}, imageCount = 2) {
   const workspace = createTestWorkspace();
-  const images = Object.values(workspace.objects).filter((object): object is ImageObject => object.type === "image" && object.visibility === "active").slice(0, 2);
-  if (images.length !== 2) throw new Error("Need two image sources");
-  images.forEach((image, index) => { image.title = index === 0 ? "A" : "B"; image.assetId = `asset-${image.title}`; });
+  const images = Object.values(workspace.objects).filter((object): object is ImageObject => object.type === "image" && object.visibility === "active").slice(0, imageCount);
+  if (images.length !== imageCount) throw new Error("Need selected image sources");
+  images.forEach((image, index) => { image.title = ["A", "B", "C"][index]!; image.assetId = `asset-${image.title}`; });
   workspace.workingState.currentDefaultReferenceId = images[1]!.id;
   const contract = resolveTurnTaskContract({ workspace, draft, selectedObjects: images,
     executionTaskMode: "imageGeneration", executionTaskModeSource: "userSelected",
@@ -26,6 +26,10 @@ function setup(draft: string, overrides: Partial<AgentToolAuthorityInput> = {}) 
 
 describe("Turn Task / scope / authority", () => {
   it.each([
+    "参考 B",
+    "借用 B",
+    "沿用 B",
+    "使用 B 作为参考",
     "借用 B 作为 CMF 参考",
     "参考 B 的材质",
     "用 B 的结构作为参考",
@@ -75,12 +79,70 @@ describe("Turn Task / scope / authority", () => {
     ]) expect(getAgentToolAuthorizationBlockReason(profile, { name: "generate_visuals", args: { kind: "visualDevelopment", items: [{ ...item, ...references }] } }, workspace)).toContain("超出");
   });
 
-  it.each(["不参考 B", "不使用 B", "不要借用 B", "排除 B"])("retains explicit exclusion over an earlier reference request: %s", (exclusion) => {
+  it.each(["不参考 B", "不使用 B", "不借用 B", "不要借用 B", "排除 B"])("retains explicit exclusion over an earlier reference request: %s", (exclusion) => {
     const { images: [a, b], contract } = setup(`只继续 A，生成一张，借用 B 作为 CMF 参考，${exclusion}。`);
     const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;
     expect(visual.sourceObjectIds).toEqual([a!.id]);
     expect(visual.referenceObjectIds).toEqual([a!.id]);
     expect(visual.excludedObjectIds).toContain(b!.id);
+  });
+
+  it.each([
+    "只继续 A，生成一张；无需参考 B",
+    "只继续 A，生成一张；无须参考 B",
+    "只继续 A，生成一张；不必参考 B",
+    "只继续 A，生成一张；不是要参考 B，只是分析 B 的结构",
+    "只继续 A，生成一张；并非沿用 B，只是比较",
+    ...["无需参考 B", "无须参考 B", "不必参考 B", "不是要参考 B", "并非沿用 B"].map((exclusion) =>
+      `只继续 A，生成一张，借用 B 作为 CMF 参考，${exclusion}`)
+  ])("denies negated auxiliary requests and forged Tool references: %s", (draft) => {
+    const { workspace, images: [a, b], contract } = setup(draft);
+    const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;
+    expect(visual.sourceObjectIds).toEqual([a!.id]);
+    expect(visual.referenceObjectIds).toEqual([a!.id]);
+    expect(visual.excludedObjectIds).toContain(b!.id);
+    expect(visual.targetObjectIds).not.toContain(b!.id);
+    const profile = resolveAgentToolAuthority({ taskContract: contract });
+    const item = { id: "negated", title: "A CMF", purpose: "Do not use B", role: "cmfStudy" as const,
+      changeGoals: [], preserve: [], allowToChange: [], productForm: [], materialsAndCmf: [], environmentAndLighting: [], avoid: [] };
+    for (const references of [
+      { requestedReferenceObjectIds: [b!.id] },
+      { requestedReferenceObjectIds: [a!.id], referenceBindings: [{ objectId: b!.id, role: "structure" as const, required: false }] }
+    ]) expect(getAgentToolAuthorizationBlockReason(profile, { name: "generate_visuals", args: { kind: "visualDevelopment", items: [{ ...item, ...references }] } }, workspace)).toContain("超出");
+  });
+
+  it.each([
+    "不要参考 B。参考 A 的材质",
+    "不要参考 B，但沿用 A",
+    "不要参考 B 但沿用 A",
+    "不使用 B 但用 A 的结构作为参考",
+    "排除 B 并借用 A"
+  ])("binds B's exclusion without removing A's legitimate reference: %s", (references) => {
+    const { workspace, images: [a, b], contract } = setup(`只继续 A，生成一张，${references}`);
+    const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;
+    expect(visual.sourceObjectIds).toEqual([a!.id]);
+    expect(visual.referenceObjectIds).toEqual([a!.id]);
+    expect(visual.excludedObjectIds).toContain(b!.id);
+    expect(visual.excludedObjectIds).not.toContain(a!.id);
+    const item = { id: "allowed", title: "A CMF", purpose: "Use A only", identityParentObjectId: a!.id,
+      requestedReferenceObjectIds: [a!.id], referenceBindings: [{ objectId: a!.id, role: "structure" as const, required: false }],
+      role: "cmfStudy" as const, changeGoals: [], preserve: [], allowToChange: [], productForm: [], materialsAndCmf: [], environmentAndLighting: [], avoid: [] };
+    expect(getAgentToolAuthorizationBlockReason(resolveAgentToolAuthority({ taskContract: contract }),
+      { name: "generate_visuals", args: { kind: "visualDevelopment", items: [item] } }, workspace)).toBeUndefined();
+  });
+
+  it.each(["不要参考 B。参考 A 的材质", "不要参考 B 但沿用 A"])("preserves an auxiliary A while excluding B when C owns generation: %s", (references) => {
+    const { workspace, images: [a, b, c], contract } = setup(`只继续 C，生成一张，${references}`, {}, 3);
+    const visual = contract.activities.find((activity) => activity.kind === "visualDevelopment")!;
+    expect(visual.sourceObjectIds).toEqual([c!.id]);
+    expect(visual.referenceObjectIds).toEqual([c!.id, a!.id]);
+    expect(visual.excludedObjectIds).toEqual([b!.id]);
+    expect(visual.targetObjectIds).not.toContain(a!.id);
+    const item = { id: "auxiliary-a", title: "C", purpose: "Continue C with A", identityParentObjectId: c!.id,
+      requestedReferenceObjectIds: [a!.id], referenceBindings: [{ objectId: a!.id, role: "structure" as const, required: false }],
+      role: "cmfStudy" as const, changeGoals: [], preserve: [], allowToChange: [], productForm: [], materialsAndCmf: [], environmentAndLighting: [], avoid: [] };
+    expect(getAgentToolAuthorizationBlockReason(resolveAgentToolAuthority({ taskContract: contract }),
+      { name: "generate_visuals", args: { kind: "visualDevelopment", items: [item] } }, workspace)).toBeUndefined();
   });
 
   it("admits explicit auxiliary roles under existing reference authority without expanding generation targets", () => {
