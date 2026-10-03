@@ -1,0 +1,11 @@
+{
+  "version": "p7-trajectories-1",
+  "encoding": "utf8-LF",
+  "files": {
+    "e2e/eval/contracts.ts": "2b67cbacce32bd923ded0d8231811b9a826cd47176700189d690d8dff4aa3247",
+    "e2e/eval/kitchen-materials.json": "3d9f388257b7cacb07399343db4f22f23d1fae0ad67008c0a9f483fff042e3e8",
+    "e2e/support/p7Seed.ts": "9f6880f94c460db4788aca7e09cef400b99a677359c6a7632d12000a56711521",
+    "src/domain/morpho/caseStudy/currentCaseWorkspace.generated.json": "75d01687f1b294accaf3ab3ef6738e13306dae77bd962157f31d7a79d3b5e931",
+    "src/domain/morpho/caseStudy/currentCaseAssets.generated.json": "bba61ccbff44f04983762992dc6eb43a5eb833c3e61317ec070cf03d925104c8"
+  }
+}
