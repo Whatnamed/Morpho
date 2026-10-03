@@ -25,8 +25,10 @@ The D1 fix separates raw current identity from usable Summary content; the lates
 T2→T4 run passes all 17 checkpoints, including export/reopen. One driver-only correction scopes the
 T4.4 confirmation action to its live card instead of the retained historical Compare card.
 `node scripts/diagnose-p7-compaction.mjs` now checks that identity/content separation without any
-Provider call. The original failure and interrupted driver run remain evidence. Normal Chromium
-still has an unresolved gate failure; see the baseline report for both runs and attribution limits.
+Provider call. The original failure and interrupted driver run remain evidence. P7A-D2 now durably
+saves exact Provider request intent before POST. Text reload and writer-tab stability pass ten
+serial and ten default-parallel repetitions each; the full normal Chromium gate passes 76/76.
+See the D2 report and baseline report for current evidence and retained historical failures.
 Do not switch to an ASCII/golden/short-history fixture to hide a failure. P7 remains validating.
 
 `T2→T4` is a continuous deterministic **slice**: it reads current route, selects real A/M/X,

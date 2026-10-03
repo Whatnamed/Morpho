@@ -1,6 +1,10 @@
 # P7A deterministic baseline — validating（2026-10-03）
 
-## D1 修复与原冻结轨迹重跑（当前结果）
+当前结果见 [P7A-D2 pre-send durability report](./p7a-d2-durability.md)：D2 已修复，两条
+Chromium case 串行及默认并行各十次通过；完整 normal Chromium 76/76 clean pass，冻结
+T2→T4 17 checkpoints pass。P7 仍 `validating`。以下保留 D1 阶段的历史证据。
+
+## D1 修复与原冻结轨迹重跑（历史结果）
 
 **D1 已修复；deterministic T2→T4 闭环通过；normal Chromium gate 未通过。**
 P7 保持 `validating`，没有 merge main 或开始 P7B。
