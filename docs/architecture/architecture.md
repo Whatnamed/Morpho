@@ -489,6 +489,32 @@ M6 additions:
 - `prepareDeliverySection` sends only the current section delivery reference snapshots in `deliverySectionContext`, does not send web search, normal task context, Compare context, live source objects, full files, or full document extracts, and creates only a pending draft until the user applies it;
 - the floating delivery preparation panel supports package creation, section editing, explicit add-selected-object references, captions, gaps, stale-reference refresh, and draft apply/discard without becoming an export editor or slide layout engine.
 
+### P5 Delivery dependency and inspection contract
+
+- `deliveryInspection.ts` owns deterministic handoff inspection, not Project Truth. It consumes
+  P1B source identity/evidence and P4 frozen lineage/actual inputs/delivered observation. Source
+  existence, visibility, freshness, frozen asset metadata availability, copy review and provenance
+  are independent facts. Only Output preflight reads Blob availability; metadata is not proof of bytes.
+- New Drafts carry optional version-1 `generationBaseline`. A+ associates this baseline with existing
+  P2B delivered section receipts at request preparation or bounded read, including identical-version
+  pagination. Tool commit consumes the latest fully delivered matching evidence, never the latest
+  Workspace. A fresh continuation rematerializes the current chapter in the next body, while exact
+  active-request Recovery preserves the submitted body. A later partially delivered chapter cannot
+  inherit an older chapter's full-read claim. Recovery facts preserve evidence; legacy absence stays unknown.
+- Applicability is `current / review-required / stale / blocked`. Section title/purpose/narrative,
+  order, relevant gaps, reference membership/order, snapshots and editorial changes invalidate the
+  dependency baseline. Known target/copy conflicts block application even with review acknowledgment.
+  Upstream change with unchanged frozen snapshot requires explicit review; legacy baseline absence
+  never becomes current and requires the visibly labelled review-and-overwrite action.
+- Snapshot refresh retains caption/note/narrative and marks reference and section copy for review.
+  Explicit section copy review clears those flags without asserting source correctness. Both actions
+  use the existing P6H manual history boundary; reload preserves flags and Undo/Redo recomputes inspection.
+- `Section.referenceIds` is the sole current reference order. Preparation, Agent section Context and
+  Output consume it directly; `Reference.order` is derived compatibility metadata refreshed on moves/reload.
+- Workspace remains schema 18 with validated additive optional fields. Draft section/reference IDs
+  are historical dependencies: removing them preserves readable drafts and permits Editable Backup,
+  while applicability guards pending writes. Deleting the Delivery owner still removes its drafts.
+
 ## Schema v17 AI Continuity, Memory, And Key Conclusions
 
 Schema v17 is the current runtime contract and supersedes lane-local checkpoint selection:
@@ -692,6 +718,13 @@ Morpho now implements a separate delivery output package for taking one prepared
 - Output packages contain `output-manifest.json`, readable Markdown files, `source-map.json`, and only the `assets/` files required by the selected delivery references.
 - Stable delivery snapshots are authoritative. Changed or missing source objects do not replace exported titles, summaries, captions, references, or assets.
 - Pending section drafts and gaps are exported for review, but export never applies drafts, closes gaps, writes decisions, updates project memory, or changes delivery content.
+- P5 Output manifest v1 adds optional reference inspection, section copy-review and pending Draft
+  applicability; legacy output lacking them has unknown review/provenance. Diagnostics, UI summary,
+  Markdown and source-map carry the same facts. Missing materials are counted by distinct asset ID,
+  including references without Asset metadata (or by reference ID when no asset identity exists).
+  Structural `ready` is exportability, never confirmed handoff quality. Archive elimination rationale
+  comes only from the last identity-bound `setDirectionStatus` effect when it is elimination; absent
+  reliable effect/reason renders `未记录明确原因`.
 
 Delivery output is not an archive or editable backup. It cannot restore a project, does not contain raw workspace JSON, does not use M7 `manifestVersion`/`bundleVersion`, and does not generate PPTX, PDF, Figma files, cloud shares, collaboration state, or final presentation layouts.
 

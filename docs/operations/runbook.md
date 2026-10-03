@@ -33,6 +33,24 @@ The Phase C cleanup acceptance baseline (`3dcbbe989dc0606d363750e4f201c5c83f6dd1
 release evidence, not an assertion that it is the current `main`. Always verify the current repository
 and Production deployment identity before a future change.
 
+## P5 Delivery / Handoff verification
+
+P5 is validating on `codex/p5-delivery-handoff`, based on `b254a951cd7a0cd0297074e88cb55b0fbcbf03ac`.
+It adds no database migration or paid Provider requirement. Preserve schema-18 legacy Drafts without
+generation baselines; absence is unknown/review-required, never reconstructed from current Workspace.
+
+Run the full unit suite plus typecheck, lint, production build and `git diff --check`. The relevant
+Chromium slices are `delivery-handoff.spec.ts`, `manual-history.spec.ts`, `task-fulfillment.spec.ts`,
+`turn-task-contract.spec.ts`, `visual-lineage.spec.ts` and `persistence.spec.ts`; they use the production
+UI/Runner/local storage and mocked paid services. Verify an actual A input followed by a B edit before
+Tool return, stale apply refusal, caption preview, reference order across UI/export/reload/Undo/Redo,
+snapshot copy review persistence and simultaneous Output diagnostics. The generated P5 seed is
+test-only and remains under ignored `e2e/.seed/`.
+
+`ready` describes structural exportability. A zip/Blob or passing mocked trajectory proves neither
+Provider design quality nor user handoff usability. Output explicitly carries unknown/unverified
+provenance, open gaps, pending Drafts and review needs. No P5 check authorizes P6I/P7 or main merge.
+
 ## Install
 
 Use the repository `.npmrc` registry setting.

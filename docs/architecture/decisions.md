@@ -1380,3 +1380,25 @@ P2B retains materialization/read/fulfillment and P3 retains execution/result del
 delivered pixels receipt may be linked to the matching image, but is no quality verdict. Ordinary
 generation does not authorize review/regeneration. P4 adds only factual details to existing UI;
 Delivery handoff, operation-level manual history and broader interaction changes remain P5/P6.
+
+## 2026-10-03: Bind Delivery Drafts To Delivered Generation Evidence
+
+Decision: P5 preserves Workspace schema 18 and extends it with a validated optional version-1
+Delivery generation baseline and snapshot/copy interpretation metadata. A+ captures dependencies
+alongside P2B section inputs/reads, preserves them in existing Recovery facts, and applies only
+against matching current targets. P1B remains the Truth/evidence owner; no new read ledger or Truth
+service is created. Unavailable legacy generation evidence remains unknown.
+
+Reason: a Workspace edited during a Provider request cannot serve as the input baseline for the
+returned draft. Snapshot content and user copy also have separate lifecycles. Known dependency
+conflicts block writes; source change with frozen content, or unknown legacy baseline, requires
+explicit visible review. Applying a draft or exporting a package does not verify design quality.
+
+Boundary: Section.referenceIds owns current ordering. Shared inspection feeds Preparation, Agent
+Context and Output; Blob preflight adds byte availability without rewriting semantic facts. Refresh
+keeps copy and records review needs; manual review uses P6H operation-owned history. Frozen P4
+lineage/input/observation and qualified P1B evidence are consumed only. Output manifest v1 receives
+additive optional facts; historical Draft dependencies remain readable and backup-safe. Archive
+never infers elimination reasons from titles, primary decisions or unrelated historical records.
+P5 remains validating pending acceptance; P6I/P7, real paid Provider calls and real user handoff are
+outside this implementation.
