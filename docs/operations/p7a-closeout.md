@@ -2,7 +2,15 @@
 
 **P7A complete / web accepted；D1、D2 closed。P7 overall 保持 `validating`，P7B `not_started`。**
 用户已最终复审下列 pre-clean state。本次仅清理 task history 与文档，未修改产品、Eval、
-fixture 或 oracle；main 采用 ff-only integration。实际 integration SHA 在合入后的 docs receipt 记录。
+fixture 或 oracle；main 已采用 ff-only integration 并正常 push。
+
+- Docs-only closeout / ff-only main integration：`753be1efa9cca2cd4436f16c8e8c5af92d191745`，
+  远端 main 已核实；本 integration receipt 是后续 docs-only commit，不 rewrite main。
+- Local / remote `codex/p7a-deterministic-baseline` 均已删除；只有主工作树 `D:\Morpho`。
+- 已清理 69 项 scoped ignored P7A output / 临时材料，保留本机诊断 archive、最终 P7 run、
+  工程 logs 和 rewrite receipts；archive/run manifest/log hashes 在清理前均已校验。
+- 合入后重新检查 main 全部可达 objects，removed paths / archive blob 均不存在；
+  non-docs / frozen hash 等价与 `git diff --check` 仍通过。
 
 ## Reviewed → clean history
 

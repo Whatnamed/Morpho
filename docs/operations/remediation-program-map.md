@@ -303,6 +303,12 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 
 实际推进后按 ID 拆成独立行，保留 early slice 的 accepted commit。建议状态限于 `not_started / planning / ready / implementing / validating / accepted / accepted_with_limits / blocked / deferred`。`accepted_with_limits` 必须列出不影响该包承诺的剩余限制；关键证据缺失不允许伪装为有限验收。
 
+P7A accepted integration（2026-10-03）：docs-only closeout / ff-only main integration
+`753be1efa9cca2cd4436f16c8e8c5af92d191745` 已正常 push 并核实远端；main 未 rewrite。
+Local/remote task branch 已删除，本轮 ignored artifacts 已清理；完整 main 可达 graph 不含
+历史 archive blob / unpack script。SHA mapping、等价检查及本机诊断位置见 [closeout](./p7a-closeout.md)。
+P7A complete / web accepted，P7 validating，P7B not_started。
+
 P6H bounded review correction（2026-10-03；review base `6bc34f5a33df1f3904865bfe56c659646a0d64fe`；同一独立 worktree / `codex/p6h-manual-history`，复审前状态为 `validating`）：
 人工 Undo 原先只恢复 Branch / Delivery / input 实体，遗漏该 operation 新增的 deterministic Continuity 与 Current Focus，导致已撤销动作仍进入 current projections。
 现使用既有 P1B `manualState` 撤回 / 重新激活 operation-owned deterministic occurrences，保留 record identity / history；inverse Direction compensation events 也归该 entry 所有。

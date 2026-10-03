@@ -63,7 +63,18 @@
     }
   ],
   "integration": {
-    "status": "pending ff-only main integration; actual SHA recorded by subsequent docs-only receipt"
+    "status": "complete; ff-only main integration and normal push verified",
+    "docsOnlyCloseoutSha": "753be1efa9cca2cd4436f16c8e8c5af92d191745",
+    "mainIntegrationSha": "753be1efa9cca2cd4436f16c8e8c5af92d191745",
+    "remoteMainVerifiedAtIntegration": "753be1efa9cca2cd4436f16c8e8c5af92d191745",
+    "mainHistoryRewritten": false,
+    "localTaskBranchDeleted": true,
+    "remoteTaskBranchDeleted": true,
+    "primaryWorktree": "D:/Morpho",
+    "ignoredTaskCleanupPaths": 69,
+    "rawDiagnosticHashesVerifiedBeforeCleanup": true,
+    "mainReachableGraphExcludesRemovedPathsAndBlob": true,
+    "receipt": "Subsequent docs-only commit records this verified integration; it does not rewrite main or modify implementation"
   },
   "equivalence": {
     "perCommitNonArtifactPatchesIdentical": true,
