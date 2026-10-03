@@ -53,7 +53,7 @@ export default defineConfig({
       testMatch: /p7-integrated\.spec\.ts/,
       timeout: 240_000,
       retries: 0,
-      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } }
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, actionTimeout: 15_000 }
     },
     {
       // Run via `npm run measure:perf:browser`, which pins --workers=1 (a measurement

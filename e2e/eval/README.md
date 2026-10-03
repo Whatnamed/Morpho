@@ -20,6 +20,12 @@ Normal Chromium collection explicitly excludes this trajectory; the existing Qua
 is unchanged. Mock failures never authorize real traffic. Missing case assets/hash mismatches,
 unhandled AI endpoints, mock script overrun or changed contract locks invalidate the run.
 
+The current baseline exposes a product `summary_revision_conflict` before the first Delivery draft.
+The P7 test therefore intentionally remains **failing**. `node scripts/diagnose-p7-compaction.mjs`
+reproduces the unchanged current-case Summary pointer versus absent planner base without any
+Provider call. Later T4 nodes are implemented but `not_run`; see the baseline report, not test code,
+for executed coverage. Do not switch to an ASCII/golden/short-history fixture to hide this failure.
+
 `T2→T4` is a continuous deterministic **slice**: it reads current route, selects real A/M/X,
 generates two images with one permanent injected failure, verifies exact pixels/input roles and
 lineage, reloads, returns to old A and explicitly replaces the default, creates a board preparation
@@ -32,6 +38,10 @@ All 28 real case binaries are loaded into the normal IndexedDB store and hash-ve
 positions/names and an explicit branch/default overlay are fixture setup only; case semantic records,
 revisions and historical noise remain. Source `pendingReview` mutation is the current supported UI
 path used to exercise upstream freshness/copy review; hiding separately exercises visibility.
+Chapter selection is explicit on every reopen. Storage notices use their normal dismiss action.
+Fixed automatic-compaction responses are capped at three and recorded separately; this incidental
+production-threshold path does not represent full T3 execution. Drafts read the remainder of a long
+chapter through the production 8000-character read boundary before requesting a write.
 
 Each attempt writes a separate directory under `output/playwright/p7/`: manifest, checkpoint
 before/after/reopen state slices, assertions, fixed responses, bounded client wire captures (16 MiB

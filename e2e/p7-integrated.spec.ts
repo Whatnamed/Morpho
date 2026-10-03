@@ -7,7 +7,7 @@ import type { APlusAgentProviderRequest } from "@/shared/agentTurnJournalProtoco
 import type { VisualLineageSnapshot, VisualProviderInputManifest } from "@/domain/operations/types";
 import { agentCalls, setAgentRequestScript } from "./fixtures/agentMock";
 import { toolCallTurnScript } from "./support/agentSse";
-import { assetIdentity, readWorkspace, selectP7, setupP7 } from "./eval/browser";
+import { assetIdentity, readWorkspace, selectP7, setupP7, dismissP7Notice } from "./eval/browser";
 import { EvidenceRun, observedState, hash } from "./eval/evidence";
 import type { OracleFact } from "./eval/contracts";
 import { trajectories, deferredOracles } from "./eval/contracts";
@@ -15,19 +15,26 @@ import { trajectories, deferredOracles } from "./eval/contracts";
 const PIXEL = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jFh0AAAAASUVORK5CYII=";
 type ImageWire = { input: { images: string[]; referenceObjectIds: string[]; prompt: string; visualLineage: VisualLineageSnapshot; visualProviderInputs: VisualProviderInputManifest } };
 const fact = (label: string, expected: unknown, actual: unknown): OracleFact => ({ label, expected, actual });
+// P2B may append truthful delivered-pixels observations to an old generated source.
+// These receipts are not a rewrite of its image content or frozen generation provenance.
+function frozenImage(image: ImageObject) {
+  return { ...image, generation: image.generation ? { ...image.generation, observations: undefined } : undefined };
+}
 
 test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
-  let run: EvidenceRun | undefined;
+  const run = new EvidenceRun({ unobserved: true }, { notLoaded: true });
   let failure: unknown;
+  let failureState: (() => Promise<unknown>) | undefined;
   try {
     const { seed, assetIdentities, fixtureHash } = await setupP7(page);
     const read = () => readWorkspace(page, seed);
     const initial = await read(); const initialIds = Object.keys(initial.objects);
     const { parent, material, excluded, defaultReference, direction, branch } = seed.aliases;
     const observe = (w: Awaited<ReturnType<typeof read>>) => observedState(w, [parent, material, excluded, defaultReference, direction], initialIds);
+    failureState = async () => observe(await read());
     const served = await page.request.get("/api/build-provenance");
     const build = await served.json() as { sourceSha: string; buildId: string; sourceTreeSha256: string };
-    run = new EvidenceRun(build, { version: seed.version, fixtureHash, aliases: seed.aliases, assets: assetIdentities });
+    run.build = build; run.fixture = { version: seed.version, fixtureHash, aliases: seed.aliases, assets: assetIdentities };
     await run.save("trajectory-contracts.json", { trajectories, deferredOracles });
     await run.save("start-state.json", observe(initial));
     await run.save("assets-manifest.json", assetIdentities);
@@ -38,10 +45,10 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     run.activeCheckpoint = "T2.1";
     const readScript = toolCallTurnScript({ toolName: "read_project_memory", argumentsText: JSON.stringify({ keys: ["projectOverview", "openQuestions"] }), finalText: "当前路线是守望塔；性能仍未验证。" });
     await setAgentRequestScript(page, [{ kind: "stream", chunks: readScript.first }, { kind: "stream", chunks: readScript.second }]);
-    await page.locator(".ai-panel textarea").fill("接手项目，读取当前路线与尚未确定的部分；不要把历史扶手探索当当前方案。");
+    await page.locator(".ai-panel textarea").fill("项目当前路线是什么？有哪些尚未确定的部分？读取项目概览与待确认问题后回答。");
     await page.getByRole("button", { name: "发送", exact: true }).click();
     await expect(page.getByRole("button", { name: "发送", exact: true })).toBeVisible();
-    await expect.poll(async () => (await read()).ai.messages.at(-1)?.status).toBe("done");
+    await expect.poll(async () => { const m = (await read()).ai.messages.filter((m) => m.role === "assistant").at(-1); return m?.id !== initial.ai.messages.at(-1)?.id && m?.status === "done" && m.body.includes("当前路线是守望塔"); }).toBe(true);
     let calls = await agentCalls(page);
     await run.wire("T2-1", calls);
     let after = await read();
@@ -83,7 +90,7 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     await page.locator(".ai-panel textarea").fill(user);
     await page.getByRole("button", { name: "本轮允许生图", exact: true }).click();
     await page.getByRole("button", { name: "发送", exact: true }).click();
-    await expect.poll(async () => (await read()).ai.messages.at(-1)?.status, { timeout: 45_000 }).toBe("done");
+    await expect.poll(async () => { const m = (await read()).ai.messages.filter((m) => m.role === "assistant").at(-1); return m?.id !== beforeGeneration.ai.messages.at(-1)?.id && m?.status === "done" && m.body.includes("已保存第一张"); }, { timeout: 45_000 }).toBe(true);
     after = await read();
     calls = await agentCalls(page); await run.wire("T2-generation", calls);
     const imageWire = await page.evaluate(() => JSON.parse(sessionStorage.getItem("p7-image-wire")!) as ImageWire[]);
@@ -110,7 +117,7 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
       fact("honest partial fulfillment", "partial", after.ai.messages.at(-1)?.taskFulfillment?.status),
       fact("failed item fact persisted", true, JSON.stringify(after.operations).includes("P7 deterministic second item failure")),
       fact("no automatic visual verification", undefined, child?.generation?.observations),
-      fact("parent remains same object", beforeGeneration.objects[parent], after.objects[parent]),
+      fact("parent content and frozen provenance remain", frozenImage(beforeGeneration.objects[parent] as ImageObject), frozenImage(after.objects[parent] as ImageObject)),
       fact("no primary/Decision mutation", beforeGeneration.decisionRecords, after.decisionRecords)
     ];
     await run.checkpoint(page, "T2.2+T2.4+T2.6", { event: { user, selection: beforeGeneration.ui.lastSelectionIds, mode: "image-enabled", authority: generationRequest.providerRequest.taskContract, injectedFault: "second Image POST returns permanent 400" }, before: observe(beforeGeneration), after: observe(after), facts: generationFacts });
@@ -119,6 +126,7 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     const childBinary = await assetIdentity(page, after, childAssetId); await run.save("generated-asset.json", childBinary);
     await run.save("generated-image.png", Buffer.from(PIXEL, "base64"));
     await page.reload(); await expect(page.locator(".tl-container")).toBeVisible();
+    await dismissP7Notice(page);
     const reopenedT2 = await read();
     await run.checkpoint(page, "T2.6-reload", { event: { action: "reload" }, before: observe(after), after: observe(reopenedT2), reopen: observe(reopenedT2), facts: [
       fact("saved child and lineage survive", after.objects[child.id], reopenedT2.objects[child.id]),
@@ -131,11 +139,12 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     run.activeCheckpoint = "T2.5";
     await page.getByRole("button", { name: "回到项目概览", exact: true }).click();
     await selectP7(page, seed, parent);
-    await page.getByRole("button", { name: "设为后续默认参考", exact: true }).click();
-    const confirm = page.locator(".confirm-card").first();
-    await expect(confirm.getByRole("button", { name: "只替换默认参考", exact: true })).toBeVisible();
     const unconfirmed = await read();
-    await confirm.getByRole("button", { name: "只替换默认参考", exact: true }).click();
+    await page.locator('[aria-label="选中对象工具"]').getByRole("button", { name: "设为后续默认参考", exact: true }).click();
+    // No known descendants of E means the explicit toolbar action applies directly.
+    // When descendants exist, the current product offers a second, explicit choice.
+    const replaceOnly = page.locator(".confirm-card").getByRole("button", { name: "只替换默认参考", exact: true });
+    if (await replaceOnly.isVisible()) await replaceOnly.click();
     await expect.poll(async () => (await read()).workingState.currentDefaultReferenceId).toBe(parent);
     after = await read();
     await run.checkpoint(page, "T2.5", { event: { selection: [parent], action: "return to old A and replace default only" }, before: observe(unconfirmed), after: observe(after), facts: [
@@ -152,20 +161,31 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     await panel.getByLabel("交付准备标题", { exact: true }).fill("P7 三张展板准备包");
     await panel.getByLabel("交付形式", { exact: true }).selectOption("board");
     await panel.getByRole("button", { name: "新建", exact: true }).click();
+    await expect.poll(async () => Object.values((await read()).objects).some((o) => o.type === "delivery" && o.title === "P7 三张展板准备包")).toBe(true);
     await panel.getByLabel("新增章节标题", { exact: true }).fill("本次视觉与验证缺口");
     await panel.getByRole("button", { name: "新增章节", exact: true }).click();
+    await expect.poll(async () => Object.values((await read()).objects).some((o) => o.type === "delivery" && o.title === "P7 三张展板准备包" && o.sections.some((s) => s.title === "本次视觉与验证缺口"))).toBe(true);
     const created = await read();
     const delivery = Object.values(created.objects).find((o): o is DeliveryObject => o.type === "delivery" && o.title === "P7 三张展板准备包")!;
     const section = delivery.sections.find((s) => s.title === "本次视觉与验证缺口")!;
+    async function openPackage() {
+      await page.getByRole("button", { name: "交付准备", exact: true }).click();
+      await panel.locator(".delivery-package-row").filter({ hasText: delivery.title }).click();
+      await panel.locator(".delivery-section-tab").filter({ hasText: section.title }).click();
+      await expect(panel.getByLabel("章节标题", { exact: true })).toHaveValue(section.title);
+    }
+    await run.checkpoint(page, "T4.1-structure", { event: { action: "create board package and chapter", delivery: delivery.id, section: section.id }, before: observe(after), after: observe(created), facts: [
+      fact("board format", "board", delivery.format), fact("explicit chapter", "本次视觉与验证缺口", section.title)
+    ] });
     await panel.getByRole("button", { name: "关闭交付准备", exact: true }).click();
     // Select the actual generated canvas instance; no test writes between T2 and T4.
     await page.getByRole("button", { name: "回到项目概览", exact: true }).click();
     await selectP7(page, seed, child.id);
-    await page.getByRole("button", { name: "交付准备", exact: true }).click();
+    await openPackage();
     await panel.getByRole("button", { name: "加入当前选中对象", exact: true }).click();
     await panel.getByRole("button", { name: "关闭交付准备", exact: true }).click();
     await page.getByRole("button", { name: "回到项目概览", exact: true }).click(); await selectP7(page, seed, parent);
-    await page.getByRole("button", { name: "交付准备", exact: true }).click();
+    await openPackage();
     await panel.getByRole("button", { name: "加入当前选中对象", exact: true }).click();
     const card = panel.locator(".delivery-reference-card").first();
     const caption = "CMF 概念图；性能与耐久尚未验证。", note = "保留第一张成功结果，第二张生成失败。";
@@ -173,6 +193,7 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     await panel.getByLabel("待补内容", { exact: true }).fill("仍需验证声学性能与海况耐久；第二张图未生成。");
     await panel.getByRole("button", { name: "添加", exact: true }).click();
     await expect.poll(async () => ((await read()).objects[delivery.id] as DeliveryObject).sections.find((s) => s.id === section.id)?.referenceIds.length).toBe(2);
+    await expect.poll(async () => { const w = await read(); const d = w.objects[delivery.id] as DeliveryObject; return d.gaps.some((g) => g.label.includes("仍需验证")) && Object.values(w.deliveryReferences).some((r) => r.sourceObjectId === child.id && r.editorial?.caption === caption && r.editorial.note === note); }).toBe(true);
     const added = await read();
     const refs = (added.objects[delivery.id] as DeliveryObject).sections.find((s) => s.id === section.id)!.referenceIds;
     await run.checkpoint(page, "T4.1+T4.2", { event: { createPackage: delivery.id, section: section.id, addedSources: [child.id, parent], caption, note }, before: observe(created), after: observe(added), facts: [
@@ -185,16 +206,22 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     const narrative = "守望塔沿用中央塔体、浮圈与下部装置关系。本次保存一张 CMF 图，另一张失败。声学性能与海况耐久仍未验证。";
     async function draft(label: string) {
       const before = await read();
+      const sourceRead = toolCallTurnScript({ toolName: "read_workspace_source", argumentsText: JSON.stringify({ kind: "delivery", objectId: delivery.id, sectionId: section.id, start: 8000, length: 8000 }) });
       const script = toolCallTurnScript({ toolName: "prepare_delivery_section_draft", argumentsText: JSON.stringify({ narrative, captions: [{ referenceId: refs[0], caption }], suggestedGaps: [] }), finalText: "草稿待用户确认。" });
-      await run!.save(`${label}-fixed-responses.json`, script);
-      await setAgentRequestScript(page, [{ kind: "stream", chunks: script.first }, { kind: "stream", chunks: script.second }]);
+      const readChunks = sourceRead.first.map((chunk) => chunk.replaceAll("call-e2e-tool-1", "p7-delivery-read"));
+      await run!.save(`${label}-fixed-responses.json`, { read: readChunks, draft: script });
+      await setAgentRequestScript(page, [{ kind: "stream", chunks: readChunks }, { kind: "stream", chunks: script.first }, { kind: "stream", chunks: script.second }]);
       await panel.getByRole("button", { name: "生成本节说明草稿", exact: true }).click();
       await page.getByRole("button", { name: "发送", exact: true }).click();
-      await expect.poll(async () => Object.values((await read()).deliverySectionDrafts).filter((d) => d.deliveryObjectId === delivery.id && d.status === "pending").length).toBe(1);
-      await expect.poll(async () => (await read()).ai.messages.at(-1)?.status).toBe("done");
+      await expect.poll(async () => { const m = (await read()).ai.messages.filter((m) => m.role === "assistant").at(-1); return m?.id !== before.ai.messages.at(-1)?.id && ["done", "failed", "cancelled"].includes(m?.status ?? ""); }, { timeout: 40_000 }).toBe(true);
       const next = await read();
-      const pending = Object.values(next.deliverySectionDrafts).find((d) => d.deliveryObjectId === delivery.id && d.status === "pending")!;
+      const pending = Object.values(next.deliverySectionDrafts).find((d) => d.deliveryObjectId === delivery.id && d.status === "pending");
       await run!.wire(label, await agentCalls(page));
+      await run!.checkpoint(page, `${label}-generation`, { event: { action: "generate draft for explicitly selected chapter", delivery: delivery.id, section: section.id }, before: observe(before), after: observe(next), facts: [
+        fact("authorized pending draft persisted", true, Boolean(pending)),
+        fact("draft turn completes", "done", next.ai.messages.filter((m) => m.role === "assistant").at(-1)?.status)
+      ] });
+      if (!pending) throw new Error("No pending draft after authorized generation");
       await run!.checkpoint(page, `${label}-pending`, { event: { tool: "prepare_delivery_section_draft", target: { delivery: delivery.id, section: section.id } }, before: observe(before), after: observe(next), facts: [
         fact("pending not applied narrative", (before.objects[delivery.id] as DeliveryObject).sections.find((s) => s.id === section.id)?.narrative, (next.objects[delivery.id] as DeliveryObject).sections.find((s) => s.id === section.id)?.narrative),
         fact("frozen baseline exact references", refs, pending.generationBaseline?.referenceIds), fact("pending status", "pending", pending.status)
@@ -204,13 +231,15 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     run.activeCheckpoint = "T4.3";
     const discarded = await draft("T4.3-discard");
     const beforeDiscard = await read(); await panel.getByRole("button", { name: "放弃", exact: true }).click();
+    await expect.poll(async () => (await read()).deliverySectionDrafts[discarded.id]?.status).toBe("discarded");
     const afterDiscard = await read();
     await run.checkpoint(page, "T4.3-discard", { event: { action: "discard", draft: discarded.id }, before: observe(beforeDiscard), after: observe(afterDiscard), facts: [
       fact("discard state", "discarded", afterDiscard.deliverySectionDrafts[discarded.id]?.status),
       fact("discard keeps applied narrative", (beforeDiscard.objects[delivery.id] as DeliveryObject).sections, (afterDiscard.objects[delivery.id] as DeliveryObject).sections)
     ] });
-    const applied = await draft("T4.3-apply"); await panel.getByRole("button", { name: "应用草稿", exact: true }).click();
+    const applied = await draft("T4.3-apply"); await panel.getByRole("button", { name: /^(应用草稿|复核后覆盖并应用草稿)$/ }).click();
     await expect(panel.getByLabel("章节说明", { exact: true })).toHaveValue(narrative);
+    await expect.poll(async () => (await read()).deliverySectionDrafts[applied.id]?.status).toBe("applied");
     const afterApply = await read();
     await run.checkpoint(page, "T4.3-apply", { event: { action: "explicit apply", draft: applied.id }, before: observe(afterDiscard), after: observe(afterApply), facts: [
       fact("applied state", "applied", afterApply.deliverySectionDrafts[applied.id]?.status),
@@ -224,13 +253,14 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     await panel.getByRole("button", { name: "关闭交付准备", exact: true }).click();
     await page.getByRole("button", { name: "回到项目概览", exact: true }).click(); await selectP7(page, seed, material);
     // Supported upstream metadata change: explicitly replace A and mark its descendants for review.
-    await page.getByRole("button", { name: "设为后续默认参考", exact: true }).click();
+    await page.locator('[aria-label="选中对象工具"]').getByRole("button", { name: "设为后续默认参考", exact: true }).click();
     await page.locator(".confirm-card").first().getByRole("button", { name: "替换并标记相关素材待复核", exact: true }).click();
     await selectP7(page, seed, child.id);
-    await page.getByRole("button", { name: "隐藏对象", exact: true }).click();
-    await page.getByRole("button", { name: "交付准备", exact: true }).click();
+    await page.locator('[aria-label="选中对象工具"]').getByRole("button", { name: "隐藏对象", exact: true }).click();
+    await openPackage();
     await expect(card).toContainText("已有更新"); await expect(card).toContainText("已隐藏");
     await expect(panel.getByText("适用性：需要复核", { exact: true })).toBeVisible();
+    await expect.poll(async () => (await read()).objects[child.id]?.visibility).toBe("hidden");
     const changedSource = await read();
     await run.checkpoint(page, "T4.4", { event: { action: "explicit default replacement with descendant review, then hide upstream", source: child.id }, before: observe(beforeSource), after: observe(changedSource), facts: [
       fact("hidden source remains", "hidden", changedSource.objects[child.id]?.visibility),
@@ -239,8 +269,15 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
       fact("pending still pending", "pending", changedSource.deliverySectionDrafts[staleDraft.id].status)
     ] });
     run.activeCheckpoint = "T4.5";
+    // Current UI only refreshes active sources. Restore explicitly, without touching the frozen ref.
+    await panel.getByRole("button", { name: "关闭交付准备", exact: true }).click();
+    await page.getByRole("button", { name: "已隐藏内容", exact: true }).click();
+    const hidden = page.locator('section.side-drawer[aria-label="已隐藏内容"]');
+    await hidden.locator(".asset-row").filter({ hasText: child.title }).getByRole("button", { name: "恢复并定位", exact: true }).click();
+    await openPackage();
     await card.getByRole("button", { name: "更新为当前版本", exact: true }).click();
     await card.getByRole("button", { name: "确认更新", exact: true }).click();
+    await expect.poll(async () => (await read()).deliveryReferences[refs[0]]?.copyReview).toBe("needsReview");
     const refreshed = await read();
     await expect(card).toContainText("需要复核");
     await expect(card.getByPlaceholder("图注 / 引用说明")).toHaveValue(caption); await expect(card.getByPlaceholder("内部备注")).toHaveValue(note);
@@ -254,7 +291,11 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     ] });
 
     run.activeCheckpoint = "T4.6";
-    await panel.getByRole("button", { name: "关闭交付准备", exact: true }).click(); await page.getByRole("button", { name: "输出", exact: true }).click();
+    await panel.getByRole("button", { name: "关闭交付准备", exact: true }).click();
+    await page.getByRole("button", { name: "回到项目概览", exact: true }).click(); await selectP7(page, seed, child.id);
+    await page.locator('[aria-label="选中对象工具"]').getByRole("button", { name: "隐藏对象", exact: true }).click();
+    await expect.poll(async () => (await read()).objects[child.id]?.visibility).toBe("hidden");
+    await page.getByRole("button", { name: "输出", exact: true }).click();
     const output = page.locator('[aria-label="交付输出"]');
     // Output may retain an older case package; choose this run's actual package explicitly.
     await output.locator(".delivery-output-row").filter({ hasText: "P7 三张展板准备包" }).click();
@@ -283,6 +324,7 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
       fact("export has no reference write", beforeExport.deliveryReferences, afterExport.deliveryReferences)
     ];
     await page.reload(); await expect(page.locator(".tl-container")).toBeVisible();
+    await dismissP7Notice(page);
     await page.getByRole("button", { name: "交付准备", exact: true }).click();
     await panel.locator(".delivery-package-row").filter({ hasText: "P7 三张展板准备包" }).click();
     await panel.getByRole("button", { name: /本次视觉与验证缺口/ }).click();
@@ -295,9 +337,14 @@ test("P7A deterministic T2→T4 live closed loop", async ({ page }, info) => {
     ] });
   } catch (error) {
     failure = error;
-    if (run) await run.save("failure-ui.txt", await page.locator("body").innerText().catch(() => "page unavailable"));
+    await run.wire("failure", await agentCalls(page).catch(() => []));
+    await run.save("failure-mock.json", await page.evaluate(() => ({ script: window.__morphoAgentMock?.requestScript, journal: window.__morphoAgentMock?.journal })).catch(() => ({ unavailable: true })));
+    await run.save("failure-recovery-lifecycle.json", await page.evaluate(() => JSON.parse(sessionStorage.getItem("p7-last-recovery-lifecycle") ?? "null")).catch(() => ({ unavailable: true })));
+    if (failureState) await run.save("failure-state.json", await failureState().catch(() => ({ unavailable: true })));
+    await run.save("failure-ui.json", await page.locator(".workspace-banner, .selection-toolbar, .detail-popover, .delivery-panel, .archive-panel, .confirm-card").allTextContents().catch(() => ["page unavailable"]));
     throw error;
   } finally {
+    await run.wire("compaction", await page.evaluate(() => JSON.parse(sessionStorage.getItem("p7-compaction-wire") ?? "[]")).catch(() => []));
     if (run) await run.finish(info, failure);
   }
 });

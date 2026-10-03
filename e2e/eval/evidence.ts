@@ -17,6 +17,7 @@ export function observedState(workspace: MorphoWorkspace, sourceIds: string[], i
     decisions: workspace.decisionRecords, drafts: workspace.deliverySectionDrafts,
     references: workspace.deliveryReferences, operations: workspace.operations,
     messages: workspace.ai.messages.filter((m) => !m.id.startsWith("p7-history") && (m.createdAt ?? "") >= "2026-10-03"),
+    summaryRevisions: workspace.ai.conversationSummaryRevisions,
     directionRevisions: workspace.directionRevisions, definitionRevisions: workspace.designDefinitionRevisions
   };
 }
@@ -28,7 +29,7 @@ export class EvidenceRun {
   activeCheckpoint = "setup";
   private wireBytes = 0;
   private started = Date.now();
-  constructor(readonly build: unknown, readonly fixture: unknown) {}
+  constructor(public build: unknown, public fixture: unknown) {}
   async save(file: string, data: unknown | Uint8Array) {
     const bytes = data instanceof Uint8Array ? data : Buffer.from(`${JSON.stringify(data, null, 2)}\n`);
     await mkdir(this.directory, { recursive: true });
@@ -57,11 +58,11 @@ export class EvidenceRun {
       schemaVersion: "p7-evidence-1", trajectory: "T2→T4", contractVersion: CONTRACT_VERSION, fixtureVersion: FIXTURE_VERSION, rubricVersion: RUBRIC_VERSION,
       sourceSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), build: this.build, fixture: this.fixture,
       mode: "closed-loop deterministic L1 slice", attempt: info.retry + 1,
-      verdict: failure ? first ? "fail" : "ungradable" : "pass", firstObservableDivergence: first?.id ?? (failure ? this.activeCheckpoint : null),
+      verdict: failure ? first ? "fail" : failure.message.startsWith("invalid_run:") ? "invalid_run" : "ungradable" : "pass", firstObservableDivergence: first?.id ?? (failure ? this.activeCheckpoint : null),
       attribution: failure ? "pending fixture/oracle versus product confirmation" : "no divergence observed",
       rescueCount: 0, automaticRetryCount: info.retry, paidProviderCalls: 0, paidCost: 0, elapsedMs: Date.now() - this.started,
       inputBoundary: "client serialized Agent/Image requests only; server final wire not observed", checkpoints: this.checkpoints,
-      coverage: trajectories.map((t) => ({ trajectory: t.id, checkpoints: t.checkpoints.map((c) => ({ id: c.id, status: this.checkpoints.some((done) => done.id.startsWith(c.id)) ? "evaluated-slice" : "not_run" })) })),
+      coverage: trajectories.map((t) => ({ trajectory: t.id, checkpoints: t.checkpoints.map((c) => ({ id: c.id, status: this.checkpoints.some((done) => done.id.split("+").some((part) => part.startsWith(c.id))) ? "evaluated-slice" : "not_run" })) })),
       notRun: ["T1 execution", "T3 execution", "T2 new-angle/real visual fidelity", "L1b real routes/Journal/RPC", "L2 real model", "L3 real image", "L4 human handoff", "production Journal fault injection"],
       artifacts: this.artifacts, failure
     });

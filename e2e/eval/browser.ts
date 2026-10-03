@@ -6,6 +6,10 @@ import type { buildP7Seed } from "../support/p7Seed";
 import { installAgentMock } from "../fixtures/agentMock";
 import { hash } from "./evidence";
 export type P7Seed = ReturnType<typeof buildP7Seed>;
+export async function dismissP7Notice(page: Page) {
+  const notice = page.locator(".workspace-banner").getByRole("button", { name: "知道了", exact: true });
+  if (await notice.isVisible()) await notice.click();
+}
 export async function readWorkspace(page: Page, seed: P7Seed): Promise<MorphoWorkspace> {
   return page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), seed.workspaceKey);
 }
@@ -22,9 +26,36 @@ export async function setupP7(page: Page) {
     }
   }, seed);
   await installAgentMock(page);
+  await page.addInitScript(() => {
+    const previousSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key.startsWith("morpho.agent-runtime-a-plus.recovery.v2.")) {
+        const record = JSON.parse(value) as { coordinator?: { lifecycle?: unknown }; metadata?: { pendingExternalAction?: unknown } };
+        previousSetItem.call(sessionStorage, "p7-last-recovery-lifecycle", JSON.stringify({ lifecycle: record.coordinator?.lifecycle, action: record.metadata?.pendingExternalAction }));
+      }
+      return previousSetItem.call(this, key, value);
+    };
+    const previous = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith("/actions/compaction") && init?.method === "POST") {
+        const body = JSON.parse(String(init.body)) as { sourceStartMessageId: string; sourceEndMessageId: string };
+        const calls = JSON.parse(sessionStorage.getItem("p7-compaction-wire") ?? "[]") as unknown[];
+        if (calls.length >= 3) throw new Error("invalid_run: compaction script overrun");
+        const response = { summary: { threadGoal: "沿守望塔继续视觉并准备交付", establishedContext: ["中央塔体、浮圈与下部装置关系保持", "A 是本轮身份来源，M 为材质参考"],
+          decisionsAndReasons: ["用户明确决定参考和默认状态；历史噪声不决定当前路线"], activeWork: ["使用本轮成功的 CMF 对象准备章节"], unresolvedQuestions: ["性能与海况耐久未验证", "第二张图生成失败"], referencedObjects: [] },
+          sourceBoundary: { sourceStartMessageId: body.sourceStartMessageId, sourceEndMessageId: body.sourceEndMessageId } };
+        calls.push({ request: body, response }); sessionStorage.setItem("p7-compaction-wire", JSON.stringify(calls));
+        return Response.json(response);
+      }
+      return previous(input, init);
+    };
+  });
   // Disallow external traffic and unhandled AI routes, even with an accidentally configured host key.
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
+    // Optional tldraw fonts/icons are static UI assets, not Provider traffic. Keep them offline.
+    if (url.hostname === "cdn.tldraw.com") { await route.fulfill({ status: 204 }); return; }
     if (!url.hostname.match(/^(127\.0\.0\.1|localhost)$/) && !["data:", "blob:"].includes(url.protocol)) {
       await route.abort(); throw new Error(`invalid_run: external request ${url.origin}`);
     }
@@ -53,6 +84,7 @@ export async function setupP7(page: Page) {
   return { seed, assetIdentities, fixtureHash: hash(seed.workspaceValue) };
 }
 export async function selectP7(page: Page, seed: P7Seed, id: string, additive = false) {
+  await dismissP7Notice(page);
   const w = await readWorkspace(page, seed);
   const instance = w.canvas.instances.find((i) => i.objectId === id);
   if (!instance) throw new Error(`No canvas instance ${id}`);
