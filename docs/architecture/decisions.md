@@ -1341,7 +1341,7 @@ P3S stop-loss after expiry. Never reconstruct legacy identity/authority or mutat
 truth from delivery metadata. Production migration/paid calls/hosting/cleanup acceptance remain
 unverified; package acceptance and current status are maintained in the Program Map.
 
-## 2026-10-03: P6H session-local operation-owned manual history (validating)
+## 2026-10-03: P6H session-local operation-owned manual history (accepted)
 
 Decision: replace normal whole-Workspace Undo restoration with deltas captured at explicit manual
 commit ports. Store owned before/after fields and keyed lifecycle/membership/order plus object,
@@ -1358,8 +1358,8 @@ CRDT, Event Sourcing, Provider effect replay or schema/migration change. Detail 
 and does not consume mutation shortcuts. Keep the old snapshot stop-loss helper isolated and
 unchanged. Renderer-only auto-grow can complete an exact-match creation/restoration baseline;
 manual resize and independent content changes cannot use that exception. P4 visual lineage,
-P5 freshness/provenance and P6I surface/keyboard redesign remain outside this package. Acceptance
-and cross-package integration belong to web review; the task branch stays validating.
+P5 freshness/provenance and P6I surface/keyboard redesign remain outside this package. Final web
+review accepted P6H on 2026-10-03; combined validation with accepted P4 passed before main integration.
 
 ## 2026-10-03: Freeze Visual Identity Separately From References And Observation
 

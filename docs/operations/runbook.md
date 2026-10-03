@@ -1439,9 +1439,9 @@ the next cleanup run; verify both and database backup retention separately befor
 No cleanup schedule, production capability, billing or full recovery guarantee has been verified here.
 
 
-### P6H Manual History validation (2026-10-03)
+## P6H Manual History validation (2026-10-03; accepted)
 
-Use the isolated `D:\Morpho-Worktrees\p6h-manual-history` worktree. Build after the last source,
+Run from a clean Morpho worktree. Build after the last source,
 test or canonical-document edit because the production server verifies build provenance.
 
 ```powershell
@@ -1463,8 +1463,9 @@ Reload intentionally clears session history. A blocked action leaves Workspace a
 Ctrl/Cmd+Z, Shift+Z and Ctrl/Cmd+Y do not undo detail/viewport navigation. Native editable controls
 retain their own text undo; TopControls can always request the manual stack.
 
-P6H remains validating until web review. Push only its task branch; do not merge main or parallel
-P4 code, and do not change P4/P5/P6I contracts to make a history inverse succeed.
+Final web review accepted P6H on 2026-10-03. Combined validation with accepted P4 passed;
+the Program Map records the reviewed head, integration base/merge and validation evidence.
+P5/P6I contracts remain outside the manual-history package.
 
 ## P4 visual lineage validation (2026-10-03; accepted)
 

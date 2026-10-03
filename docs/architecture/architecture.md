@@ -570,7 +570,7 @@ No new runtime dependency or external service was introduced for schema v17.
   current historical stores, checks touched immutable revision payloads, and completes qualified
   projections from the checked inverse; unrelated new history does not block a manual delta.
 
-### P6H operation-owned Manual History (2026-10-03, validating)
+### P6H operation-owned Manual History (2026-10-03, accepted)
 
 - History is session-local, project/readiness-scoped and bounded to 20 entries per stack. A
   successful explicit manual commit records only its actual field changes, keyed-record lifecycle,
@@ -616,8 +616,8 @@ No new runtime dependency or external service was introduced for schema v17.
   project archive restore. A created/deleted whole record changed by such an independent writer may
   conservatively block; new dependencies or identity/currentness changes also block instead of merging.
   Reload/project change clears the stacks. Workspace schema 18, migrations and backup format remain
-  unchanged. P4 visual lineage is not modified; concurrent integration of shared composition/docs
-  is deferred to web review, with no dependency on P4's unaccepted contracts.
+  unchanged. P4 visual lineage contracts are preserved. Final web review accepted P6H on 2026-10-03;
+  combined P4/P6H validation and integration evidence are recorded in the Program Map.
 
 ## Local-First Persistence
 
