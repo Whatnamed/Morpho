@@ -295,7 +295,8 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 | P4 | accepted | Codex | `41666d2e678d78fb3d4b561e74dbca0836bb92f5`（execution-time origin/main）；Workspace 18 / P1B / P2A / P2B / P3 已 accepted | `temp/prompts/p4-implementation-plan.md`（一次性 ignored execution Plan；accepted closeout 清理） | `53a4d29b49b522c0fb31d96a432c7591c4d9a85c`（final accepted implementation head） | 2026-10-03 网页最终复审 ACCEPTED；主体及两轮 bounded auxiliary-reference authority / object-bound negation correction 均关闭。用户授权 docs-only closeout、ff-only 合入 main，保留原 4 个 P4 commits；accepted scope、final validation 和 rollout limits 见下方。 |
 | P6H | accepted | Codex | `41666d2e678d78fb3d4b561e74dbca0836bb92f5`（原始 execution base；开工时 P4 未合入） | `temp/prompts/p6h-manual-history.md`（一次性 ignored execution material，accepted closeout 清理） | `6831e985b25396dae4ccd76c95d6fe4b1b8f1aa7`（final accepted implementation/review head；主体 `e51bba1658a77cd24d107c4bce9f4f5dde5fc472`）；`codex/p6h-manual-history`（独立 worktree `D:\Morpho-Worktrees\p6h-manual-history`） | Contract: session-local operation-owned field / keyed lifecycle / membership-order delta；全量 currentness/identity/revision/关系校验后原子 inverse；冲突保留 entry，Undo/Redo 对称；独立 AI/runtime/messages/assets/Provider/history stores 保留；deterministic Continuity occurrence withdrawal/reactivation、Current Focus occurrence ownership；P1B compensating Decision/lifecycle 与 current Memory/Stage reconciliation；manual import/create/delete/hide/restore、状态/Definition/reference、Research/Conclusion、Delivery section/reference/editorial 等明确人工写入接入统一历史；导航 Alt+Left 与 mutation shortcuts 分离。主体 Evidence: targeted 17 files / 273 tests（history core 26、controllers、P1A/P1B、Delivery、Canvas）；full unit 236 files / 2418 tests；Chromium 19 项（P6H 6 + adjacent Canvas / P1B / persistence / backup 13）；real Ctrl+Z / Shift+Z / Ctrl+Y、单次拖拽、独立 Agent write、retained conflict、source navigation return、Delivery editorial 与 Editable Backup/reload；current-schema validation / JSON / backup round-trip；typecheck / lint / production build / git diff --check 全部通过。Limits: schema 18 / migration / backup 不变；无 paid Provider；无 persistent history / CRDT；async parse、Agent/Proposal/external/runtime writes 不入栈，changed owned records 安全阻止；P4 lineage 合同保留；2026-10-03 网页最终复审 ACCEPTED，组合验证与集成记录见下方。 |
 | P5 | accepted | Codex | `b254a951cd7a0cd0297074e88cb55b0fbcbf03ac`（开工时最新 origin/main）；schema 18 additive / generation baseline v1 | `temp/prompts/p5-delivery-handoff.md`（一次性 ignored execution material，非 canonical Plan；accepted closeout 清理） | `41c002d70aefb94c2f5a16f34f6bd969c9630fd3`（final reviewed implementation head） | 2026-10-03 网页最终复审 ACCEPTED，含 bounded Archive / P6H compensation correction；reviewed head Vercel success（用户提供的网页复审事实）。Branch `codex/p5-delivery-handoff`；主工作树；generation-time delivered dependencies、copy conflicts/review、shared inspection、single reference order、honest Output/Archive。用户授权 docs-only closeout、ff-only 合入 main，完整保留原 5 个 P5 commits；验证证据与真实 Provider / production / real-user handoff limits 见下文。 |
-| P6I, P7 | not_started | 未分配 | `0c04ec8`（planning code baseline，待各自开工绑定新 main） | — | — | 本地图仅完成规划 |
+| P6I | validating | Codex | `39593a560f81e35d77b47d2afe784d6d76aae99e`（fetch 后实际 origin/main）；schema 18 | 当前用户有界执行要求；无额外 worktree | `7508cd5da3cf16bac0020473710766386c32b61a`（implementation head）；`codex/p6i-interaction-contract` | DOM keyboard / Escape ownership、可见 Delivery target lifecycle、Proposal visibility-only hide、Reader/selection/focus 交接、推荐/显式保留分离、显式 Region movement scope、async attention、按需关系/历史正文和最小文本编辑。Targeted 21 files / 292 tests、full unit 240 files / 2531 tests、Chromium 55 trajectories、typecheck / lint / production build / diff check 通过；详见下方。等待网页复审，无 main merge。 |
+| P7 | not_started | 未分配 | `0c04ec8`（planning code baseline，待开工绑定新 main） | — | — | 未由 P6I 启动 |
 | P3-Facts | not_started（D） | 未分配 | EXT 中明确的未知项 | — | — | 不阻止止损 |
 | O1（CI enforcement / branch protection） | optional_process_decision | — | 见第 7.3 节 | — | — | 可选流程加固；不阻塞任何 remediation package |
 | Deferred Infrastructure | deferred | Program owner 跟踪 trigger | 见第 7 节 | — | — | 无迁移开工条件 |
@@ -633,3 +634,52 @@ P5 implementation / validation evidence（2026-10-03；网页最终复审 `accep
   success 由用户提供的网页复审事实记录，不等同于生产 Journal / paid Provider / real-user handoff 验证。
   Accepted closeout 仅修改 canonical docs，保留原 5 个 P5 commits，用户授权 ff-only 合入 main、
   push main、删除任务分支并清理本任务一次性材料；不重跑完整 unit / Chromium / build。
+
+P6I implementation / validation evidence（2026-10-03；`validating`，等待网页复审）：
+
+- Actual base: `39593a560f81e35d77b47d2afe784d6d76aae99e`，开工 fetch 后真实
+  `origin/main` 与网页给定 baseline 相同。主工作树 `D:\Morpho`，task branch
+  `codex/p6i-interaction-contract`；无额外 worktree。Implementation head:
+  `7508cd5da3cf16bac0020473710766386c32b61a`。本包不 merge main、不启动 P7。
+- 定点旧审计 `06-workspace-canvas-audit.md` 基于 `2e801ed`，仅作问题来源。
+  当前 main 已由 accepted P6H 关闭旧 finding 1 的 snapshot Undo/Redo、恢复/研究/
+  Delivery 人工入口漏记及导航抢占 Ctrl+Z；保留 operation-owned inverse 与 Alt+Left。
+  P5 已提供 generation-time Draft baseline、applicability/inspection 和 caption/note
+  明确复核；不重新实现。P1B Truth/evidence、P2 authority/actual reads、P3 recovery/
+  result delivery、P4 frozen lineage 作为现有合同消费，不把历史审计重新当需求实现。
+- 旧 findings 2/3/5/6 在 main 仍存在交互接线缺口：真实浮层 DOM 使用 surface/
+  keyboard-owner 属性，Escape 消费视觉 stacking 与 DOM order，关闭后交还焦点；
+  输入旁可见且可解除 Delivery chapter target，关闭/切用途/换目标/移除目标即失效，
+  Undo 不复活绑定；通用 Proposal hide/混选只隐藏并可恢复，明确 discard/reject 独立；
+  Reader 保留选择，React/Canvas/输入共用原 selection controller，camera focus 不收窄
+  多选；隐藏搜索项明确恢复后定位，不存在的 shape 不伪造定位。
+- 旧 findings 4/7/9 与 async attention 本包关闭：推荐仅审阅候选，用户明确保留才经
+  P1B 写入且不隐藏先前结论；Region 默认只移动地标，显式选中地标与所有可见成员
+  才联动，包含远处成员且显示实际范围/数量；用户交互或其他浮层使旧 async UI handoff
+  失效，Agent/图像/import 仍保存结果；Bottom Detail 单一受控页签驱动按需直接关系，
+  历史 Definition/Direction revision 正文通过现有 detail components 阅读。
+- 旧 finding 8 的最小日常阻断已补：单选普通文本可通过现有 prompt 编辑，检查 active
+  identity/incarnation 与正文 baseline，接入 P6H Undo/Redo。其余 **deferred**：
+  合集折叠/展开/移出成员、普通实例持久布局锁定/复制/组合、拖入 Delivery 创建稳定引用、
+  完整阅读位置/浮层的 reopen continuity。这些仍是 canonical 承诺与实现间的能力缺口，
+  未宣称完成；现有多选移动、隐藏/恢复、分层及面板显式加引用提供本包必要整理路径。
+  完整整理需另立有界合同，不新增 collection/group/layout subsystem。大项目密度、
+  Research 审阅便利性与自动聚焦体验仍需真实用户证据，不据此重设计工作台。
+- UI/DOM/controller 负责 ownership、选择/视野、候选和注意力交接；tldraw 只变更
+  Region native-selection/movement 与临时关系消费；domain 唯一新增普通文本编辑命令，
+  其余 hide/restore、Key Conclusion、Draft、revision/lineage 继续使用现有命令/数据。
+  无布局重设计、token/依赖升级、schema 18 / migration / Backup / Journal 合同变更。
+- P6H integration：hide/restore、显式研究保留、文本修改和 Region/成员单次拖拽继续
+  经现有 manual-history boundary；viewport/selection/reading/推荐不是 mutation history。
+  async结果、Provider、Proposal authority 保留独立路径，不新增 Undo/selection/focus/
+  navigation state machine。
+- Final source checks：targeted **21 files / 292 tests**，full unit **240 files / 2531 tests**，
+  真实 Chromium **55 trajectories**（P6I 18、P5 4、P6H 7、P1B 4、P2A 5、P2B 5、
+  P4 3、Canvas 4、persistence/Backup 5），typecheck、lint、production build、
+  `git diff --check` 全通过。Browser 消费 production build、真实 DOM/鼠标/键盘、
+  Runner/localStorage/IndexedDB 和 mocked external services；Region 范围与 Research
+  保留 UI 做了截图检查。Units 另覆盖 delayed image/import handoff、删除/恢复 target、
+  stale body/incarnation。未调用 paid Provider 或生产 migration。
+- 未验证：真实模型/图像质量、paid execution/计费、production Journal/hosting、
+  大项目与真实用户的交互接受度。此证据不代签网页复审或人工 UX acceptance。
+  P6I 保持 `validating`；P7 保持 `not_started`。

@@ -1523,3 +1523,32 @@ references or creates new paid authority, even if current Direction/Branch state
 
 These checks do not verify real image quality, Provider role adherence, production migrations,
 hosting, retention or billing. P4 was accepted by final web review on 2026-10-03; later packages are separate work.
+
+## P6I Interaction Contract validation (2026-10-03; validating)
+
+Run from the task branch. Build after the last source/test/document edit; the Chromium server checks
+served build provenance. The browser suite uses real production UI, native Canvas gestures, Runner,
+localStorage and IndexedDB with deterministic external-service fixtures; no paid Provider is called.
+
+```powershell
+npm.cmd test
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run build
+npx.cmd playwright test e2e/interaction-contract.spec.ts e2e/delivery-handoff.spec.ts e2e/manual-history.spec.ts e2e/truth-evidence-authority.spec.ts e2e/turn-task-contract.spec.ts e2e/task-fulfillment.spec.ts e2e/visual-lineage.spec.ts e2e/canvas-object.spec.ts e2e/persistence.spec.ts --project=chromium --workers=2 --retries=0
+git diff --check
+```
+
+The 18 P6I trajectories cover destructive/select-all ownership in real Research/Delivery/Archive/
+Reader/Proposal DOM, different Escape stacking orders and Region popovers, chapter target
+close/detach/incompatible-purpose then a normal request, visibility-only mixed Proposal hide and
+recovery/Undo/Redo, recommendation vs explicit additive retain, Reader and locate selection,
+late Research results during reading or pointer/keyboard selection, landmark vs distant-member joint
+movement with one Undo, temporary relationships, immutable revision reading, and ordinary text editing.
+Adjacent suites retain P5 Draft/copy review, P6H manual history/navigation, P1B evidence, P2 task/read
+contracts, P4 actual-input lineage and persistence/Backup checks. Units additionally cover delayed
+image/import attention handoff, removed/restored chapter targets and stale text incarnation/body.
+
+These checks establish deterministic interaction correctness, not real model quality, paid execution,
+production Journal/hosting, physical-device behavior or large-project real-user usability.
+Keep P6I validating until the separate web review; do not infer acceptance or begin P7.

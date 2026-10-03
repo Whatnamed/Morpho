@@ -645,6 +645,48 @@ No new runtime dependency or external service was introduced for schema v17.
   unchanged. P4 visual lineage contracts are preserved. Final web review accepted P6H on 2026-10-03;
   combined P4/P6H validation and integration evidence are recorded in the Program Map.
 
+### P6I Interaction Contract (2026-10-03, validating)
+
+- Actual floating roots declare `data-workspace-surface`; persistent input/detail surfaces declare
+  `data-workspace-keyboard-owner`. Workspace shortcuts consume these DOM contracts rather than a
+  second list of CSS class names. Escape resolves visible rendered stacking contexts and DOM order,
+  dispatches to the existing surface close port, then focuses the remaining surface or Canvas.
+  Editable controls keep native edits; destructive/select-all keys cannot reach background Canvas.
+- `useWorkspaceSelectionNavigationController` remains the sole selection/navigation controller.
+  Programmatic selection synchronizes React, Canvas requests and persisted UI selection; native
+  Canvas selection only mirrors its object IDs. Object focus changes the camera without selecting.
+  Locate preserves existing multi-selection; single-object navigation retains its existing selection
+  behavior. Reader open/close preserves selection. Hidden search results explicitly restore through
+  manual history before locating; unavailable detail targets disclose that they cannot be located.
+- A Delivery chapter input target is transient and visible beside the composer, with explicit detach.
+  Close, different Delivery/section, removed/hidden target, incompatible image purpose, suggestion or
+  Reader entry clears ownership. Restoring a removed section cannot revive the old binding. Chapter
+  intent comes from the live target rather than a persisted hidden input mode. P5 generation baselines,
+  inspection, Draft applicability and the actual scoped preparation path are unchanged.
+- Generic Proposal hide uses ordinary visibility-only hide/restore, including mixed selections.
+  Explicit reject/discard and P2 authority/confirmation retain their existing domain commands.
+  Research recommendation preselects candidates in the existing review panel; only explicit retain
+  calls P1B Key Conclusion creation via P6H. Retain is additive and never hides prior retained items.
+- Region drag moves the landmark only. Its toolbar can explicitly select the landmark and all visible
+  members (including distant ones), reveal their bounds and move the native selection together.
+  The title reports the actual selected member count. This narrow native-selection exception changes
+  no Stage membership semantics; existing P6H geometry commit captures one combined drag.
+- A UI attention token belongs to the existing project/selection session and is invalidated by user
+  pointer, keyboard, wheel or focus interaction. Automatic select/focus/open is allowed only while
+  that token is current and no closable surface owns attention, both at start and completion.
+  Agent/visual/import UI ports preserve the live valid selection when ownership is lost, including
+  domain-result UI selection projections. Results/assets/messages still commit normally. Nested visual
+  work inherits the parent UI guard; submitted bodies, P3 execution/recovery and P4 lineage are unchanged.
+- Bottom Detail has one controlled tab shared with Canvas. Default information draws no relationship
+  lines; Source/Version/Related request direct existing edges, while explicit chain Trace consumes its
+  existing historical data. Definition/Direction revision rows expand full immutable revision bodies
+  through existing detail components. No new Trace store or history model.
+- Ordinary text editing uses the existing prompt and P6H manual commit. The domain command checks
+  active identity/incarnation and expected body, preserves object identity, and refuses stale edits.
+  Collection collapse/member editing, ordinary instance lock/copy/group, drag-to-Delivery and complete
+  reopen-reading-position continuity remain documented implementation gaps, deferred from this package.
+  Workspace schema 18, migrations, Backup and Provider contracts are unchanged.
+
 ## Local-First Persistence
 
 Project catalog and structured workspace JSON use localStorage:

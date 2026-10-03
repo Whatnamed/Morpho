@@ -1405,3 +1405,22 @@ reason; resolve the latest real identity-bound elimination, preserving unknown w
 Final web review accepted P5 on 2026-10-03 at `41c002d70aefb94c2f5a16f34f6bd969c9630fd3`, including
 the bounded Archive compensation correction. P6I/P7, real paid Provider calls, production
 Journal/hosting verification and real user handoff remain outside this implementation.
+
+## 2026-10-03: Keep Interaction Ownership In Existing Surfaces And Controllers
+
+Decision: P6I declares keyboard/close ownership on actual surface DOM and resolves Escape from the
+rendered stacking hierarchy. Selection stays in the existing selection/navigation controller;
+camera focus has no selection side effect. A visible Delivery chapter target owns only its current
+composer use. Research recommendation is candidate review; explicit retain is an additive P1B write.
+Region movement defaults to landmark-only, with one explicit native landmark/member selection.
+
+Reason: users must see the target and scope of an action. Visibility, recommendation and navigation
+cannot silently become reject, confirmed conclusion or a different input task. Async UI handoff is
+conditional on the originating attention remaining current; result persistence does not require
+attention ownership. Relations and historical bodies are consumed on demand from existing data.
+
+Boundary: P6H owns manual inverse/redo; no second selection, navigation, focus or Undo state machine.
+P1B/P2/P3/P4/P5 authority, execution, lineage and applicability remain intact. DOM/controller UI
+attention guards do not enter frozen requests or grant authority. No schema/dependency migration.
+This implementation remains validating for web review; deferred organization capabilities are recorded
+in the Program Map and are not claimed complete.
