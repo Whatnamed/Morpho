@@ -35,7 +35,9 @@ and Production deployment identity before a future change.
 
 ## P5 Delivery / Handoff verification
 
-P5 is validating on `codex/p5-delivery-handoff`, based on `b254a951cd7a0cd0297074e88cb55b0fbcbf03ac`.
+P5 was accepted by final web review on 2026-10-03, including the bounded Archive / P6H compensation
+correction. Final reviewed implementation head is `41c002d70aefb94c2f5a16f34f6bd969c9630fd3`,
+developed on `codex/p5-delivery-handoff` from `b254a951cd7a0cd0297074e88cb55b0fbcbf03ac`.
 It adds no database migration or paid Provider requirement. Preserve schema-18 legacy Drafts without
 generation baselines; absence is unknown/review-required, never reconstructed from current Workspace.
 
@@ -49,7 +51,9 @@ test-only and remains under ignored `e2e/.seed/`.
 
 `ready` describes structural exportability. A zip/Blob or passing mocked trajectory proves neither
 Provider design quality nor user handoff usability. Output explicitly carries unknown/unverified
-provenance, open gaps, pending Drafts and review needs. No P5 check authorizes P6I/P7 or main merge.
+provenance, open gaps, pending Drafts and review needs. Acceptance does not verify real paid Provider
+execution/billing, production Journal/hosting or real-user handoff. P6I/P7 remain outside this package;
+main integration is authorized by the separate accepted closeout, not by test success alone.
 
 ## Install
 

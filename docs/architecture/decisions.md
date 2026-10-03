@@ -1402,5 +1402,6 @@ additive optional facts; historical Draft dependencies remain readable and backu
 never infers elimination reasons from titles, primary decisions or unrelated historical records.
 P6H `decision-manual-history-*` compensation restores status but cannot supply an Archive elimination
 reason; resolve the latest real identity-bound elimination, preserving unknown when its reason is absent.
-P5 remains validating pending acceptance; P6I/P7, real paid Provider calls and real user handoff are
-outside this implementation.
+Final web review accepted P5 on 2026-10-03 at `41c002d70aefb94c2f5a16f34f6bd969c9630fd3`, including
+the bounded Archive compensation correction. P6I/P7, real paid Provider calls, production
+Journal/hosting verification and real user handoff remain outside this implementation.
