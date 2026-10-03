@@ -1015,7 +1015,7 @@ are unverified. Process termination before full escrow publication can still los
 not retrievable from the relay; incomplete escrow is explicitly unavailable. No exactly-once paid
 execution, durable background completion, P2 fulfillment or long-term cloud assets are promised.
 
-## P4 Visual Lineage / Reference / Observation (2026-10-03; validating)
+## P4 Visual Lineage / Reference / Observation (2026-10-03; accepted)
 
 Execution baseline is `41666d2e678d78fb3d4b561e74dbca0836bb92f5`. The Program Map owns acceptance.
 Workspace schema remains 18; the new optional contracts carry their own `version: 1`. There is no

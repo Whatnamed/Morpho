@@ -1438,7 +1438,7 @@ also runs during reads/registration. Expired access is immediate, while physical
 the next cleanup run; verify both and database backup retention separately before production release.
 No cleanup schedule, production capability, billing or full recovery guarantee has been verified here.
 
-## P4 visual lineage validation (2026-10-03; validating)
+## P4 visual lineage validation (2026-10-03; accepted)
 
 No Workspace schema bump, DB migration or paid request is needed. Existing schema 18 projects and
 Editable Backups keep missing lineage/roles/observation as legacy/unknown; do not populate these
@@ -1471,4 +1471,4 @@ Operation planned/materialized input is not P3 execution proof. Exact Recovery n
 references or creates new paid authority, even if current Direction/Branch state changed.
 
 These checks do not verify real image quality, Provider role adherence, production migrations,
-hosting, retention or billing. P4 stays validating pending web review; do not start P5.
+hosting, retention or billing. P4 was accepted by final web review on 2026-10-03; later packages are separate work.

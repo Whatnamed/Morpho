@@ -292,7 +292,7 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 | P2B | accepted | Codex | `d8b7daeea68a085459f87e4755ecb7fd2b9feca0`（开工时最新 origin/main）；schema 18 / Recovery v2 | `temp/prompts/p2b-input-reads-fulfillment-plan.md`（一次性 ignored execution material，accepted closeout 已清理） | `dbd5cd0b2b58f1fc520bd4b9d80da45f70f8e111`（final accepted implementation head，包含主体和有限 review correction） | Acceptance: 2026-10-01 网页复审确认 P2B 达到验收条件，用户授权正式 accepted、closeout 和 ff-only 合入 main，保留已有 commits。Evidence: actual serialized Provider input coverage；object / revision / document range / Delivery section / image pixels 的 bounded source reads；sequence-bound delivered receipts；required reads 接入生产 Runner；legitimate fresh continuation 与 frozen Recovery request 分离；Concept create/revise/split/merge 接通既有 domain semantics；Delivery target / stable references 实际进入 Provider-readable input；显式 generate-then-critique/compare 只读观察新生成 pixels；fulfillment 依据真实 read/effect/Workspace receipts 而非 Provider prose，0/2、1/2、2/2 分别为 notPerformed / partial / fulfilled。Review correction: `dbd5cd0b2b58f1fc520bd4b9d80da45f70f8e111` 关闭原始 scoped pixels 被删除及 payload / coverage 不一致。Final checks: targeted 102 项、Runner 69 项、全量 unit 228 files / 2284 tests、Chromium 7 条、typecheck / lint / production build / git diff --check 通过；final implementation commit Vercel status success（GitHub commit status 已核对）。Limits: 外部 Provider / Image / Journal 为模拟；未执行真实 paid Provider，未验证真实计费行为，未执行生产 Journal migration / fault injection；旧 coverage / fulfillment 保持 absent / unknown；无 schema bump；P3A / P3B / P4 / P5 属于后续 package，这些限制不阻止 P2B 当前合同 accepted。 |
 | P3A | accepted | Codex | `ab25612d7af3ee091bbce194146c69b577ade972`（开工时最新 origin/main）；external effect contract v1 / Recovery v2 / Workspace schema 18 | `temp/prompts/p3a-effect-observation.md`（一次性 ignored execution Plan，accepted closeout 已清理） | `ccf4561c8c422d3b5a01c8146e63287023ab6a79`（final accepted implementation head） | Acceptance: 2026-10-01 网页复审确认 P3A 达到验收条件，用户授权正式 accepted、closeout 和 ff-only 合入 main，保留已有 commits。Evidence: stable logical effect / attempt / exact Provider namespace；frozen request 先登记再提交；known task / response identity 可继续 observation；unknown 不误判 failed、不自动 resubmit；running → late success；durable cancel intent 与 local abort / Provider cancellation 分离，cancel 后 late success 保留真实成功和 cancelRequestedAt；legacy / in-flight 不反造 Provider identity；确认后非 A+ image、A+ Image/Text/Compaction 与独立 Chat/Image 接线；P3S ambiguous paid POST stop-loss 保持。Review correction: `ccf4561c8c422d3b5a01c8146e63287023ab6a79` 使 old Turn administrative terminal 不再阻断 exact unknown/running effect 的 durable cancel intent；confirmed Provider terminal 和 legacy no-effect 只读；先 durable intent 成功再 instance-local abort，不 reopen Turn、不恢复 paid retry/fallback。Final checks: targeted cancellation / Journal / observation / Runner / Recovery 7 files / 190 tests、全量 unit 229 files / 2313 tests、Chromium cancellation slice 1、typecheck / lint / production build / git diff --check 通过；final implementation commit Vercel success（GitHub commit status 已核对）；主体阶段另有 targeted 18 files / 401 tests、本地 PostgreSQL WASM SQL 22 checks、Chromium 6 条。Limits: 未执行真实 paid Provider；未应用/验证生产 external-effect migration；未做真实多实例宿主或计费验证；Provider idempotency / lookup / reliable cancel / cross-node scope / retention 未证明能力不作保证；P3B result escrow / redelivery / retention / hosting / ACK 未开始。 |
 | P3B | accepted | Codex | `6a2d220bd308783867f53628935246ff66b1935e` (execution-time main); Workspace 18 / Recovery v2 | `temp/prompts/p3b-implementation-plan.md` (transient; accepted closeout cleanup) | `3ee90f751df778fba05d8ca4e447a5ac7b20544e` (final accepted implementation head; includes both bounded Image review corrections) | 2026-10-02 网页最终复审 ACCEPTED；用户授权 docs-only closeout、ff-only 合入 main，保留原 5 个 implementation commits。Bounded service-only Image/Text/Compaction escrow、immutable identity/version/SHA-256、same-result redelivery、durable local persistence ACK/outbox、owner isolation、capacity/raw dedupe/retention/cleanup；accepted validation and production limits below。P4 未开始。 |
-| P4 | validating | Codex | `41666d2e678d78fb3d4b561e74dbca0836bb92f5`（execution-time origin/main）；Workspace 18 / P1B / P2A / P2B / P3 已 accepted | `temp/prompts/p4-implementation-plan.md`（一次性 ignored execution Plan） | `cd89f317d26debd14504eb88cca7f8ab96d78955`（主体 implementation）；bounded review correction 见下方 / Git history；`codex/p4-visual-lineage` | 唯一 identity parent、辅助 roles / exclusions、冻结 Direction / Branch、planned vs actual pixels、必要参考阻止 / optional omission、历史 Trace、P2B delivered observation、legacy unknown 和 schema / Backup compatibility 已实现；等待网页复审，不自行 accepted，不合并 main。 |
+| P4 | accepted | Codex | `41666d2e678d78fb3d4b561e74dbca0836bb92f5`（execution-time origin/main）；Workspace 18 / P1B / P2A / P2B / P3 已 accepted | `temp/prompts/p4-implementation-plan.md`（一次性 ignored execution Plan；accepted closeout 清理） | `53a4d29b49b522c0fb31d96a432c7591c4d9a85c`（final accepted implementation head） | 2026-10-03 网页最终复审 ACCEPTED；主体及两轮 bounded auxiliary-reference authority / object-bound negation correction 均关闭。用户授权 docs-only closeout、ff-only 合入 main，保留原 4 个 P4 commits；accepted scope、final validation 和 rollout limits 见下方。 |
 | P5, P6H, P6I, P7 | not_started | 未分配 | `0c04ec8`（planning code baseline，待各自开工绑定新 main） | — | — | 本地图仅完成规划 |
 | P3-Facts | not_started（D） | 未分配 | EXT 中明确的未知项 | — | — | 不阻止止损 |
 | O1（CI enforcement / branch protection） | optional_process_decision | — | 见第 7.3 节 | — | — | 可选流程加固；不阻塞任何 remediation package |
@@ -469,7 +469,7 @@ P3B accepted closeout (2026-10-02):
   **P4 尚未开始**；不扩大到其他 package。Supabase CLI ignored cache 此前受环境删除策略限制，
   closeout 保留并如实记录，不扩大清理范围。
 
-P4 implementation / validation evidence（2026-10-03；`validating`）：
+P4 implementation / validation evidence（2026-10-03；验收前状态为 `validating`）：
 
 - Base: `41666d2e678d78fb3d4b561e74dbca0836bb92f5`（开工 fetch 后 main / origin/main
   一致且主工作树干净）；branch: `codex/p4-visual-lineage`；implementation commit:
@@ -495,9 +495,9 @@ P4 implementation / validation evidence（2026-10-03；`validating`）：
 - No Workspace schema bump (schema 18, optional versioned contracts), paid Provider request or
   production migration. Mocked pixel delivery proves input/identity correctness, not generated-image
   quality, Provider role adherence, production Journal/hosting/cleanup/retention or billing. Existing
-  P3 rollout limits remain. P4 awaits web review; P5/P6H/P6I/P7 are not started by this task.
+  P3 rollout limits remain. At this implementation stage P4 awaited web review; P5/P6H/P6I/P7 were not started by this task.
 
-P4 bounded auxiliary-reference authority review correction（2026-10-03；`validating`）：
+P4 bounded auxiliary-reference authority review correction（2026-10-03；复审前状态为 `validating`）：
 
 - Review base: `ad8d2f0ca5da0beea39fda590e7a2b49242bf73c`，同一 `codex/p4-visual-lineage`
   分支。修复仅针对 `turnTaskResolver` 将视觉属性讨论误当成辅助 reference 授权的 blocker。
@@ -512,9 +512,9 @@ P4 bounded auxiliary-reference authority review correction（2026-10-03；`valid
   （P4 3 / P2A 3），typecheck / lint / production build / `git diff --check` 全部通过。
 - identity parent、lineage schema、roles、planned / actual inputs、missing pixels、Direction /
   Branch、Trace、P2B observation、P3 execution / Recovery / delivery 和 UI 保持原实现。
-  无 paid Provider / production migration，无 main merge；等待网页复审，不开始 P5。
+  当时无 paid Provider / production migration，无 main merge；等待网页复审，不开始 P5。
 
-P4 bounded auxiliary-reference negation binding correction（2026-10-03；`validating`）：
+P4 bounded auxiliary-reference negation binding correction（2026-10-03；复审前状态为 `validating`）：
 
 - Review base: `db448c5b86e6655daf074fd6a616bec6ed317ddc`，同一 task branch。原 exclusion
   缺少无需 / 无须 / 不必 / 不是要 / 并非，并以“同 clause 存在否定 + 提到对象”宽匹配，
@@ -529,4 +529,28 @@ P4 bounded auxiliary-reference negation binding correction（2026-10-03；`valid
   adjacent），full unit **236 files / 2464 tests**，Chromium **8 trajectories**（P4 3 / P2A 5），
   typecheck / lint / production build / `git diff --check` 全部通过。无 paid Provider 或生产
   migration；P2 task ownership、P3、lineage/schema/Backup/compiler/input manifest/UI 未改变。
-  不合并 main，不开始 P5/P6；P4 等待网页复审。
+  当时不合并 main，不开始 P5/P6；P4 等待网页复审。
+
+P4 正式验收 / accepted closeout（2026-10-03）：
+
+- 网页最终复审 **ACCEPTED**。Final accepted implementation head:
+  `53a4d29b49b522c0fb31d96a432c7591c4d9a85c`。保留主体 `cd89f317d26debd14504eb88cca7f8ab96d78955`、
+  canonical docs `ad8d2f0ca5da0beea39fda590e7a2b49242bf73c` 和两轮 bounded correction
+  `db448c5b86e6655daf074fd6a616bec6ed317ddc` / `53a4d29b49b522c0fb31d96a432c7591c4d9a85c`，
+  不 squash / amend / rebase；用户授权独立 docs-only closeout、ff-only 合入 main 和 P4 scoped cleanup。
+- Accepted scope: single identity parent 与 auxiliary references / roles 分离；冻结 Direction /
+  Visual Branch ownership；planned references 与 actual sent pixels / omissions 分离；required
+  pixels fail closed，optional omission 后 prompt / edit mode 与实际输入一致；historical lineage /
+  Trace 不随当前 Workspace 漂移；P2B delivered pixel observation 匹配结果；legacy unknown、
+  schema 18 / reload / JSON / Editable Backup compatibility 保留。
+- P2A auxiliary-reference authority 两轮 correction 已关闭：只有显式引用关系授权 auxiliary，
+  object-bound negation / exclusion 同对象优先且不污染其他对象；不扩大 targets / identity
+  sources。无需 source fix，不继续扩展自然语言 parser，不开启新的 P4 audit/fix loop。
+- Accepted final evidence: targeted **5 files / 128 tests**，full unit **236 files / 2464 tests**，
+  Chromium **8 trajectories**（P4 3 / P2A 5），typecheck / lint / production build /
+  `git diff --check` 全通过；主体阶段另有 **17 Chromium trajectories**，覆盖 P2A/P2B/P3 相邻回归。
+  Closeout 仅校准文档状态并清理 P4 临时材料；源码不变，不重跑 unit / browser / build。
+- Rollout limits: 未执行真实 paid Provider 或 production migration；真实图像质量 / role adherence、
+  production hosting / Journal / concurrency / cleanup / retention / billing 未验证；mock evidence
+  不证明这些能力。既有 P3 rollout limits 保留，不承诺 exactly-once 或 durable background completion。
+  P5/P6I/P7 未由本 closeout 启动；并行 P6H 由网页独立复审，本 closeout 不操作其 branch/worktree。
