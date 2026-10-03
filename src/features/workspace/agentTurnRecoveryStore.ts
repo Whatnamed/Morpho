@@ -649,6 +649,8 @@ function isCompactionApplyBoundary(value: unknown): value is APlusCompactionAppl
     typeof value.sourceMessageIdsHash !== "string" ||
     hashSourceMessageIds(value.sourceMessageIds) !== value.sourceMessageIdsHash ||
     (value.expectedPreviousRevisionId !== undefined && !isIdentifier(value.expectedPreviousRevisionId)) ||
+    (value.usablePreviousSummarySourceHash !== undefined && value.usablePreviousSummarySourceHash !== null &&
+      (typeof value.usablePreviousSummarySourceHash !== "string" || !/^[a-f0-9]{64}$/.test(value.usablePreviousSummarySourceHash))) ||
     !Number.isSafeInteger(value.estimatedInputTokens) ||
     (value.estimatedInputTokens as number) < 0
   ) return false;

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { applyConversationSummaryRevision } from "@/domain/morpho/conversationCompaction";
+import {
+  applyConversationSummaryRevision,
+  buildConversationCompactionPlan,
+  buildContinuousConversationContext,
+  getUsableConversationSummaryRevision
+} from "@/domain/morpho/conversationCompaction";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createCurrentCaseStudyWorkspace, createTestWorkspace, parseWorkspace, serializeWorkspace } from "@/domain/morpho/workspace";
 import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol";
 import { runAgentCompaction } from "./agentCompactionOrchestrator";
 import {
@@ -20,6 +25,126 @@ import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ unified Compaction orchestrator", () => {
+  it("recompacts the unchanged production P7 case without supplying its unusable migrated Summary", async () => {
+    const workspace = createCurrentCaseStudyWorkspace();
+    const currentId = workspace.ai.conversationCompaction.summaryRevisionId!;
+    const historicalRevision = workspace.ai.conversationSummaryRevisions[currentId];
+    expect(historicalRevision).toBeDefined();
+    expect(workspace.ai.messages.some((m) => m.contextVisibility === "uiOnly")).toBe(true);
+    expect(getUsableConversationSummaryRevision(workspace)).toBeUndefined();
+    const plan = buildConversationCompactionPlan({ workspace, force: "compact" })!;
+    expect(plan.expectedCurrentSummaryRevisionId).toBe(currentId);
+    expect(plan.previousSummaryRevision).toBeUndefined();
+    expect(plan.sourceMessages[0]?.id).toBe(buildContinuousConversationContext({ workspace }).messages[0]?.id);
+    const fixture = await createFixture({ workspace });
+    let persistedAction: APlusExternalActionDescriptor | undefined;
+    const result = await runAgentCompaction({ ...compactionInput(fixture), onExternalActionIntent: (action) => {
+      persistedAction = action;
+      return true;
+    } });
+    expect(result.status).toBe("applied");
+    const request = JSON.parse(fixture.requestBodies[0]!);
+    expect(request.expectedPreviousRevisionId).toBe(currentId);
+    expect(request).not.toHaveProperty("previousSummary");
+    expect(request.messages).toEqual(plan.sourceMessages.map(({ id, role, body }) => ({ id, role, body })));
+    expect(persistedAction?.compactionApplyBoundary).toMatchObject({
+      expectedPreviousRevisionId: currentId, usablePreviousSummarySourceHash: null
+    });
+    const after = fixture.host.readWorkspace();
+    expect(after.ai.conversationSummaryRevisions[currentId]).toEqual(historicalRevision);
+    expect(after.ai.messages.map(({ id, body, contextVisibility }) => ({ id, body, contextVisibility })))
+      .toEqual(workspace.ai.messages.map(({ id, body, contextVisibility }) => ({ id, body, contextVisibility })));
+    expect(getUsableConversationSummaryRevision(after)?.id).toBe(result.status === "applied" ? result.revisionId : undefined);
+  });
+
+  it("keeps a valid previous Summary as content while compressing only its following range", async () => {
+    const workspace = summarizedWorkspace();
+    const previous = getUsableConversationSummaryRevision(workspace)!;
+    const fixture = await createFixture({ workspace });
+    const result = await runAgentCompaction(compactionInput(fixture));
+    expect(result.status).toBe("applied");
+    expect(JSON.parse(fixture.requestBodies[0]!)).toMatchObject({
+      expectedPreviousRevisionId: previous.id,
+      previousSummary: JSON.parse(JSON.stringify(previous.summary)),
+      sourceStartMessageId: "u2", sourceEndMessageId: "a2"
+    });
+    expect(getUsableConversationSummaryRevision(fixture.host.readWorkspace())?.previousRevisionId).toBe(previous.id);
+  });
+
+  it.each(["body", "order", "membership"] as const)(
+    "fails closed when the valid previous Summary source %s changes during the action", async (change) => {
+      const fixture = await createFixture({ workspace: summarizedWorkspace() });
+      const before = fixture.host.readWorkspace().ai.conversationCompaction;
+      const host: AgentTurnHost = { ...fixture.host, fetch: async (url, init) => {
+        fixture.host.commitWorkspace((current) => {
+          const messages = [...current.ai.messages];
+          if (change === "body") messages[0] = { ...messages[0]!, body: "修改过的前置来源正文" };
+          if (change === "order") [messages[0], messages[1]] = [messages[1]!, messages[0]!];
+          if (change === "membership") messages.splice(0, 1);
+          return { workspace: { ...current, ai: { ...current.ai, messages } }, value: undefined };
+        });
+        return fixture.host.fetch(url, init);
+      } };
+      expect(await runAgentCompaction({ ...compactionInput(fixture), host })).toMatchObject({
+        status: "failed", code: "compaction_source_changed"
+      });
+      expect(fixture.host.readWorkspace().ai.conversationCompaction).toEqual(before);
+      expect(Object.keys(fixture.host.readWorkspace().ai.conversationSummaryRevisions)).toHaveLength(1);
+    }
+  );
+
+  it("still rejects an actual pointer change from an unusable current Summary", async () => {
+    const workspace = createCurrentCaseStudyWorkspace();
+    const currentId = workspace.ai.conversationCompaction.summaryRevisionId!;
+    const fixture = await createFixture({ workspace });
+    const host: AgentTurnHost = { ...fixture.host, fetch: async (url, init) => {
+      fixture.host.commitWorkspace((current) => ({ workspace: { ...current, ai: { ...current.ai,
+        conversationCompaction: { ...current.ai.conversationCompaction, summaryRevisionId: "another-summary" },
+        conversationSummaryRevisions: { ...current.ai.conversationSummaryRevisions,
+          "another-summary": { ...current.ai.conversationSummaryRevisions[currentId], id: "another-summary" } }
+      } }, value: undefined }));
+      return fixture.host.fetch(url, init);
+    } };
+    expect(await runAgentCompaction({ ...compactionInput(fixture), host })).toMatchObject({
+      status: "failed", code: "summary_revision_conflict"
+    });
+  });
+
+  it("rejects a dangling current pointer before POST and in the domain apply boundary", async () => {
+    const workspace = conversationWorkspace();
+    workspace.ai.conversationCompaction.summaryRevisionId = "missing-summary";
+    const fixture = await createFixture({ workspace });
+    expect(await runAgentCompaction(compactionInput(fixture))).toMatchObject({ status: "failed", code: "summary_revision_conflict" });
+    expect(fixture.requestBodies).toHaveLength(0);
+    const applied = applyConversationSummaryRevision(workspace, {
+      summary: summaryFixture(), sourceMessageIds: ["u1", "a1"], expectedPreviousRevisionId: "missing-summary"
+    });
+    expect(applied.status).toBe("skipped");
+    expect(applied.workspace).toBe(workspace);
+  });
+
+  it("reloads the frozen unusable-base request and boundary without a second execution or replanning", async () => {
+    const workspace = unusableSummaryWorkspace();
+    const fixture = await createFixture({ workspace, ambiguousOnce: true });
+    const first = await runAgentCompaction(compactionInput(fixture));
+    if (first.status !== "running") throw new Error("Expected frozen recovery action");
+    const persisted = JSON.parse(JSON.stringify(first.externalAction)) as APlusExternalActionDescriptor;
+    expect(persisted.compactionApplyBoundary).toMatchObject({
+      expectedPreviousRevisionId: workspace.ai.conversationCompaction.summaryRevisionId,
+      usablePreviousSummarySourceHash: null, sourceStartMessageId: "u1", sourceEndMessageId: "a1"
+    });
+    const reloaded = parseWorkspace(serializeWorkspace(fixture.host.readWorkspace()));
+    if (reloaded.status !== "ok") throw new Error("Expected exact reload");
+    const next = await createFixture({ workspace: reloaded.workspace });
+    const result = await runAgentCompaction({ ...compactionInput(next), restoredExternalAction: persisted,
+      host: { ...next.host, fetch: fixture.host.fetch } });
+    expect(result.status).toBe("applied");
+    expect(fixture.externalExecutionCount).toBe(1);
+    expect(fixture.requestBodies[1]).toBe(fixture.requestBodies[0]);
+    expect(persisted.requestHash).toBe(await hashAPlusExternalActionBody(fixture.requestBodies[1]!));
+    expect(Object.keys(next.host.readWorkspace().ai.conversationSummaryRevisions)).toHaveLength(2);
+  });
+
   it.each<AgentTurnCompactionMode>(["automatic", "preContinuation", "manual"])(
     "runs %s through the same lifecycle and one Summary apply boundary",
     async (mode) => {
@@ -421,11 +546,12 @@ describe("A+ unified Compaction orchestrator", () => {
 });
 
 async function createFixture(options: {
+  workspace?: MorphoWorkspace;
   abortRoute?: boolean;
   runningOnce?: boolean;
   ambiguousOnce?: boolean;
 } = {}) {
-  const fake = createAgentTurnHostFake({ workspace: conversationWorkspace() });
+  const fake = createAgentTurnHostFake({ workspace: options.workspace ?? conversationWorkspace() });
   let running = options.runningOnce === true;
   let ambiguous = options.ambiguousOnce === true;
   let externalExecutionCount = 0;
@@ -524,6 +650,30 @@ async function createFixture(options: {
       return externalExecutionCount;
     }
   };
+}
+
+function compactionInput(fixture: Awaited<ReturnType<typeof createFixture>>) {
+  return { mode: "automatic" as const, actionId: "compact:d1", coordinator: fixture.coordinator,
+    host: fixture.host, localProjectId: "project-test", force: true, signal: new AbortController().signal };
+}
+
+function summarizedWorkspace(): MorphoWorkspace {
+  const workspace = conversationWorkspace();
+  workspace.ai.messages.push(
+    { id: "u3", role: "user", body: "下一步？", createdAt: "2026-07-29T00:00:04Z" },
+    { id: "a3", role: "assistant", body: "验证。", status: "done", createdAt: "2026-07-29T00:00:05Z" }
+  );
+  const applied = applyConversationSummaryRevision(workspace, { summary: summaryFixture(), sourceMessageIds: ["u1", "a1"] });
+  if (applied.status !== "applied") throw new Error(applied.reason);
+  return applied.workspace;
+}
+
+function unusableSummaryWorkspace(): MorphoWorkspace {
+  const workspace = summarizedWorkspace();
+  const id = workspace.ai.conversationCompaction.summaryRevisionId!;
+  workspace.ai.messages.unshift({ id: "ui-only", role: "user", body: "旧操作", contextVisibility: "uiOnly", createdAt: "2026-07-29T00:00:00Z" });
+  workspace.ai.conversationSummaryRevisions[id] = { ...workspace.ai.conversationSummaryRevisions[id], sourceStartMessageId: "ui-only" };
+  return workspace;
 }
 
 function conversationWorkspace(): MorphoWorkspace {

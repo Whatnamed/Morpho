@@ -4,6 +4,8 @@ import {
   applyConversationSummaryRevision,
   buildConversationCompactionPlan,
   getUsableConversationMessages,
+  getUsableConversationSummaryRevision,
+  getUsableConversationSummarySourceHash,
   validateConversationSummary,
   type ConversationTokenLimits
 } from "@/domain/morpho/conversationCompaction";
@@ -96,9 +98,10 @@ export async function runAgentCompaction(input: Readonly<{
         sourceEndMessageId: plan.sourceEndMessageId,
         sourceMessageIds: plan.sourceMessages.map((message) => message.id),
         sourceMessageIdsHash: plan.sourceMessageIdsHash,
-        ...(plan.previousSummaryRevision
-          ? { expectedPreviousRevisionId: plan.previousSummaryRevision.id }
+        ...(plan.expectedCurrentSummaryRevisionId
+          ? { expectedPreviousRevisionId: plan.expectedCurrentSummaryRevisionId }
           : {}),
+        usablePreviousSummarySourceHash: plan.usablePreviousSummarySourceHash ?? null,
         estimatedInputTokens: plan.estimatedInputTokens,
         messages: plan.sourceMessages.map((message) => ({
           id: message.id,
@@ -108,8 +111,7 @@ export async function runAgentCompaction(input: Readonly<{
       }
     : undefined;
   const executionBoundary = input.restoredExternalAction ? restoredBoundary : freshBoundary;
-  const expectedPreviousRevisionId = executionBoundary?.expectedPreviousRevisionId ??
-    plan?.previousSummaryRevision?.id;
+  const expectedPreviousRevisionId = executionBoundary?.expectedPreviousRevisionId;
   const currentLifecycle = input.coordinator.getLifecycleSnapshot();
   if (!(currentLifecycle?.phase === "compacting" && currentLifecycle.actionId === input.actionId)) {
     requireOk(input.coordinator.startCompaction(
@@ -130,6 +132,10 @@ export async function runAgentCompaction(input: Readonly<{
       "external_action_request_payload_unavailable",
       "A+ Compaction 的持久化请求或原始 Summary Apply Boundary 缺失、损坏或身份不匹配。"
     );
+  }
+  if (!input.restoredExternalAction && workspace.ai.conversationCompaction.summaryRevisionId &&
+    !workspace.ai.conversationSummaryRevisions[workspace.ai.conversationCompaction.summaryRevisionId]) {
+    return fail(input, "summary_revision_conflict", "Compaction 的 current Summary revision 不存在。");
   }
   if (!input.restoredExternalAction && !plan) {
     requireOk(input.coordinator.completeCompaction(input.actionId, { kind: "notNeeded" }));
@@ -267,7 +273,8 @@ export async function runAgentCompaction(input: Readonly<{
     revision.sourceMessageIdsHash === executionBoundary.sourceMessageIdsHash &&
     (revision.previousRevisionId ?? undefined) === (expectedPreviousRevisionId ?? undefined) &&
     JSON.stringify(revision.summary) === JSON.stringify(summary.summary));
-  if (delivery && existingRevision) {
+  if (delivery && existingRevision &&
+    input.host.readWorkspace().ai.conversationCompaction.summaryRevisionId === existingRevision.id) {
     const persisted = input.host.persistWorkspace?.();
     if (persisted?.phase !== "saved" || persisted.isDirty) return { status: "running", actionId: input.actionId, externalAction };
     if (input.onSummaryApplied && !await input.onSummaryApplied({ actionId: input.actionId, revisionId: existingRevision.id, delivery })) {
@@ -431,6 +438,8 @@ function mergeRestoredCompactionBoundary(
     boundary.sourceMessageIdsHash !== hashSourceMessageIds(sourceMessageIds) ||
     (boundary.expectedPreviousRevisionId ?? undefined) !==
       (request.expectedPreviousRevisionId ?? undefined) ||
+    (boundary.usablePreviousSummarySourceHash !== undefined && boundary.usablePreviousSummarySourceHash !== null &&
+      !/^[a-f0-9]{64}$/.test(boundary.usablePreviousSummarySourceHash)) ||
     !Number.isSafeInteger(boundary.estimatedInputTokens) ||
     boundary.estimatedInputTokens < 0
   ) return undefined;
@@ -450,6 +459,9 @@ function toPersistedApplyBoundary(
     sourceMessageIdsHash: boundary.sourceMessageIdsHash,
     ...(boundary.expectedPreviousRevisionId
       ? { expectedPreviousRevisionId: boundary.expectedPreviousRevisionId }
+      : {}),
+    ...(boundary.usablePreviousSummarySourceHash !== undefined
+      ? { usablePreviousSummarySourceHash: boundary.usablePreviousSummarySourceHash }
       : {}),
     estimatedInputTokens: boundary.estimatedInputTokens
   };
@@ -481,16 +493,22 @@ function validateCompactionApplyBoundary(
     };
   }
   const usableMessages = getUsableConversationMessages(workspace.ai.messages);
-  const previousRevision = currentRevisionId
-    ? workspace.ai.conversationSummaryRevisions[currentRevisionId]
-    : undefined;
-  if (currentRevisionId && !previousRevision) {
+  if (currentRevisionId && !workspace.ai.conversationSummaryRevisions[currentRevisionId]) {
     return {
       status: "conflict",
       code: "summary_revision_conflict",
       reason: "Compaction 的 Summary base revision 不再存在。"
     };
   }
+  if (boundary.usablePreviousSummarySourceHash !== undefined &&
+    boundary.usablePreviousSummarySourceHash !== (getUsableConversationSummarySourceHash(workspace) ?? null)) {
+    return {
+      status: "conflict",
+      code: "compaction_source_changed",
+      reason: "Compaction 的可用前置 Summary 内容或来源消息已变化，旧 Summary 不会应用。"
+    };
+  }
+  const previousRevision = getUsableConversationSummaryRevision(workspace, usableMessages);
   const previousEndIndex = previousRevision
     ? usableMessages.findIndex((message) => message.id === previousRevision.sourceEndMessageId)
     : -1;

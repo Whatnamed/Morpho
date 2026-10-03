@@ -18,6 +18,7 @@ import { providerInputSnapshotText } from "./providerInputSnapshot";
 import type { ProviderInputTimelineBudget } from "@/shared/providerInputBudget";
 import {
   buildConversationSummaryRevisionId,
+  hashProductValue,
   hashConversationSummary,
   hashSourceMessageIds
 } from "@/shared/agentProductHash";
@@ -51,7 +52,10 @@ export type ContinuousConversationContext = {
 };
 
 export type ConversationCompactionPlan = {
+  /** Raw current pointer for concurrency, independent of content eligibility. */
+  expectedCurrentSummaryRevisionId?: string;
   previousSummaryRevision?: ConversationSummaryRevision;
+  usablePreviousSummarySourceHash?: string;
   sourceMessages: ConversationMessageForContext[];
   sourceStartMessageId: string;
   sourceEndMessageId: string;
@@ -281,7 +285,9 @@ export function buildConversationCompactionPlan(input: {
   const sourceMessages = context.messages.slice(0, endIndex + 1);
   const sourceMessageIdsHash = hashMessageIds(sourceMessages.map((message) => message.id));
   return {
+    expectedCurrentSummaryRevisionId: input.workspace.ai.conversationCompaction.summaryRevisionId,
     previousSummaryRevision: context.summaryRevision,
+    usablePreviousSummarySourceHash: getUsableConversationSummarySourceHash(input.workspace),
     sourceMessages,
     sourceStartMessageId: sourceMessages[0]!.id,
     sourceEndMessageId: sourceMessages.at(-1)!.id,
@@ -316,7 +322,10 @@ export function applyConversationSummaryRevision(
   }
 
   const usableMessages = getUsableConversationMessages(workspace.ai.messages);
-  const previousRevision = currentRevisionId ? workspace.ai.conversationSummaryRevisions[currentRevisionId] : undefined;
+  if (currentRevisionId && !workspace.ai.conversationSummaryRevisions[currentRevisionId]) {
+    return { status: "skipped", workspace, reason: "Conversation summary current revision does not exist." };
+  }
+  const previousRevision = getUsableConversationSummaryRevision(workspace, usableMessages);
   const previousEndIndex = previousRevision
     ? usableMessages.findIndex((message) => message.id === previousRevision.sourceEndMessageId)
     : -1;
@@ -521,9 +530,9 @@ export function hashMessageIds(ids: readonly string[]): string {
   return hashSourceMessageIds(ids);
 }
 
-function getUsableConversationSummaryRevision(
+export function getUsableConversationSummaryRevision(
   workspace: MorphoWorkspace,
-  usableMessages: readonly AiMessage[]
+  usableMessages: readonly AiMessage[] = getUsableConversationMessages(workspace.ai.messages)
 ): ConversationSummaryRevision | undefined {
   const revisionId = workspace.ai.conversationCompaction.summaryRevisionId;
   const revision = revisionId ? workspace.ai.conversationSummaryRevisions[revisionId] : undefined;
@@ -543,6 +552,19 @@ function getUsableConversationSummaryRevision(
     return undefined;
   }
   return revision;
+}
+
+/** Freeze only the usable content base; a raw pointer may exist without one. */
+export function getUsableConversationSummarySourceHash(workspace: MorphoWorkspace): string | undefined {
+  const messages = getUsableConversationMessages(workspace.ai.messages);
+  const revision = getUsableConversationSummaryRevision(workspace, messages);
+  if (!revision) return undefined;
+  const start = messages.findIndex((message) => message.id === revision.sourceStartMessageId);
+  const end = messages.findIndex((message) => message.id === revision.sourceEndMessageId);
+  return hashProductValue({
+    revision,
+    messages: messages.slice(start, end + 1).map(({ id, role, body }) => ({ id, role, body }))
+  }, "morpho-compaction-usable-previous-source-v1");
 }
 
 function hashMessageIdsCompatible(ids: readonly string[], storedHash: string): boolean {

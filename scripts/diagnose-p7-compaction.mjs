@@ -8,5 +8,5 @@ try {
   await mkdir("output/playwright/p7-diagnosis", { recursive: true });
   await writeFile("output/playwright/p7-diagnosis/compaction-base.json", `${JSON.stringify(evidence, null, 2)}\n`);
   console.log(JSON.stringify(evidence, null, 2));
-  if (!evidence.immutableWorkspace || !evidence.currentRevisionExists || evidence.boundaryWouldMatch) throw new Error("The recorded baseline divergence did not reproduce.");
+  if (!evidence.immutableWorkspace || !evidence.currentRevisionExists || !evidence.boundaryWouldMatch || evidence.plannedPreviousSummaryRevisionId !== null) throw new Error("D1 identity/content separation regression.");
 } finally { await server.close(); }

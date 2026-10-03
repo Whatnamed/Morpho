@@ -22,6 +22,8 @@ export type APlusCompactionApplyBoundary = Readonly<{
   sourceMessageIds: readonly string[];
   sourceMessageIdsHash: string;
   expectedPreviousRevisionId?: string;
+  /** null = frozen absent usable content; undefined = legacy boundary without this receipt. */
+  usablePreviousSummarySourceHash?: string | null;
   estimatedInputTokens: number;
 }>;
 

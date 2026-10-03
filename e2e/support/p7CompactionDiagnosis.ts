@@ -15,14 +15,15 @@ export function diagnoseP7Compaction() {
     currentSummaryRevisionId: current,
     currentRevisionExists: Boolean(current && workspace.ai.conversationSummaryRevisions[current]),
     plannedPreviousSummaryRevisionId: plan.previousSummaryRevision?.id ?? null,
+    expectedCurrentSummaryRevisionId: plan.expectedCurrentSummaryRevisionId ?? null,
     immutableWorkspace: before === after,
     workspaceSha256: createHash("sha256").update(before).digest("hex"),
     plannedSourceMessageCount: plan.sourceMessages.length,
     plannedSourceStart: plan.sourceStartMessageId, plannedSourceEnd: plan.sourceEndMessageId,
     expected: "Compaction execution captures the unchanged current Summary base identity, separately from Summary content eligibility",
-    boundaryWouldMatch: (current ?? undefined) === (plan.previousSummaryRevision?.id ?? undefined),
-    observedBrowserFault: "summary_revision_conflict: Compaction 的 Summary base revision 已在 External Action 执行期间变化。",
-    locations: ["src/features/workspace/agentCompactionOrchestrator.ts:100", "src/features/workspace/agentCompactionOrchestrator.ts:475"],
+    boundaryWouldMatch: (current ?? undefined) === (plan.expectedCurrentSummaryRevisionId ?? undefined),
+    historicalBrowserFault: "summary_revision_conflict: Compaction 的 Summary base revision 已在 External Action 执行期间变化。",
+    locations: ["src/features/workspace/agentCompactionOrchestrator.ts", "src/domain/morpho/conversationCompaction.ts"],
     paidProviderCalls: 0
   };
 }

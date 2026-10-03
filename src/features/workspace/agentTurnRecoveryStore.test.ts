@@ -205,7 +205,7 @@ describe("A+ local Recovery Store", () => {
     });
   });
 
-  it("round-trips the client-only Compaction apply boundary with the exact request payload", async () => {
+  it.each([undefined, null, "a".repeat(64)])("round-trips raw identity and content eligibility %s with the exact Compaction payload", async (sourceHash) => {
     const fixture = createFixture();
     const requestBody = JSON.stringify({
       localProjectId: "project-test",
@@ -213,6 +213,7 @@ describe("A+ local Recovery Store", () => {
       stepSequence: 1,
       actionId: "compact:automatic:1",
       mode: "automatic",
+      expectedPreviousRevisionId: "existing-summary",
       sourceStartMessageId: "u1",
       sourceEndMessageId: "a1",
       messages: [
@@ -236,6 +237,8 @@ describe("A+ local Recovery Store", () => {
             sourceEndMessageId: "a1",
             sourceMessageIds,
             sourceMessageIdsHash: hashSourceMessageIds(sourceMessageIds),
+            expectedPreviousRevisionId: "existing-summary",
+            ...(sourceHash !== undefined ? { usablePreviousSummarySourceHash: sourceHash } : {}),
             estimatedInputTokens: 42
           },
           lastObservedAt: "2026-07-29T00:00:00.000Z"
