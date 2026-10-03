@@ -63,7 +63,7 @@ try {
       latest_request_hash,provider_call_count,bounded_failure_code from private.agent_turn_journal where server_turn_id=$1`,[turn])).rows,
     requests:(await runtime.db.query("select server_turn_id,request_id,step_sequence,request_hash from private.agent_turn_request_journal where server_turn_id=$1",[turn])).rows,
     effects:(await runtime.db.query("select effect_id,kind,request_digest,execution_state,latest_attempt_id,cancel_requested_at,local_abort_observed_at from public.external_effect where actor_user_id=$1",[actors[0].userId])).rows,
-    results:(await runtime.db.query("select effect_id,manifest,binding,published_at,acknowledged_at,expires_at from public.external_result where actor_user_id=$1",[actors[0].userId])).rows
+    results:(await runtime.db.query("select effect_id,manifest,manifest || jsonb_build_object('expiresAt', expires_at) as delivery_manifest,binding,published_at,acknowledged_at,expires_at from public.external_result where actor_user_id=$1",[actors[0].userId])).rows
   });
   const scenario=async(id,fn)=>{
     const start=http.length;
@@ -111,7 +111,7 @@ try {
       assert.match(state.results[0].binding.requestContentSha256,/^[a-f0-9]{64}$/);
       const replay=await request(path,body); assert.equal(replay.status,200);
       assert.equal(replay.data.result.resultId,state.results[0].manifest.resultId); assert.equal(runtime.stub.calls.length,1);
-      assert.deepEqual(replay.data.result,state.results[0].manifest);
+      assert.deepEqual(replay.data.result,state.results[0].delivery_manifest);
       assert.deepEqual(await journal(),state,"Exact completed replay must leave Journal/effect/result unchanged");
       row.originalRequest=body; row.exactReplayResult=replay.data.result;
       row.preConflictJournal=await journal();
