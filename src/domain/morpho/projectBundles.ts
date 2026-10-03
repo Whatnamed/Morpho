@@ -790,13 +790,12 @@ function buildRichArchiveProjectOverview(manifest: HumanReadableArchiveManifest)
     "",
     ...listOrEmpty(
       eliminatedDirections.map((item) => {
-        const decision = manifest.archive.decisions.find(
-          (candidate) =>
-            candidate.objectSnapshot?.id === item.id ||
-            candidate.relatedObjectIds.includes(item.id) ||
-            candidate.summary.includes(item.title)
+        const decision = [...manifest.archive.decisions].reverse().find((candidate) =>
+          candidate.effect?.kind === "setDirectionStatus" && candidate.effect.targetObjectId === item.id &&
+          Boolean(item.incarnationId) && candidate.effect.targetIncarnationId === item.incarnationId
         );
-        return `- ${item.title}｜${item.summary}｜原因：${decision?.reason ?? decision?.summary ?? "未记录明确原因"}`;
+        const reason = decision?.effect?.kind === "setDirectionStatus" && decision.effect.status === "eliminated" ? decision.reason?.trim() : undefined;
+        return `- ${item.title}｜${item.summary}｜原因：${reason || "未记录明确原因"}`;
       }),
       "暂无淘汰方向"
     ),
@@ -972,7 +971,7 @@ function buildRichArchiveDeliveryPreparation(manifest: HumanReadableArchiveManif
     ...listOrEmpty(
       item.references.map((referenceId) => {
         const reference = manifest.archive.delivery.references.find((candidate) => candidate.id === referenceId);
-        return `  - ${referenceId}｜${reference?.snapshot.title ?? "未知引用"}｜source=${reference?.sourceObjectId ?? "无"}｜asset=${reference?.sourceAssetId ?? reference?.snapshot.previewAsset?.assetId ?? "无"}｜caption=${reference?.editorial?.caption ?? "无"}`;
+        return `  - ${referenceId}｜${reference?.snapshot.title ?? "未知引用"}｜source=${reference?.sourceObjectId ?? "无"}｜asset=${reference?.sourceAssetId ?? reference?.snapshot.previewAsset?.assetId ?? "无"}｜caption=${reference?.editorial?.caption ?? "无"}｜note=${reference?.editorial?.note ?? "无"}\n    正文：${reference?.snapshot.body ?? reference?.snapshot.summary ?? "无"}\n    文案复核：${reference?.copyReview ?? "unknown"}｜依据：${reference?.snapshot.provenance?.status ?? "unknown"}`;
       }),
       "  - 暂无 stable references"
     )

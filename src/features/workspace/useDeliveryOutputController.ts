@@ -224,7 +224,7 @@ export function useDeliveryOutputController({
           summary: result.summary
         });
         setMessage({
-          tone: result.summary.missingOrMismatchedAssets > 0 ? "warning" : "success",
+          tone: result.manifest.integrity.status === "warning" ? "warning" : "success",
           text:
             result.summary.missingOrMismatchedAssets > 0
               ? `输出包已导出，但有 ${result.summary.missingOrMismatchedAssets} 项素材未完整带出。请查看压缩包中的 asset-index.md 和 gaps-and-next-steps.md。`

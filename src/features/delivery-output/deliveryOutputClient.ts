@@ -2,6 +2,7 @@ import { zipSync } from "fflate";
 
 import {
   buildDeliveryOutputMarkdown,
+  countMissingDeliveryOutputAssets,
   collectDeliveryOutputAssetCandidates,
   createDeliveryOutputManifest,
   updateDeliveryOutputManifestAssetAvailability,
@@ -28,6 +29,13 @@ export type DeliveryOutputExportSummary = {
   missingOrMismatchedAssets: number;
   openGaps: number;
   pendingDrafts: number;
+  sourceUpdated?: number;
+  sourceHidden?: number;
+  sourceMissing?: number;
+  sourceUnknown?: number;
+  copyReview?: number;
+  unknownProvenance?: number;
+  unverifiedProvenance?: number;
 };
 
 export type ExportDeliveryOutputResult =
@@ -236,9 +244,14 @@ function summarizeManifest(manifest: DeliveryOutputManifest): DeliveryOutputExpo
     referenceOnlyOrNoBinary:
       manifest.assets.filter((asset) => asset.availability === "referenceOnly").length +
       manifest.references.filter((reference) => reference.availability === "noBinaryExpected").length,
-    missingOrMismatchedAssets: manifest.assets.filter(
-      (asset) => asset.availability === "missingBinary" || asset.availability === "sizeMismatch"
-    ).length,
+    missingOrMismatchedAssets: countMissingDeliveryOutputAssets(manifest),
+    sourceUpdated: manifest.references.filter((ref) => ref.inspection?.sourceFreshness === "sourceUpdated").length,
+    sourceHidden: manifest.references.filter((ref) => ref.inspection?.sourceVisibility === "sourceHidden").length,
+    sourceMissing: manifest.references.filter((ref) => ref.inspection?.sourceExistence === "sourceMissing").length,
+    sourceUnknown: manifest.references.filter((ref) => !ref.inspection || ref.inspection.sourceFreshness === "unknown").length,
+    copyReview: manifest.references.filter((ref) => !ref.inspection || ["needsReview", "unknown"].includes(ref.inspection.copyReview)).length + manifest.sections.filter((section) => section.copyReview === "needsReview").length,
+    unknownProvenance: manifest.references.filter((ref) => !ref.inspection || ref.inspection.provenance.status === "unknown").length,
+    unverifiedProvenance: manifest.references.filter((ref) => ref.inspection?.provenance.status === "unverified").length,
     openGaps: manifest.gaps.filter((gap) => gap.status === "open").length,
     pendingDrafts: manifest.pendingSectionDrafts.length
   };

@@ -19,6 +19,7 @@ import {
   type DeliveryReferenceReaderTransition
 } from "../deliveryPreparationUi";
 import { resolveDeliveryReferenceState } from "@/domain/morpho/deliveryPreparation";
+import { inspectDeliveryDraft, inspectDeliveryReference } from "@/domain/morpho/deliveryInspection";
 import { getObjectTypeLabel } from "../workspaceUi";
 
 type DeliveryPreparationPanelProps = {
@@ -47,7 +48,8 @@ type DeliveryPreparationPanelProps = {
   onSetGapStatus: (input: { deliveryObjectId: string; gapId: string; status: "open" | "resolved" }) => void;
   onRemoveGap: (input: { deliveryObjectId: string; gapId: string }) => void;
   onRequestSectionDraft: (input: { deliveryObjectId: string; sectionId: string }) => void;
-  onApplyDraft: (input: { deliveryObjectId: string; draftId: string }) => void;
+  onApplyDraft: (input: { deliveryObjectId: string; draftId: string; acknowledgeReview?: boolean }) => void;
+  onConfirmCopyReview?: (input: { deliveryObjectId: string; sectionId: string }) => void;
   onDiscardDraft: (input: { deliveryObjectId: string; draftId: string }) => void;
 };
 
@@ -78,6 +80,7 @@ export function DeliveryPreparationPanel({
   onRemoveGap,
   onRequestSectionDraft,
   onApplyDraft,
+  onConfirmCopyReview,
   onDiscardDraft
 }: DeliveryPreparationPanelProps) {
   const deliveryObjects = useMemo(() => getDeliveryObjects(workspace), [workspace]);
@@ -203,6 +206,8 @@ export function DeliveryPreparationPanel({
                   onMoveSection={onMoveSection}
                   onRemoveSection={onRemoveSection}
                 />
+                {(activeSection.copyReviewReferenceIds?.length ?? 0) > 0 ? <p>快照已变化，保留的章节说明、caption / note 需要复核。</p> : null}
+                {onConfirmCopyReview ? <button type="button" className="plain-button" onClick={() => onConfirmCopyReview({ deliveryObjectId: activeDelivery.id, sectionId: activeSection.id })}>确认本节文案已复核</button> : null}
               </section>
 
               <section className="delivery-section-create">
@@ -338,22 +343,26 @@ export function DeliveryPreparationPanel({
               {activeDrafts.length > 0 ? (
                 <section className="delivery-draft-stack">
                   <div className="delivery-card-title">交付说明草稿</div>
-                  {activeDrafts.map((draft) => (
+                  {activeDrafts.map((draft) => {
+                    const applicability = inspectDeliveryDraft(workspace, draft);
+                    return (
                     <article className="delivery-draft-card" key={draft.id}>
                       <strong>{draft.title ?? activeDelivery.sections.find((section) => section.id === draft.sectionId)?.title ?? "章节草稿"}</strong>
                       <p>{draft.narrative}</p>
-                      {draft.captions.length > 0 ? <span>图注建议：{draft.captions.length} 条</span> : null}
+                      <p>适用性：{({ current: "当前可应用", "review-required": "需要复核", stale: "已过时", blocked: "不能应用" })[applicability.status]}</p>
+                      {applicability.reasons.map((reason) => <p key={reason}>{reason}</p>)}
+                      {draft.captions.map((caption) => <p key={caption.referenceId}>图注 · {workspace.deliveryReferences[caption.referenceId]?.snapshot.title ?? caption.referenceId}：{caption.caption}</p>)}
                       {draft.suggestedGaps.length > 0 ? <span>待补建议：{draft.suggestedGaps.map((gap) => gap.label).join(" / ")}</span> : null}
                       <div className="delivery-action-row">
-                        <button className="brand-button" type="button" onClick={() => onApplyDraft({ deliveryObjectId: activeDelivery.id, draftId: draft.id })}>
-                          应用草稿
+                        <button className="brand-button" type="button" disabled={applicability.status === "stale" || applicability.status === "blocked"} onClick={() => onApplyDraft({ deliveryObjectId: activeDelivery.id, draftId: draft.id, acknowledgeReview: applicability.status === "review-required" })}>
+                          {applicability.status === "review-required" ? "复核后覆盖并应用草稿" : "应用草稿"}
                         </button>
                         <button className="plain-button" type="button" onClick={() => onDiscardDraft({ deliveryObjectId: activeDelivery.id, draftId: draft.id })}>
                           放弃
                         </button>
                       </div>
                     </article>
-                  ))}
+                  ); })}
                 </section>
               ) : null}
             </div>
@@ -483,6 +492,7 @@ function ReferenceList({
       {references.map((reference, index) => {
         const source = reference.sourceObjectId ? workspace.objects[reference.sourceObjectId] : undefined;
         const state = resolveDeliveryReferenceState(workspace, reference.id);
+        const inspection = inspectDeliveryReference(workspace, reference);
         const locationTarget = getDeliveryReferenceLocationTarget(workspace, reference);
         const preview = getDeliveryReferencePreview(reference, assetUrls);
         const canRefresh = canRefreshDeliveryReference(workspace, reference);
@@ -494,6 +504,8 @@ function ReferenceList({
               <div>
                 <span className={`delivery-source-state ${state.status}`}>{deliverySourceStateLabel(state.status)}</span>
                 <strong>{reference.snapshot.title}</strong>
+                <p>来源：{inspection.sourceFreshness === "sourceUpdated" ? "已有更新" : inspection.sourceFreshness === "unknown" ? "版本未验证" : "快照匹配"}{inspection.sourceExistence === "sourceMissing" ? " · 不可定位" : ""}{inspection.sourceVisibility === "sourceHidden" ? " · 已隐藏" : ""} · 素材：{inspection.assetAvailability === "assetMissing" ? "缺失" : inspection.assetAvailability === "metadataAvailable" ? "尚未检查本地文件" : inspection.assetAvailability === "referenceOnly" ? "仅链接" : "无需本地文件"}</p>
+                <p>文案：{inspection.copyReview === "needsReview" ? "快照已变化，需要复核" : inspection.copyReview === "unknown" ? "复核状态未记录" : inspection.copyReview === "reviewed" ? "已人工复核" : "无文案"} · 依据：{inspection.provenance.status === "recorded" ? "有记录" : inspection.provenance.status === "unverified" ? "尚未验证" : "未记录可验证依据"}</p>
                 <p>
                   {reference.snapshot.sourceType} · {reference.snapshot.summary ?? "稳定快照"}
                 </p>

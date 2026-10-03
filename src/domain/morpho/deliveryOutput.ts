@@ -10,6 +10,7 @@ import type {
   MorphoObjectId,
   MorphoWorkspace
 } from "./types";
+import { inspectDelivery, inspectDeliveryDraft, isDeliveryReferenceInspection, isDeliveryDraftApplicability, type DeliveryReferenceInspection, type DeliveryDraftApplicability } from "./deliveryInspection";
 
 export const DELIVERY_OUTPUT_FORMAT = "morpho-delivery-output";
 export const DELIVERY_OUTPUT_VERSION = "1";
@@ -38,6 +39,12 @@ export type DeliveryOutputDiagnosticCode =
   | "delivery_output_open_gaps"
   | "delivery_output_pending_drafts"
   | "delivery_output_reference_only"
+  | "delivery_output_source_updated"
+  | "delivery_output_source_hidden"
+  | "delivery_output_source_unknown"
+  | "delivery_output_copy_review"
+  | "delivery_output_provenance_unknown"
+  | "delivery_output_provenance_unverified"
   | "invalid_delivery_output_format"
   | "invalid_delivery_output_version"
   | "invalid_delivery_output_structure"
@@ -77,6 +84,7 @@ export type DeliveryOutputManifest = {
     purpose?: string;
     order: number;
     narrative?: string;
+    copyReview?: "needsReview" | "notRequired";
     referenceIds: string[];
   }>;
   references: Array<{
@@ -91,6 +99,7 @@ export type DeliveryOutputManifest = {
       note?: string;
     };
     availability: DeliveryOutputAvailability;
+    inspection?: DeliveryReferenceInspection;
     outputAssetPath?: string;
   }>;
   assets: Array<{
@@ -127,6 +136,7 @@ export type DeliveryOutputManifest = {
     suggestedGaps: Array<{
       label: string;
     }>;
+    applicability?: DeliveryDraftApplicability;
   }>;
 };
 
@@ -166,6 +176,7 @@ export function createDeliveryOutputManifest(
   }
 
   const diagnostics: DeliveryOutputDiagnostic[] = [];
+  const inspection = inspectDelivery(workspace, target);
   const sections = [...target.sections]
     .sort((left, right) => left.order - right.order)
     .map((section, order) => ({
@@ -174,6 +185,7 @@ export function createDeliveryOutputManifest(
       purpose: section.purpose,
       order,
       narrative: section.narrative,
+      copyReview: inspection.sections[section.id].copyReview,
       referenceIds: [...section.referenceIds]
     }));
   const sectionIds = new Set(sections.map((section) => section.id));
@@ -197,7 +209,7 @@ export function createDeliveryOutputManifest(
     }
   }
 
-  for (const referenceId of target.references) {
+  for (const referenceId of [...new Set([...sections.flatMap((section) => section.referenceIds), ...target.references])]) {
     const reference = workspace.deliveryReferences[referenceId];
     if (!reference || reference.deliveryObjectId !== target.id) {
       diagnostics.push(diagnostic("delivery_output_reference_missing", "error", `Delivery reference ${referenceId} is missing.`, `references.${referenceId}`));
@@ -226,7 +238,8 @@ export function createDeliveryOutputManifest(
     }
 
     const source = reference.sourceObjectId ? workspace.objects[reference.sourceObjectId] : undefined;
-    if (reference.sourceObjectId && !source) {
+    const facts = inspection.references[referenceId];
+    if (facts?.sourceExistence === "sourceMissing") {
       diagnostics.push(
         diagnostic(
           "delivery_output_source_unavailable",
@@ -235,6 +248,13 @@ export function createDeliveryOutputManifest(
           `references.${referenceId}.sourceObjectId`
         )
       );
+    }
+    if (facts) {
+      if (facts.sourceFreshness === "sourceUpdated") diagnostics.push(diagnostic("delivery_output_source_updated", "warning", `${reference.snapshot.title}：来源已有更新，输出保留冻结快照。`, `references.${referenceId}`));
+      if (facts.sourceVisibility === "sourceHidden") diagnostics.push(diagnostic("delivery_output_source_hidden", "warning", `${reference.snapshot.title}：来源已隐藏，输出保留冻结快照。`, `references.${referenceId}`));
+      if (facts.sourceFreshness === "unknown") diagnostics.push(diagnostic("delivery_output_source_unknown", "warning", `${reference.snapshot.title}：来源版本无法验证。`, `references.${referenceId}`));
+      if (facts.copyReview === "needsReview" || facts.copyReview === "unknown") diagnostics.push(diagnostic("delivery_output_copy_review", "warning", `${reference.snapshot.title}：文案需要复核。`, `references.${referenceId}`));
+      if (facts.provenance.status !== "recorded") diagnostics.push(diagnostic(facts.provenance.status === "unknown" ? "delivery_output_provenance_unknown" : "delivery_output_provenance_unverified", "warning", `${reference.snapshot.title}：${facts.provenance.status === "unknown" ? "未记录可验证依据" : "依据或视觉结果尚未验证"}。`, `references.${referenceId}`));
     }
 
     const assetId = resolveReferenceAssetId(reference);
@@ -248,12 +268,13 @@ export function createDeliveryOutputManifest(
     references.push({
       referenceId: reference.id,
       sectionId: reference.sectionId,
-      order: reference.order ?? section?.referenceIds.indexOf(reference.id) ?? 0,
+      order: section?.referenceIds.indexOf(reference.id) ?? 0,
       sourceObjectId: reference.sourceObjectId,
       sourceAssetId: assetId,
       snapshot: reference.snapshot,
       editorial: reference.editorial,
       availability: referenceAvailability,
+      inspection: facts,
       outputAssetPath
     });
 
@@ -291,8 +312,9 @@ export function createDeliveryOutputManifest(
 
   const pendingSectionDrafts = Object.values(workspace.deliverySectionDrafts)
     .filter((draft) => draft.deliveryObjectId === target.id && draft.status === "pending")
-    .map(toOutputDraft);
+    .map((draft) => ({ ...toOutputDraft(draft), applicability: inspectDeliveryDraft(workspace, draft) }));
   const gaps = target.gaps.map(toOutputGap);
+  for (const section of sections) if (section.copyReview === "needsReview") diagnostics.push(diagnostic("delivery_output_copy_review", "warning", `${section.title}：快照已变化，章节文案需要复核。`, `sections.${section.id}`));
 
   if (target.references.length === 0) {
     diagnostics.push(
@@ -407,11 +429,15 @@ export function validateDeliveryOutputManifest(value: unknown):
   if (!Array.isArray(value.sections) || !Array.isArray(value.references) || !Array.isArray(value.assets)) {
     diagnostics.push(diagnostic("invalid_delivery_output_structure", "error", "Manifest sections, references, and assets must be arrays."));
   }
+  if (value.pendingSectionDrafts !== undefined && !Array.isArray(value.pendingSectionDrafts)) diagnostics.push(diagnostic("invalid_delivery_output_structure", "error", "Pending drafts must be an array.", "pendingSectionDrafts"));
   if (diagnostics.length > 0) {
     return failedValidation(diagnostics);
   }
 
   const manifest = value as DeliveryOutputManifest;
+  for (const reference of manifest.references) if (reference.inspection !== undefined && !isDeliveryReferenceInspection(reference.inspection)) diagnostics.push(diagnostic("invalid_delivery_output_structure", "error", "Reference inspection is invalid.", `references.${reference.referenceId}.inspection`));
+  for (const section of manifest.sections) if (section.copyReview !== undefined && !["needsReview", "notRequired"].includes(section.copyReview)) diagnostics.push(diagnostic("invalid_delivery_output_structure", "error", "Section copy review is invalid.", `sections.${section.id}.copyReview`));
+  for (const draft of manifest.pendingSectionDrafts ?? []) if (draft.applicability !== undefined && !isDeliveryDraftApplicability(draft.applicability)) diagnostics.push(diagnostic("invalid_delivery_output_structure", "error", "Draft applicability is invalid.", `pendingSectionDrafts.${draft.id}.applicability`));
   const sectionIds = new Set(manifest.sections.map((section) => section.id));
   const referenceIds = new Set(manifest.references.map((reference) => reference.referenceId));
   const sectionOrders = manifest.sections.map((section) => section.order);
@@ -546,13 +572,11 @@ export function updateDeliveryOutputManifestAssetAvailability(
 function buildReadme(manifest: DeliveryOutputManifest): string {
   const embedded = manifest.assets.filter((asset) => asset.availability === "embedded" || asset.availability === "sizeMismatch").length;
   const referenceOnly = manifest.assets.filter((asset) => asset.availability === "referenceOnly").length;
-  const missingOrMismatch = manifest.assets.filter(
-    (asset) => asset.availability === "missingBinary" || asset.availability === "sizeMismatch"
-  ).length;
+  const missingOrMismatch = countMissingDeliveryOutputAssets(manifest);
   const noBinary = manifest.references.filter((reference) => reference.availability === "noBinaryExpected").length;
   const openGaps = manifest.gaps.filter((gap) => gap.status === "open").length;
   const textOnlyLine =
-    manifest.references.length === 0 ? "\n当前没有可带走的稳定素材；此包只包含已确认章节文字、缺口和来源结构。\n" : "";
+    manifest.references.length === 0 ? "\n当前没有可带走的稳定素材；此包只包含已保存章节文字、缺口和来源结构。\n" : "";
   return [
     `# ${manifest.delivery.title}`,
     "",
@@ -578,7 +602,9 @@ function buildReadme(manifest: DeliveryOutputManifest): string {
     "## 完整性提醒",
     "",
     `此输出包包含 ${embedded} 项可用本地素材，${referenceOnly} 项链接引用，${missingOrMismatch} 项缺失或大小异常本地二进制。`,
-    "缺失素材没有伪造为空文件，具体情况见 `asset-index.md`。"
+    "缺失素材没有伪造为空文件，具体情况见 `asset-index.md`。",
+    "可导出表示输出结构可生成，不代表内容、文案或素材已经确认或验证。",
+    ...manifest.integrity.diagnostics.map((item) => `- ${item.code}：${item.message}`)
   ]
     .filter((line) => line !== "")
     .join("\n");
@@ -590,6 +616,7 @@ function buildOutline(manifest: DeliveryOutputManifest): string {
     lines.push(`## ${section.order + 1}. ${section.title}`, "");
     lines.push(`- purpose：${section.purpose ?? "未填写"}`);
     lines.push(`- narrative：${section.narrative ?? "未填写"}`);
+    lines.push(`- 文案复核：${section.copyReview ?? "unknown"}`);
     lines.push("- 稳定引用：");
     const refs = section.referenceIds
       .map((referenceId) => manifest.references.find((reference) => reference.referenceId === referenceId))
@@ -622,7 +649,10 @@ function buildCaptionsAndCopy(manifest: DeliveryOutputManifest): string {
       lines.push(`- ${reference.snapshot.title}`);
       lines.push(`  - caption：${reference.editorial?.caption ?? "未填写"}`);
       lines.push(`  - note：${reference.editorial?.note ?? "未填写"}`);
-      lines.push(`  - source snapshot：${reference.snapshot.summary ?? reference.snapshot.body ?? "无摘要"}`);
+      lines.push(`  - source snapshot：${reference.snapshot.body ?? reference.snapshot.summary ?? "无摘要"}`);
+      lines.push(`  - 来源：${reference.inspection?.sourceFreshness ?? "unknown"} / ${reference.inspection?.sourceExistence ?? "unknown"} / ${reference.inspection?.sourceVisibility ?? "unknown"}`);
+      lines.push(`  - 文案复核：${reference.inspection?.copyReview ?? "unknown"}｜依据：${reference.inspection?.provenance.status ?? "unknown"}｜素材：${availabilityLabel(reference.availability)}`);
+      if (reference.snapshot.provenance) lines.push(`  - 依据详情：${JSON.stringify(reference.snapshot.provenance)}`);
     }
     lines.push("");
   }
@@ -644,6 +674,7 @@ function buildGapsAndNextSteps(manifest: DeliveryOutputManifest): string {
   for (const draft of manifest.pendingSectionDrafts) {
     lines.push(`### ${draft.title ?? draft.id}`);
     lines.push(`- 状态：${draft.status}`);
+    lines.push(`- 适用性：${draft.applicability?.status ?? "review-required"}｜${draft.applicability?.reasons.join(" / ") ?? "缺少生成时基线"}`);
     lines.push(`- section：${draft.sectionId}`);
     lines.push(`- narrative：${draft.narrative}`);
     lines.push("- captions：");
@@ -686,6 +717,10 @@ function buildSourceMap(manifest: DeliveryOutputManifest) {
     format: manifest.format,
     outputVersion: manifest.outputVersion,
     deliveryObjectId: manifest.delivery.id,
+    sections: manifest.sections,
+    pendingSectionDrafts: manifest.pendingSectionDrafts,
+    gaps: manifest.gaps,
+    diagnostics: manifest.integrity.diagnostics,
     references: manifest.references.map((reference) => {
       const asset = reference.sourceAssetId ? assetById.get(reference.sourceAssetId) : undefined;
       return {
@@ -697,11 +732,20 @@ function buildSourceMap(manifest: DeliveryOutputManifest) {
         editorial: reference.editorial,
         outputAssetPath: reference.outputAssetPath,
         availability: reference.availability,
+        order: reference.order,
+        inspection: reference.inspection,
         url: asset?.url,
         domain: asset?.domain
       };
     })
   };
+}
+
+/** Count distinct unavailable materials, including references with no AssetRecord. */
+export function countMissingDeliveryOutputAssets(manifest: DeliveryOutputManifest): number {
+  const missing = new Set(manifest.assets.filter((asset) => asset.availability === "missingBinary" || asset.availability === "sizeMismatch").map((asset) => `asset:${asset.assetId}`));
+  for (const ref of manifest.references) if (ref.availability === "missingBinary" || ref.availability === "sizeMismatch") missing.add(ref.sourceAssetId ? `asset:${ref.sourceAssetId}` : `reference:${ref.referenceId}`);
+  return missing.size;
 }
 
 function resolveReferenceAvailability(

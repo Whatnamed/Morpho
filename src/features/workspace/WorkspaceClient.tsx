@@ -2358,6 +2358,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           onRemoveGap={deliveryPreparation.removeGap}
           onRequestSectionDraft={handleRequestDeliverySectionDraft}
           onApplyDraft={deliveryPreparation.applyDraft}
+          onConfirmCopyReview={deliveryPreparation.confirmCopyReview}
           onDiscardDraft={deliveryPreparation.discardDraft}
         />
       ) : null}

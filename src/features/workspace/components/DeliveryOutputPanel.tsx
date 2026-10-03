@@ -154,7 +154,16 @@ function renderPreflight(preflight: InspectDeliveryOutputResult | null, selected
         <SummaryItem label="缺失或大小异常素材" value={preflight.summary.missingOrMismatchedAssets} />
         <SummaryItem label="待补内容" value={preflight.summary.openGaps} />
         <SummaryItem label="未应用章节草稿" value={preflight.summary.pendingDrafts} />
+        <SummaryItem label="来源已有更新" value={preflight.summary.sourceUpdated ?? 0} />
+        <SummaryItem label="来源已隐藏" value={preflight.summary.sourceHidden ?? 0} />
+        <SummaryItem label="来源不可用" value={preflight.summary.sourceMissing ?? 0} />
+        <SummaryItem label="来源版本未验证" value={preflight.summary.sourceUnknown ?? 0} />
+        <SummaryItem label="文案待复核（章节 / 引用）" value={preflight.summary.copyReview ?? 0} />
+        <SummaryItem label="依据未记录" value={preflight.summary.unknownProvenance ?? 0} />
+        <SummaryItem label="依据或视觉结果未验证" value={preflight.summary.unverifiedProvenance ?? 0} />
       </dl>
+      <p>可导出表示输出结构可生成，不代表内容、文案或素材已经确认或验证。</p>
+      {preflight.diagnostics.map((item, index) => <p key={`${item.code}-${index}`}>{item.message}</p>)}
       {warningText(preflight.summary) ? <p>{warningText(preflight.summary)}</p> : null}
     </div>
   );
