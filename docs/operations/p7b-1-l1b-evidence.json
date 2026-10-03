@@ -1,0 +1,578 @@
+{
+  "schemaVersion": "p7b-1-l1b-evidence-1",
+  "base": "f852578f0d1303ff074f66db1e3919c3218a5561",
+  "branch": "codex/p7b-l1b-real-boundary",
+  "programStatus": "validating",
+  "p7aStatus": "complete/web accepted",
+  "p7b1Verdict": "product_blocker",
+  "laterStages": "P7B-2/P7B-3/P7C not_started",
+  "runIdentity": {
+    "runId": "2026-10-03T14-54-29.089Z-22228",
+    "sourceSha": "65a67f742e63f408d66df077548ce39bb7726628",
+    "build": {
+      "schemaVersion": 2,
+      "sourceSha": "65a67f742e63f408d66df077548ce39bb7726628",
+      "sourceTreeSha256": "961eb33e3170809af33eef9043d5a4bebcf0c9755d7f1f493edf9fbfb487ebf8",
+      "sourceTreeFileCount": 1074,
+      "buildId": "CMj0-zucTMYPesfo_Fnw5",
+      "artifactSha256": "dda6751f417c75bb7649e45d95f650ebc2320a5def2c3afdaae74f6de2256a07",
+      "artifactFileCount": 774,
+      "isDirty": false,
+      "nodeVersion": "v22.23.2",
+      "builtAt": "2026-10-03T14:54:51.672Z"
+    },
+    "contractVersion": "p7b-l1b-boundary-1",
+    "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f"
+  },
+  "environment": {
+    "environment": "local Windows x64; fresh isolated TCP PostgreSQL + real PostgREST + source-built Supabase Auth",
+    "databaseIdentity": "94f0c4a9-93bf-4c68-bf75-fc9331516385",
+    "ports": {
+      "db": 55432,
+      "rest": 55433,
+      "auth": 55434,
+      "gateway": 55435,
+      "app": 55436
+    },
+    "migrations": [
+      {
+        "name": "20260705083705_m9_b_auth_access_and_quota.sql",
+        "sha256": "9f103eda0c55ac819c53d9beb3932c37f169d6922ed35c72aa5446bbe6f96ac0"
+      },
+      {
+        "name": "20260705115614_m9_b_harden_rls_auto_enable_and_quota_timezone.sql",
+        "sha256": "f91cd8c9b1e9bd84823eaa5017b3143194666a756caaaf98de212e675314ef1d"
+      },
+      {
+        "name": "20260705125943_default_dashboard_users_to_active_testers.sql",
+        "sha256": "9c8a4611206afd43cc8a8aae957d0a62d3cdecd6f834a165884ea5f682639b2f"
+      },
+      {
+        "name": "20260705131233_set_default_tester_image_limit_to_10.sql",
+        "sha256": "1dd1b507c52823d4f1315bf46e51223bbbc2f9f94d0ae2f6d7e6daf34c9ac4e4"
+      },
+      {
+        "name": "20260707052657_fix_quota_usage_date_ambiguity.sql",
+        "sha256": "edc3d11f3c7a5324b619d23d782468b04fc22d97fa141c86b22c3a3afebf682b"
+      },
+      {
+        "name": "20260707053357_raise_tester_quota_to_owner_limits.sql",
+        "sha256": "e4c2d39aaee011bbad0d2784ea5fc226df4b5fb00b8ef53841f5b2740d579ace"
+      },
+      {
+        "name": "20260723200036_add_agent_turn_leases.sql",
+        "sha256": "d4c2a46255834bb6d20eb33b8d7a601502fcd1fcf07078dcc4d47f39f4921912"
+      },
+      {
+        "name": "20260723200456_fix_agent_turn_lease_column_ambiguity.sql",
+        "sha256": "50e1c916004b599e8f4ae861fb22ba9afd8d38fc4496819a96b1e639ef096c5c"
+      },
+      {
+        "name": "20260726143030_harden_agent_turn_lease_causality.sql",
+        "sha256": "67bcbf66058c00757a59dce7640df315343052f8cb4bb26227120b21262797fe"
+      },
+      {
+        "name": "20260726161500_bind_agent_turn_provider_execution.sql",
+        "sha256": "057ddacbf09cb377afb7529bfcaba2f585f2d3fca03b0e25d4b863bd67cf7671"
+      },
+      {
+        "name": "20260727180000_read_agent_turn_lease_state.sql",
+        "sha256": "11af91456505cbd3ea8f6dc471ac07bc340d609967a105bde025adcdd12b2338"
+      },
+      {
+        "name": "20260728174500_bind_agent_turn_closure.sql",
+        "sha256": "56c5a0fc7a93a988b5b48f75e5adf57e205696ec977237b6d9b3a23ead68a657"
+      },
+      {
+        "name": "20260728203000_harden_agent_turn_closure_sequence.sql",
+        "sha256": "d7ff94ff7385483689d8e07e1d7af9fb84a159f5084a26b9c667283c6ccc0800"
+      },
+      {
+        "name": "20260729012105_add_agent_turn_journal.sql",
+        "sha256": "64c8095b132d9de2eba5843bbb5895159c6e356d07d60eb2b2b3079730fcd85f"
+      },
+      {
+        "name": "20260729093000_add_agent_turn_external_actions.sql",
+        "sha256": "65d3a1371fc8952885648404b91e1f1c1f8b694e0295eeff1fcf2ec5fe4c5cd4"
+      },
+      {
+        "name": "20260729190000_remove_agent_runtime_b_proofs.sql",
+        "sha256": "b2a3fcfc93304f4785a9d76c556cf3637d758dea371359e70881c30ff0c5b1fb"
+      },
+      {
+        "name": "20260810025000_harden_agent_turn_admission.sql",
+        "sha256": "e390a579fbe7ff5167b795c9afc750c4170e7fc9c36f9a6e7930ea38af72b5a4"
+      },
+      {
+        "name": "20260812090000_harden_agent_tool_claim_settlement_boundary.sql",
+        "sha256": "3c0c280c434c29c0e8ce49e3471b6a8db26db08560d4b2bde658ac3bc365877f"
+      },
+      {
+        "name": "20261001090000_add_external_effect_observation.sql",
+        "sha256": "b09de9986e6354d1f038234832a8d02e8d40b275a45cce198653041faab62989"
+      },
+      {
+        "name": "20261001154434_add_external_result_delivery.sql",
+        "sha256": "a1ceae96d23f2ef642a80c3d4ede96b2ca9b9eebc7ab481853b4830e1d7831bf"
+      }
+    ],
+    "authMigrations": {
+      "appliedOnceToFreshCluster": 75,
+      "officialSource": "4eee58f296d9698a1c2c0ae14d7a0b379c7622d3",
+      "fileIndexSha256": "2bf22db83e267ef5d568928f0be9f0c899d4ed55be6a785db46a872fc4ccaa92",
+      "fullIndex": "environment.json in the ignored run directory"
+    },
+    "postgresVersion": "PostgreSQL 17.10 on x86_64-windows, compiled by msvc-19.44.35226, 64-bit",
+    "authVersion": "v2.197.0",
+    "authSource": "4eee58f296d9698a1c2c0ae14d7a0b379c7622d3",
+    "authPlatformShim": "cmd/serve_cmd.go: single net.ListenConfig; Unix SO_REUSEPORT only removed, no auth logic changes",
+    "postgrestVersion": "v16.4",
+    "remoteDatabaseAccess": false
+  },
+  "tools": [
+    {
+      "path": "auth.exe",
+      "sha256": "2a76feb26c3276566979bf195d01f3e01c5e7c5b55d5d8a3464e4c74785bc6cb",
+      "byteLength": 54073344
+    },
+    {
+      "path": "postgrest.zip",
+      "sha256": "29a5b56e5a09b7168bb552ef14aa7ade40bf0a81dd0687cffa86610187b89d78",
+      "byteLength": 15073226
+    },
+    {
+      "path": "postgrest/postgrest.exe",
+      "sha256": "c4155000dfb0befb59215b65d61a621bbaea1515f36a6e758fc504c7ca0dcbee",
+      "byteLength": 65320448
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "683ae1e3a2d254f07dd1eb0a3824bd391b1118452a18131e54d75a64804b2263",
+      "byteLength": 11211
+    },
+    {
+      "path": "node_modules/.l1b-native-tools/auth/cmd/serve_cmd.go",
+      "sha256": "459bcd1537275d1a197c639f70c02ef125f8dfb935f2fd4b65fd675ca3975a14",
+      "byteLength": 5612
+    }
+  ],
+  "preflight": {
+    "supabaseCli": "2.118.0",
+    "cliAuthentication": "whoami succeeded; no account identifiers retained",
+    "initialLinkedProjectRef": null,
+    "configuredProjectRef": "lprakizddwqqeytpuavb",
+    "projectInventory": "Only production morpho found; no development branches",
+    "remoteMigrationState": "unverified",
+    "remoteP3A": "unverified",
+    "remoteP3B": "unverified",
+    "remoteJournalTablesAndRpcContract": "unverified",
+    "remoteReadFailures": [
+      {
+        "operation": "MCP list_migrations / SELECT-only execute_sql",
+        "error": "FATAL 28P01 postgres password authentication failed"
+      },
+      {
+        "operation": "CLI migration list --project-ref / db query --linked --project-ref",
+        "error": "Internal login-role initialization failed: FATAL 28P01 supabase_admin authentication failed",
+        "caveat": "Read-intended CLI commands internally requested login-role initialization. It failed; no successful production login-role or DB write is evidenced. Do not repeat this path or claim remote schema verified."
+      }
+    ],
+    "localStack": "No existing PostgreSQL/PostgREST/Auth, Docker or Podman; CLI status confirms container runtime unavailable",
+    "localProductionPath": "Fresh clean Next production build, MORPHO_AUTH_REQUIRED=true, real SSR Auth cookies; no route/Journal/RPC mocks",
+    "hostedVercel": "not_run; local real HTTP path used",
+    "repoMigrationCount": 20,
+    "finalLinkedProjectRef": null,
+    "taskGeneratedCliLinkCacheRestored": true
+  },
+  "paidProviderCalls": 0,
+  "paidCost": 0,
+  "controlledStubPostCount": 1,
+  "productionDataSchemaMigrationWrites": "none performed; remote SQL never connected. Failed implicit CLI login-role request disclosed separately.",
+  "providerIsolation": "Only loopback stub configured; native services bind loopback; Next socket guard rejects non-loopback before admission; no generic retries or Runtime changes",
+  "scenarios": [
+    {
+      "id": "A",
+      "verdict": "pass",
+      "http": [
+        {
+          "method": "POST",
+          "path": "/api/ai/agent/turns",
+          "status": 401
+        },
+        {
+          "method": "POST",
+          "path": "/api/ai/agent/turns",
+          "status": 200
+        },
+        {
+          "method": "POST",
+          "path": "/api/ai/agent/turns",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/ai/agent/turns/aeeeb3b7-dbf0-4678-b470-0a464242d506?localProjectId=p7b-isolated-project",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/api/ai/agent/turns/aeeeb3b7-dbf0-4678-b470-0a464242d506?localProjectId=p7b-isolated-project",
+          "status": 404
+        },
+        {
+          "method": "GET",
+          "path": "/api/ai/agent/turns/aeeeb3b7-dbf0-4678-b470-0a464242d506?localProjectId=wrong-project",
+          "status": 404
+        }
+      ],
+      "privilegedRpcAuthenticatedStatus": 403,
+      "durableTurn": {
+        "server_turn_id": "aeeeb3b7-dbf0-4678-b470-0a464242d506",
+        "local_project_id": "p7b-isolated-project",
+        "server_execution_status": "created",
+        "latest_request_id": null,
+        "latest_step_sequence": 0,
+        "latest_request_hash": null,
+        "provider_call_count": 0,
+        "bounded_failure_code": null
+      },
+      "providerExecutions": 0
+    },
+    {
+      "id": "B",
+      "verdict": "fail",
+      "passedSubchecks": [
+        "Wrong owner/project POST rejected",
+        "One request ID, sequence and server-computed hash",
+        "One Provider stub execution",
+        "Result published in real RPC escrow",
+        "Exact replay returned same manifest"
+      ],
+      "http": [
+        {
+          "method": "POST",
+          "path": "/api/ai/agent/turns/aeeeb3b7-dbf0-4678-b470-0a464242d506/requests",
+          "status": 404,
+          "bodySha256": "d85df621d9ab3b8d0119e6dc0b7e76e129aa0528489b309dadfc3678dc312b4e"
+        },
+        {
+          "method": "POST",
+          "path": "/api/ai/agent/turns/aeeeb3b7-dbf0-4678-b470-0a464242d506/requests",
+          "status": 404,
+          "bodySha256": "665d56c44730face83d10e2c9189fcb67be47fe9ad8d64de1610290807febb3e"
+        },
+        {
+          "method": "POST",
+          "path": "/api/ai/agent/turns/aeeeb3b7-dbf0-4678-b470-0a464242d506/requests",
+          "status": 200,
+          "bodySha256": "d85df621d9ab3b8d0119e6dc0b7e76e129aa0528489b309dadfc3678dc312b4e"
+        },
+        {
+          "method": "POST",
+          "path": "/api/ai/agent/turns/aeeeb3b7-dbf0-4678-b470-0a464242d506/requests",
+          "status": 200,
+          "bodySha256": "d85df621d9ab3b8d0119e6dc0b7e76e129aa0528489b309dadfc3678dc312b4e"
+        },
+        {
+          "method": "POST",
+          "path": "/api/ai/agent/turns/aeeeb3b7-dbf0-4678-b470-0a464242d506/requests",
+          "status": 200,
+          "bodySha256": "0b35cd4c83a7b62a9f662d78fb0130382927883f03fa62af08a3d08d96d570ed"
+        }
+      ],
+      "originalBodySha256": "d85df621d9ab3b8d0119e6dc0b7e76e129aa0528489b309dadfc3678dc312b4e",
+      "changedBodySha256": "0b35cd4c83a7b62a9f662d78fb0130382927883f03fa62af08a3d08d96d570ed",
+      "expectedChangedBody": {
+        "httpStatus": 409,
+        "resultReturned": false
+      },
+      "actualChangedBody": {
+        "status": 200,
+        "data": {
+          "result": {
+            "kind": "text",
+            "sha256": "5178cbd3f2b39a2db25e2961cae03d6e38379f7c1c977324114796a99a01aa51",
+            "version": 1,
+            "effectId": "effect:356b712a757543a2350a7a13b151c2c46bfb7d62a56670638637473f157b10e7",
+            "mimeType": "application/json",
+            "resultId": "result:b551411d79778a1e5a378d9b6f17c3e7d39324008a5683fc30718b8d1496ae2e",
+            "expiresAt": "2026-10-04T22:55:01.712771+08:00",
+            "byteLength": 175,
+            "chunkCount": 1
+          }
+        }
+      },
+      "beforeChangedBody": {
+        "turn": {
+          "server_turn_id": "aeeeb3b7-dbf0-4678-b470-0a464242d506",
+          "local_project_id": "p7b-isolated-project",
+          "server_execution_status": "externally_completed",
+          "latest_request_id": "l1b-text-request",
+          "latest_step_sequence": 1,
+          "latest_request_hash": "44a8bf236605aecd2624c6f994ac28c0962e3162c1663485b37e0ed78fca1f6d",
+          "provider_call_count": 1,
+          "bounded_failure_code": null
+        },
+        "request": {
+          "server_turn_id": "aeeeb3b7-dbf0-4678-b470-0a464242d506",
+          "request_id": "l1b-text-request",
+          "step_sequence": 1,
+          "request_hash": "44a8bf236605aecd2624c6f994ac28c0962e3162c1663485b37e0ed78fca1f6d"
+        },
+        "effect": {
+          "effect_id": "effect:356b712a757543a2350a7a13b151c2c46bfb7d62a56670638637473f157b10e7",
+          "kind": "text",
+          "request_digest": "10acddf454518016bffe2025afe11d4dec1643a14dc4d519c01f3a7b0b6fab16",
+          "execution_state": "succeeded",
+          "latest_attempt_id": "0bfdc11b-5e7c-472e-89e4-32134838730b",
+          "cancel_requested_at": null,
+          "local_abort_observed_at": null
+        },
+        "result": {
+          "effectId": "effect:356b712a757543a2350a7a13b151c2c46bfb7d62a56670638637473f157b10e7",
+          "resultId": "result:b551411d79778a1e5a378d9b6f17c3e7d39324008a5683fc30718b8d1496ae2e",
+          "version": 1,
+          "sha256": "5178cbd3f2b39a2db25e2961cae03d6e38379f7c1c977324114796a99a01aa51",
+          "published": true,
+          "acknowledged": false
+        }
+      },
+      "afterChangedBody": {
+        "turn": {
+          "server_turn_id": "aeeeb3b7-dbf0-4678-b470-0a464242d506",
+          "local_project_id": "p7b-isolated-project",
+          "server_execution_status": "externally_completed",
+          "latest_request_id": "l1b-text-request",
+          "latest_step_sequence": 1,
+          "latest_request_hash": "44a8bf236605aecd2624c6f994ac28c0962e3162c1663485b37e0ed78fca1f6d",
+          "provider_call_count": 1,
+          "bounded_failure_code": null
+        },
+        "request": {
+          "server_turn_id": "aeeeb3b7-dbf0-4678-b470-0a464242d506",
+          "request_id": "l1b-text-request",
+          "step_sequence": 1,
+          "request_hash": "44a8bf236605aecd2624c6f994ac28c0962e3162c1663485b37e0ed78fca1f6d"
+        },
+        "effect": {
+          "effect_id": "effect:356b712a757543a2350a7a13b151c2c46bfb7d62a56670638637473f157b10e7",
+          "kind": "text",
+          "request_digest": "10acddf454518016bffe2025afe11d4dec1643a14dc4d519c01f3a7b0b6fab16",
+          "execution_state": "succeeded",
+          "latest_attempt_id": "0bfdc11b-5e7c-472e-89e4-32134838730b",
+          "cancel_requested_at": null,
+          "local_abort_observed_at": null
+        },
+        "result": {
+          "effectId": "effect:356b712a757543a2350a7a13b151c2c46bfb7d62a56670638637473f157b10e7",
+          "resultId": "result:b551411d79778a1e5a378d9b6f17c3e7d39324008a5683fc30718b8d1496ae2e",
+          "version": 1,
+          "sha256": "5178cbd3f2b39a2db25e2961cae03d6e38379f7c1c977324114796a99a01aa51",
+          "published": true,
+          "acknowledged": false
+        }
+      },
+      "unchangedJournal": true,
+      "providerExecutions": 1
+    },
+    {
+      "id": "C",
+      "expected": "Real client persistence before POST; reload queries/redelivers original request; no second identity or paid POST grant",
+      "verdict": "not_run",
+      "reason": "Stopped at first product divergence"
+    },
+    {
+      "id": "D",
+      "expected": "Uncertainty remains explicit; exact replay cannot acquire fresh execution; no new Provider submission",
+      "verdict": "not_run",
+      "reason": "Stopped at first product divergence"
+    },
+    {
+      "id": "E",
+      "expected": "Durable cancel intent; local abort does not prove Provider cancellation; late terminal observation preserves execution facts",
+      "verdict": "not_run",
+      "reason": "Stopped at first product divergence"
+    },
+    {
+      "id": "F",
+      "expected": "Complete immutable result; same-result GET; exact and duplicate ACK converge; conflicting identity/version/hash rejected; incomplete/unavailable/expired remain explicit; zero extra execution",
+      "verdict": "not_run",
+      "reason": "Stopped at first product divergence"
+    },
+    {
+      "id": "G",
+      "expected": "Exact action/request/source identity through real route/RPC; immutable result and no duplicate execution",
+      "verdict": "not_run",
+      "reason": "Stopped at first product divergence"
+    }
+  ],
+  "firstDivergence": {
+    "id": "P7B-1-D1",
+    "scenario": "B",
+    "classification": "product / real Text route result replay ordering",
+    "severity": "P2",
+    "expected": "Changed Provider body under the same request identity must fail closed with 409",
+    "actual": "200 with the original result manifest; Journal/effect/result remain unchanged; one stub execution total",
+    "rootCause": "requests/handler.ts lines 118-126 returns escrow before Provider request parsing, request hash calculation and acquireAgentTurnRequest conflict validation",
+    "sourceIntroduction": "c86f1dc0 (P3B result escrow wiring); product source unchanged by this task and by P7A rewrite",
+    "productFixPerformed": false,
+    "acceptanceStopped": true
+  },
+  "gates": {
+    "adjacentUnit": {
+      "files": 19,
+      "tests": 390,
+      "status": "pass"
+    },
+    "typecheck": "pass",
+    "lint": "pass",
+    "productionBuild": "pass (clean executed build in runIdentity)",
+    "diffCheck": "pass",
+    "frozenP7AHashes": "unchanged",
+    "fullUnit": "not_run: no product source changes",
+    "normalChromium": "not_run: no product/UI changes",
+    "p7aTrajectory": "not_run: no dependent contract change or regression evidence"
+  },
+  "attempts": [
+    {
+      "directory": "output/playwright/p7b-l1b/2026-10-03T14-43-25.331Z-30096",
+      "sourceSha": "9fef2dd16a3c7671b501065fdfe16b06e2da8a27",
+      "verdict": "invalid_run",
+      "reason": "Isolated production build failed; see sanitized build.log",
+      "scenariosExecuted": []
+    },
+    {
+      "directory": "output/playwright/p7b-l1b/2026-10-03T14-46-19.125Z-34728",
+      "sourceSha": "9fef2dd16a3c7671b501065fdfe16b06e2da8a27",
+      "verdict": "invalid_run",
+      "reason": "Real isolated Auth signup/session failed",
+      "scenariosExecuted": []
+    },
+    {
+      "directory": "output/playwright/p7b-l1b/2026-10-03T14-54-29.089Z-22228",
+      "sourceSha": "65a67f742e63f408d66df077548ce39bb7726628",
+      "verdict": "product_blocker",
+      "reason": "First product divergence in B; no acceptance retry",
+      "scenariosExecuted": [
+        "A",
+        "B"
+      ]
+    }
+  ],
+  "artifactIndex": [
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-43-25.331Z-30096/verdict.json",
+      "sha256": "fe5453eaa05a4889577cfe8e555604939aa92c48c10fa41c78c8d56d7025896e",
+      "byteLength": 4993
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-43-25.331Z-30096/environment.json",
+      "sha256": "320fe664c5989f8f6b691d29e37edebd2260d1e1999efacaeef7dbbb0ddd395f",
+      "byteLength": 3979
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-43-25.331Z-30096/build.log",
+      "sha256": "6adb5aa0fc9f0c0fcebc74ada120210507b58956cf8beff76f0d5ff4d2fbdf4b",
+      "byteLength": 8192
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-46-19.125Z-34728/verdict.json",
+      "sha256": "0c0a33886649ae3649c0fe5e91126c7e1afab15eac209da9eac526a61bb0e74a",
+      "byteLength": 5459
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-46-19.125Z-34728/environment.json",
+      "sha256": "4ddeca7babd68b54209a0a184bf22e7f92b8d2c64ac3a78c1f9171fa572b6f4f",
+      "byteLength": 3979
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-46-19.125Z-34728/build.log",
+      "sha256": "66d4cee17e0981ef0f251b20d6feca3613a536496c10fdfb77e29938bb73763a",
+      "byteLength": 1474
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-54-29.089Z-22228/verdict.json",
+      "sha256": "5bfdf03c1135ca5769656bac1534c0653811897fe1cd973a7fcfc222112e74ae",
+      "byteLength": 34524
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-54-29.089Z-22228/scenario-A.json",
+      "sha256": "ee58c0bc45cdf1c69bd0de116c427925256ab61c90b5824291c36b4a4c60044b",
+      "byteLength": 3914
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-54-29.089Z-22228/scenario-B.json",
+      "sha256": "23c6302ef705aa2905fdddabe259a2ef2b0f7f6e6d7c8320b2e7cd8256c6c665",
+      "byteLength": 9278
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-54-29.089Z-22228/environment.json",
+      "sha256": "75d082d858ba18309a0c1d9745d35503446668a3a9573048f598bdabcc8e9e5d",
+      "byteLength": 16029
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-54-29.089Z-22228/build.log",
+      "sha256": "9a3b77a540463aadb7b31af78568885e0e4d1bff335a4ad3c7386216aa428b5a",
+      "byteLength": 1474
+    },
+    {
+      "path": "output/playwright/p7b-l1b/2026-10-03T14-54-29.089Z-22228/server.log",
+      "sha256": "6d9d4d2a46d69738a60e13f3d96aca1a7f0d2761dcbd19eebef18f2bd2c7af8d",
+      "byteLength": 155
+    },
+    {
+      "path": "output/playwright/p7b-l1b/adjacent-unit.log",
+      "sha256": "e493005512e97f171024955b28d0686ca82c2e7daa66d4eee8c2722c7620a048",
+      "byteLength": 212
+    },
+    {
+      "path": "output/playwright/p7b-l1b/auth-setup-diagnosis/environment.json",
+      "sha256": "90dfef0619b0d946e1eab1d51406f4bd911be2280ff34d5de56ae772d7ab959b",
+      "byteLength": 3979
+    },
+    {
+      "path": "output/playwright/p7b-l1b/auth-setup-diagnosis-2/environment.json",
+      "sha256": "17ee1170d51330e535a12d41dfe1e187c8d7684678eff20a56d27e012340eb44",
+      "byteLength": 3979
+    },
+    {
+      "path": "output/playwright/p7b-l1b/auth-setup-verified/environment.json",
+      "sha256": "1b35abf5e8ccdc0f4cc0e72a07510d904760be833bc2af52be739281b6459be5",
+      "byteLength": 16029
+    },
+    {
+      "path": "output/playwright/p7b-l1b/lint.log",
+      "sha256": "687ce35d8415cb0188b137a7db248d79767c2095623d1b5c16dfd59d407092c4",
+      "byteLength": 37
+    },
+    {
+      "path": "output/playwright/p7b-l1b/setup-2/setup-failure.json",
+      "sha256": "c64dc532e10859b523972698c9511e613e5f6235a2361474c16518885b368682",
+      "byteLength": 853
+    },
+    {
+      "path": "output/playwright/p7b-l1b/setup-3/environment.json",
+      "sha256": "f9c2f364bf6c4676cd3a363f406dc424fc90036f76b9477de2b439c5a335826f",
+      "byteLength": 3979
+    },
+    {
+      "path": "output/playwright/p7b-l1b/typecheck.log",
+      "sha256": "98a6b8d6ee93036ed179cfb17a82fab550e4c0c34b3caf3fe1380de7ecdff91f",
+      "byteLength": 46
+    },
+    {
+      "path": "output/playwright/p7b-l1b/setup-notes.json",
+      "sha256": "fd2f5e149fd7abd2ae55af4107f5aaa2bd467316eed7f2fee772003a09e0de0c",
+      "byteLength": 1436
+    }
+  ],
+  "rawArtifactsLocation": "output/playwright/p7b-l1b",
+  "limits": [
+    "Remote migration/schema state unverified: authentication failures",
+    "No production Journal fault injection",
+    "No L2/L3 or L4",
+    "No Kong/hosted Supabase/Vercel path",
+    "Local Auth has Windows single-listener compatibility shim"
+  ],
+  "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main."
+}
