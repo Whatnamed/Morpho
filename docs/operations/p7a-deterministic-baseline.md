@@ -1,5 +1,59 @@
 # P7A deterministic baseline — validating（2026-10-03）
 
+## D1 修复与原冻结轨迹重跑（当前结果）
+
+**D1 已修复；deterministic T2→T4 闭环通过；normal Chromium gate 未通过。**
+P7 保持 `validating`，没有 merge main 或开始 P7B。
+
+- 本轮 reviewed base：`9c415903c4b79a91c12b68018ad7a9cd8f289ce2`。
+- D1 fix：`1bb15d28aea5ed40c8500cf1623a6b8e095323e6`；Eval locator correction：
+  `f795ed8fec0cb7500200e18555ac6e438ed3a394`。
+- 最终实测干净 build：`msVqpXKF-ZQeMxB1Q2ZO1`（source = `f795ed8…`）；source-tree
+  `b40805d939571ffe2d1797af88ada0d6d8b5479af592f9b041fc32e01c538eac`；artifact
+  `3567961857e95e7c2e456ec9bae782115fc49daff8c4c34684eb62079401c429`。
+- [本轮机器可读 verdict、build/run identity、最小证据与 artifact hashes](./p7a-evidence/d1-rerun.json)。
+
+Concurrency 单独冻结 raw `conversationCompaction.summaryRevisionId`；现有 request/apply
+字段 `expectedPreviousRevisionId` 承载该 identity，不因内容不可用而省略。只有现行
+`getUsableConversationSummaryRevision()` 判为 usable 的 revision 才进入 Provider 的
+`previousSummary`，并作为 planning、boundary validation、domain apply 共用的 source 起点。
+存在但 unusable 的历史 revision 保留原样，新 compaction 从完整 usable message range 开始；
+current pointer 指向不存在 revision 时，fresh POST 前和 apply 都 fail closed。
+
+Fresh Recovery v2 boundary 新增可选 `usablePreviousSummarySourceHash`：可用前置内容及其
+source body/order/membership 的 digest，或明确 `null` 表示没有 usable content base。
+旧记录缺失该字段仍可读取、不回填。原始 request/body/hash、raw identity、source range
+在 reload 后保持不变；执行期间真实 pointer/source 变化仍拒绝应用；append-only tail 允许；
+Summary 已保存但 ACK 未完成时复用 current 同一 revision。**Workspace schema 18、Recovery
+version 2 均不变；无 Workspace 或数据库 migration。**
+
+Regression 及工程验证：targeted compaction/Recovery/routes **12 files / 128 tests pass**；
+full unit **241 files / 2544 tests pass**；typecheck、lint、production build、diff check pass。
+产品代码只有 D1 fix；后续 commit 只修改 Eval locator / evidence documentation。
+
+本轮第 14 次总尝试（D1 后首次）通过 draft discard/apply，但 T4.4 的
+`.confirm-card.first()` 指向保留的旧 Compare card。失败 UI 数据证明目标按钮存在于后面的
+真实确认卡，归因 **Eval driver**，没有证明第二个产品 blocker。仅把 locator 限定到含目标
+动作的卡；全部 frozen contract/fixture/oracle/case 五个文件 hash 未改变，未删除历史 Summary。
+第 15 次总尝试 **1/1 pass，17 checkpoints pass**：T2 source/lineage/partial/reload/default →
+T4 stable references、pending/discard/apply、upstream review/hide、单引用 refresh、copy review、
+export/reopen。该 slice 没有新的产品级 first divergence。每次 retries/rescue = 0；不把总尝试
+计数解释为一次运行。Paid Provider calls/cost 均为 **0**。
+
+Normal Chromium 两次完整运行均为 **75 pass / 1 fail**，失败不同：首次在关闭 writer tab
+后 reload 的 Import button 仍 disabled；复查该项通过，但 P3B Text reload 观察到两个不同
+requestId 的 `/requests` POST（预期一个）。与 D1 的关系及产品/driver 根因尚未确认；保留
+两次失败，不修第二产品问题，不继续第三次完整运行取最好结果。`f795ed8…` commit 正文
+提前写成首次 Chromium 76 pass 是记录错误；实际结果以本报告及 log hashes 为准。
+
+本轮 raw screenshots/state/wire/output zip 均仅留在 ignored `output/playwright/`，未新增
+raw archive 到 Git；原 `evidence.zip` SHA-256 未变。本轮**没有 history rewrite**。最终 P7A
+closeout 准备 ff 到 main 前，必须统一重建 task commit graph，使该既有 binary blob 完全不在
+将要合入的历史中，仅追加 `git rm` 不够。L1b/L2/L3/L4、production Journal、human acceptance
+与 P7B 仍未执行。
+
+## 原始冻结后基线（历史失败证据）
+
 **T2 必跑切片通过；T2→T4 闭环未完成。** T4 首次生成 draft 前出现真实产品
 `summary_revision_conflict`，按 P7A stop rule 保留失败并停止产品修改。P7 不是 accepted，
 没有开始 P7B，没有 merge main。
@@ -28,7 +82,7 @@ npm.cmd run test:p7
 node scripts/diagnose-p7-compaction.mjs
 ```
 
-`test:p7` 当前应报告失败；不得换成 golden / ASCII / 缩短历史的 Workspace 来隐藏阻塞。
+初始 `e62aca59…` 的 `test:p7` 报告失败；当前结果见上述 D1 rerun，原失败不覆盖。
 最后的 evidence/docs commit 另含 diagnostic loader 的 lint 命名修正，不改变被测产品。
 已执行证据绑定上述 build/implementation，不宣称 docs head 是另一个已执行 build。
 

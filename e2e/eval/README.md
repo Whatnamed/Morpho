@@ -20,11 +20,14 @@ Normal Chromium collection explicitly excludes this trajectory; the existing Qua
 is unchanged. Mock failures never authorize real traffic. Missing case assets/hash mismatches,
 unhandled AI endpoints, mock script overrun or changed contract locks invalidate the run.
 
-The current baseline exposes a product `summary_revision_conflict` before the first Delivery draft.
-The P7 test therefore intentionally remains **failing**. `node scripts/diagnose-p7-compaction.mjs`
-reproduces the unchanged current-case Summary pointer versus absent planner base without any
-Provider call. Later T4 nodes are implemented but `not_run`; see the baseline report, not test code,
-for executed coverage. Do not switch to an ASCII/golden/short-history fixture to hide this failure.
+The original baseline exposed false `summary_revision_conflict` before the first Delivery draft.
+The D1 fix separates raw current identity from usable Summary content; the latest unchanged-contract
+T2→T4 run passes all 17 checkpoints, including export/reopen. One driver-only correction scopes the
+T4.4 confirmation action to its live card instead of the retained historical Compare card.
+`node scripts/diagnose-p7-compaction.mjs` now checks that identity/content separation without any
+Provider call. The original failure and interrupted driver run remain evidence. Normal Chromium
+still has an unresolved gate failure; see the baseline report for both runs and attribution limits.
+Do not switch to an ASCII/golden/short-history fixture to hide a failure. P7 remains validating.
 
 `T2→T4` is a continuous deterministic **slice**: it reads current route, selects real A/M/X,
 generates two images with one permanent injected failure, verifies exact pixels/input roles and
