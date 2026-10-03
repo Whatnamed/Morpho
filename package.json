@@ -22,6 +22,7 @@
     "start:evidence": "node ./scripts/start-production.mjs --strict",
     "test": "vitest run",
     "test:e2e": "playwright test --project=chromium",
+    "test:p7": "playwright test --project=p7 --workers=1 --retries=0",
     "test:e2e:build": "npm run build && npm run test:e2e",
     "test:prompt-cache": "node scripts/test-prompt-cache-compatibility.mjs",
     "typecheck": "tsc --noEmit",

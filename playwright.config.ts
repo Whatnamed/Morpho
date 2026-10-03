@@ -40,13 +40,20 @@ export default defineConfig({
       // The performance baselines are measurement, not acceptance. They never run in
       // CI: a perf number from a shared, virtualized runner would be worse than no
       // number because it would look official.
-      testIgnore: /performance-baseline\.spec\.ts|performance-phase5\.spec\.ts|performance-zip-crossover\.spec\.ts/,
+      testIgnore: /performance-baseline\.spec\.ts|performance-phase5\.spec\.ts|performance-zip-crossover\.spec\.ts|p7-integrated\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         // Wide enough that the selection toolbar has somewhere to go without
         // colliding with the AI panel, which is what a design workstation looks like.
         viewport: { width: 1440, height: 900 }
       }
+    },
+    {
+      name: "p7",
+      testMatch: /p7-integrated\.spec\.ts/,
+      timeout: 240_000,
+      retries: 0,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } }
     },
     {
       // Run via `npm run measure:perf:browser`, which pins --workers=1 (a measurement
