@@ -6,7 +6,12 @@ export function createExternalResultFake() {
   const records = new Map<string, { manifest: ExternalResultManifest; binding: unknown; chunks: Map<number, Buffer>; published: boolean; ack: boolean }>();
   const calls: Array<{ operation: string; payload: Record<string, unknown> }> = [];
   let fault: string | undefined;
-  const port: ExternalResultPort = { async call(operation, identity, payload = {}) {
+  const port: ExternalResultPort = {
+    async readBinding(identity) {
+      if (fault === "readBinding") { fault = undefined; throw new ExternalResultError("result_store_unavailable"); }
+      return structuredClone(records.get(`${identity.actorUserId}:${identity.effectId}`)?.binding);
+    },
+    async call(operation, identity, payload = {}) {
     calls.push({ operation, payload });
     if (fault === operation) { fault = undefined; throw new ExternalResultError("result_store_unavailable"); }
     if (operation === "probe") return { ready: true };

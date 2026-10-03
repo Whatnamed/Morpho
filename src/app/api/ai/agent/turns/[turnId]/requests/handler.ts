@@ -24,6 +24,7 @@ import {
   buildAPlusExternalToolActionClaims,
   buildAPlusAgentProviderContract,
   hashAPlusAgentExternalRequest,
+  hashAPlusAgentRequestContent,
   normalizeAPlusProviderToolCalls,
   parseAPlusAgentProviderRequest
 } from "@/server/ai/agentTurnProviderRequest";
@@ -115,15 +116,27 @@ export function createAgentTurnRequestPostHandler(
     ) {
       return invalidRequestResponse("localProjectId、requestId 或 stepSequence 格式无效。");
     }
+    let requestContentSha256: string;
+    try { requestContentSha256 = hashAPlusAgentRequestContent(parsedBody.value.providerRequest); }
+    catch { return invalidRequestResponse("Provider Request 内容无效。", "invalid_provider_request"); }
     const effectIdentity: EffectIdentity = { actorUserId: auth.userId,
       effectId: externalEffectId("a-plus", turnId, parsedBody.value.localProjectId, "text",
         parsedBody.value.requestId, parsedBody.value.stepSequence as number), kind: "text" };
     if (dependencies.results) {
       try {
-        const existing = await externalResultResponse(effectIdentity, dependencies.results);
+        const existing = await externalResultResponse(effectIdentity, dependencies.results, undefined, {
+          serverTurnId: turnId, localProjectId: parsedBody.value.localProjectId,
+          requestId: parsedBody.value.requestId, stepSequence: parsedBody.value.stepSequence as number,
+          requestContentSha256
+        });
         if (existing) return existing;
         await dependencies.results.call("probe", effectIdentity);
-      } catch { return NextResponse.json({ code: "result_store_unavailable", recoverable: false }, { status: 503 }); }
+      } catch (error) {
+        const code = error instanceof ExternalResultError &&
+          ["request_id_conflict", "request_content_identity_unavailable"].includes(error.code)
+          ? error.code : "result_store_unavailable";
+        return NextResponse.json({ code, recoverable: false }, { status: code === "request_id_conflict" ? 409 : 503 });
+      }
     }
     const providerRequest = parseAPlusAgentProviderRequest(parsedBody.value.providerRequest);
     if (providerRequest.status === "failed") {
@@ -208,6 +221,7 @@ export function createAgentTurnRequestPostHandler(
 
     return createProviderStreamResponse({
       identity,
+      requestContentSha256,
       providerRequest: externalProviderRequest,
       config: config.config,
       dependencies
@@ -217,6 +231,7 @@ export function createAgentTurnRequestPostHandler(
 
 
 function createProviderStreamResponse(input: {
+  requestContentSha256: string;
   identity: {
     actorUserId: string;
     serverTurnId: string;
@@ -302,7 +317,7 @@ function createProviderStreamResponse(input: {
               actorUserId: input.identity.actorUserId,
               effectId: externalEffectId("a-plus", input.identity.serverTurnId, input.identity.localProjectId,
                 "text", input.identity.requestId, input.identity.stepSequence), kind: "text"
-            }, jsonResult(output), { ...input.identity, status: nextStatus, claims });
+            }, jsonResult(output), { ...input.identity, requestContentSha256: input.requestContentSha256, status: nextStatus, claims });
           }
           enqueue(delivery ? { type: "resultAvailable", requestId: output.requestId,
             stepSequence: output.stepSequence, delivery } : output);

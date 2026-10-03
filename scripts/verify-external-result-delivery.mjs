@@ -77,10 +77,14 @@ try {
   await db.query(`insert into private.agent_turn_request_journal(server_turn_id,request_id,step_sequence,request_hash,
     execution_started_at,execution_expires_at) values($1,'request',1,$2,now(),now()+interval '15 minutes')`,[turn,hash('request')]);
   const text=Buffer.from(JSON.stringify({outputText:'hello',toolCalls:[]}));
-  const binding={serverTurnId:turn,localProjectId:'project',requestId:'request',stepSequence:1,status:'awaitingNextRequest',
+  const binding={serverTurnId:turn,localProjectId:'project',requestId:'request',stepSequence:1,requestContentSha256:hash('client content'),status:'awaitingNextRequest',
     claims:[{toolCallId:'call',actionKind:'image',claimHash:hash('claim'),maxActionCount:1}]};
   const tm=await prepare('text','text',text,binding);await write('text','text',tm,text);
   check((await call('text','text','publish',{resultId:tm.resultId})).state==='available','Text+claims atomic publish');
+  check((await db.query('select binding from public.external_result where actor_user_id=$1 and effect_id=$2',[actor,effect('text')])).rows[0].binding.requestContentSha256===binding.requestContentSha256,'Client content proof durable in existing JSONB binding');
+  check(!(await call('text','text','prepare',{manifest:tm,binding})).error,'Identical content binding remains replayable');
+  check((await call('text','text','prepare',{manifest:tm,binding:{...binding,requestContentSha256:hash('changed client content')}})).error==='result_identity_conflict','Content proof cannot rebind a published result');
+  check((await db.query('select binding from public.external_result where actor_user_id=$1 and effect_id=$2',[actor,effect('text')])).rows[0].binding.requestContentSha256===binding.requestContentSha256,'Rejected content rebind preserves original proof');
   check((await db.query('select count(*)::integer as n from private.agent_turn_external_action_claim where server_turn_id=$1',[turn])).rows[0].n===1,'Original Tool claim recorded');
   await call('text','text','publish',{resultId:tm.resultId});
   check((await db.query('select count(*)::integer as n from private.agent_turn_external_action_claim where server_turn_id=$1',[turn])).rows[0].n===1,'Redelivery cannot duplicate claims');

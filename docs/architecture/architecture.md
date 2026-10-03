@@ -1077,6 +1077,12 @@ Workspace schema version, scheduler, cloud Workspace, Provider guarantee or Proj
   transient. Publication and original Request settlement/Tool claims share a database transaction.
   The final SSE carries a small resultAvailable manifest; the transport downloads/verifies chunks
   before delivering providerOutput. Turn queries restore missing envelopes before local execution.
+  A+ Text POST replay checks the original client Provider-request content SHA-256 in the immutable
+  result JSONB binding before returning or republishing escrow. This proof is independent of current
+  Provider config/model/cache: exact content redelivers without admission, changed content returns
+  `409 request_id_conflict`. Missing legacy proof fails closed with
+  `503 request_content_identity_unavailable`; existing same-effect GET retrieval remains available.
+  No result/effect identity, SQL/Journal schema, retention, ACK or paid retry contract changes.
 - Image escrows securely downloaded original Provider bytes, not expiring remote URLs. New A+ and
   independent Image responses return manifests. Recovery can retrieve a known GrsAI task into
   escrow using GET only. Result reads precede current config/quota/admission. Expired escrow cannot

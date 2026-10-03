@@ -9,6 +9,7 @@ import { startIsolatedBoundary, sha256, baseUrl, ports } from "./p7b-l1b-runtime
 import { readBuildProvenance } from "./build-provenance.mjs";
 
 const root=process.cwd();
+const boundedD1=process.argv.includes("--slice=AB");
 const git=(args)=>execFileSync("git",args,{encoding:"utf8"}).trim();
 if(git(["status","--porcelain","--untracked-files=no"])) throw Error("Clean tracked source required");
 const sourceSha=git(["rev-parse","HEAD"]);
@@ -62,7 +63,7 @@ try {
       latest_request_hash,provider_call_count,bounded_failure_code from private.agent_turn_journal where server_turn_id=$1`,[turn])).rows,
     requests:(await runtime.db.query("select server_turn_id,request_id,step_sequence,request_hash from private.agent_turn_request_journal where server_turn_id=$1",[turn])).rows,
     effects:(await runtime.db.query("select effect_id,kind,request_digest,execution_state,latest_attempt_id,cancel_requested_at,local_abort_observed_at from public.external_effect where actor_user_id=$1",[actors[0].userId])).rows,
-    results:(await runtime.db.query("select effect_id,manifest,published_at,acknowledged_at,expires_at from public.external_result where actor_user_id=$1",[actors[0].userId])).rows
+    results:(await runtime.db.query("select effect_id,manifest,binding,published_at,acknowledged_at,expires_at from public.external_result where actor_user_id=$1",[actors[0].userId])).rows
   });
   const scenario=async(id,fn)=>{
     const start=http.length;
@@ -107,8 +108,11 @@ try {
       assert.equal(state.requests.length,1); assert.equal(state.requests[0].request_id,body.requestId);
       assert.equal(state.requests[0].step_sequence,1); assert.match(state.requests[0].request_hash,/^[a-f0-9]{64}$/);
       assert.equal(state.results.length,1); assert.ok(state.results[0].published_at);
+      assert.match(state.results[0].binding.requestContentSha256,/^[a-f0-9]{64}$/);
       const replay=await request(path,body); assert.equal(replay.status,200);
       assert.equal(replay.data.result.resultId,state.results[0].manifest.resultId); assert.equal(runtime.stub.calls.length,1);
+      assert.deepEqual(replay.data.result,state.results[0].manifest);
+      assert.deepEqual(await journal(),state,"Exact completed replay must leave Journal/effect/result unchanged");
       row.originalRequest=body; row.exactReplayResult=replay.data.result;
       row.preConflictJournal=await journal();
       const changed={...body,providerRequest:{...body.providerRequest,input:[{role:"user",content:[{type:"input_text",text:"P7B synthetic CHANGED input"}]}]}};
@@ -117,6 +121,9 @@ try {
       row.changedBodyOutcome=conflict;
       row.frozenJournalUnchangedAfterChangedBody=JSON.stringify(row.preConflictJournal)===JSON.stringify(await journal());
       assert.equal(conflict.status,409,"Same request identity with changed Provider body must be rejected even after result publication");
+      assert.equal(conflict.data.code,"request_id_conflict");
+      assert.equal(Object.hasOwn(conflict.data,"result"),false);
+      assert.equal(row.frozenJournalUnchangedAfterChangedBody,true);
       assert.equal(runtime.stub.calls.length,1);
     });
     sliceComplete=!verdict.firstDivergence;
@@ -124,7 +131,7 @@ try {
   verdict.verdict=verdict.firstDivergence?"product_blocker":"inconclusive";
   verdict.providerStubCalls=runtime.stub.calls;
   for(const s of contract.scenarios.filter(s=>!["A","B"].includes(s.id))) verdict.scenarios.push({id:s.id,expected:s.expected,verdict:"not_run",
-    reason:verdict.firstDivergence?"Stopped at first product divergence":"Not implemented in first slice; no full L1b pass claimed"});
+    reason:verdict.firstDivergence?"Stopped at first product divergence":boundedD1?"Excluded from bounded D1 A/B rerun":"Not implemented in first slice; no full L1b pass claimed"});
   if(!A) verdict.scenarios.push({id:"B",verdict:"not_run",reason:"Stopped at A divergence"});
   await writeFile(resolve(output,"server.log"),server.safeLog);
 } catch(error) {
@@ -132,8 +139,9 @@ try {
 } finally {
   if(runtime) await runtime.stop();
   verdict.sliceComplete=sliceComplete;
+  if(boundedD1) verdict.boundedSlice={scenarios:["A","B"],verdict:sliceComplete?"pass":verdict.verdict};
   await writeFile(resolve(output,"verdict.json"),JSON.stringify(verdict,null,2)+"\n");
 }
 console.log(JSON.stringify({output,verdict:verdict.verdict,firstDivergence:verdict.firstDivergence,sourceSha}));
 // Teardown is already awaited; bypass the portable PG beforeExit hook's implicit code 0.
-process.exit(verdict.verdict==="pass"?0:1);
+process.exit(verdict.verdict==="pass"||(boundedD1&&sliceComplete)?0:1);

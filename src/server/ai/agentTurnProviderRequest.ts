@@ -510,6 +510,13 @@ function parseMessages(value: readonly unknown[]):
   return { status: "ok", value: messages };
 }
 
+/** Original client content identity; independent of current Provider configuration/wire. */
+export function hashAPlusAgentRequestContent(value: unknown): string {
+  return createHash("sha256").update(canonicalJson({
+    contract: "morpho-a-plus-client-request-content-v1", providerRequest: value
+  })).digest("hex");
+}
+
 function canonicalJson(value: unknown): string {
   return JSON.stringify(canonicalize(value));
 }

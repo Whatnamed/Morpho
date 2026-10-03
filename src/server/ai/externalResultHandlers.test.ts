@@ -31,10 +31,11 @@ function fixture(kind: "image" | "text" | "compaction", retrieveImage?: () => Pr
   const imageProvider = vi.fn(async () => ({ status: "ok" as const, blob: new Blob(["original image"], { type: "image/png" }), mimeType: "image/png" }));
   const compactionProvider = vi.fn(async () => ({ ...result, outputText: `\`\`\`json\n${JSON.stringify({ morphoConversationSummary: summary })}\n\`\`\`` }));
   const commonBody = { localProjectId: "project", requestId: "request", stepSequence: 1, actionId: "action" };
+  const acquireRequest = vi.fn(async () => ({ status: "ok" as const, executionGranted: true, replayed: false, snapshot: journal }));
+  const settleRequest = vi.fn(async () => ({ status: "ok" as const, replayed: false, snapshot: { ...journal, status: "externallyCompleted" as const } }));
   const handler = kind === "text" ? createAgentTurnRequestPostHandler({ authenticate: auth, loadConfig: textConfig,
     checkPrivilegedSettlement: () => ({ status: "ok" }), results: fake.port,
-    acquireRequest: vi.fn(async () => ({ status: "ok" as const, executionGranted: true, replayed: false, snapshot: journal })),
-    settleRequest: vi.fn(async () => ({ status: "ok" as const, replayed: false, snapshot: { ...journal, status: "externallyCompleted" as const } })), streamProvider: provider })
+    acquireRequest, settleRequest, streamProvider: provider })
     : kind === "image" ? createAgentTurnImageActionPostHandler({ authenticate: auth, acquire, settle, results, retrieveImage, observeExisting,
       loadConfig: () => ({ status: "ok", config: { apiKey: "fake", baseUrl: "https://fake.test", model: "gpt-image-2" } }), generate: imageProvider })
       : createAgentTurnCompactionActionPostHandler({ authenticate: auth, acquire, settle, results: fake.port,
@@ -44,10 +45,68 @@ function fixture(kind: "image" | "text" | "compaction", retrieveImage?: () => Pr
     promptContractVersion: MORPHO_AGENT_PROMPT_CONTRACT_VERSION } } : kind === "image" ? { ...commonBody, claimCallId: "claim", input: { prompt: "image", images: [] } }
       : { ...commonBody, mode: "manual", sourceStartMessageId: "user", sourceEndMessageId: "assistant",
         messages: [{ id: "user", role: "user", body: "hello" }, { id: "assistant", role: "assistant", body: "world" }] };
-  const call = () => handler(new Request("http://test", { method: "POST", body: JSON.stringify(body) }), { params: Promise.resolve({ turnId }) });
-  return { fake, call, provider, imageProvider, compactionProvider, textConfig, acquire, observeExisting, settle };
+  const call = (requestBody: unknown = body) => handler(new Request("http://test", { method: "POST", body: JSON.stringify(requestBody) }), { params: Promise.resolve({ turnId }) });
+  return { fake, call, body, provider, imageProvider, compactionProvider, textConfig, acquire, acquireRequest, settleRequest, observeExisting, settle };
 }
 describe("P3B consumed handler contracts", () => {
+  it.each(["unchanged", "unavailable", "changed"])("completed Text exact replay with %s config uses durable content proof", async (configState) => {
+    const f = fixture("text"); await (await f.call()).text();
+    const before = structuredClone([...f.fake.records.values()]);
+    const calls = f.fake.calls.length;
+    if (configState === "unavailable") f.textConfig.mockImplementation(() => { throw new Error("unavailable"); });
+    if (configState === "changed") f.textConfig.mockReturnValue({ status: "ok", config: {
+      apiKey: "different", baseUrl: "https://different.test", model: "different", webSearchEnabled: true,
+      contextPolicy: createMorphoAgentContextPolicy()
+    } });
+    const response = await f.call(); expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ result: before[0].manifest });
+    expect(structuredClone([...f.fake.records.values()])).toEqual(before);
+    expect(f.fake.calls.slice(calls).map(c => c.operation)).toEqual(["read"]);
+    expect(f.textConfig).toHaveBeenCalledOnce(); expect(f.provider).toHaveBeenCalledOnce();
+    expect(f.acquireRequest).toHaveBeenCalledOnce(); expect(f.settleRequest).toHaveBeenCalledOnce();
+    expect(before[0].binding).toMatchObject({ requestContentSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+  });
+  it.each([
+    { input: [{ role: "user", content: [{ type: "input_text", text: "changed" }] }] },
+    { input: [] }, { input: null }, { mode: "invalid" }, { unexpected: true },
+    { capabilityIntent: { comparisonAnalysis: true } }, { continuationItems: [] }
+  ])("completed Text changed/malformed content rejects without returning or modifying escrow: %j", async (change) => {
+    const f = fixture("text"); await (await f.call()).text();
+    const before = structuredClone([...f.fake.records.values()]); const calls = f.fake.calls.length;
+    const response = await f.call({ ...f.body, providerRequest: { ...f.body.providerRequest, ...change } });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ code: "request_id_conflict", recoverable: false });
+    expect(structuredClone([...f.fake.records.values()])).toEqual(before);
+    expect(f.fake.calls.slice(calls).map(c => c.operation)).toEqual(["read"]);
+    expect(f.acquireRequest).toHaveBeenCalledOnce(); expect(f.settleRequest).toHaveBeenCalledOnce();
+    expect(f.provider).toHaveBeenCalledOnce(); expect(f.textConfig).toHaveBeenCalledOnce();
+  });
+  it.each(["missing", "missing-digest", "invalid-digest", "storage-failure"])("completed Text %s proof fails closed; GET remains independent", async (proof) => {
+    const f = fixture("text"); await (await f.call()).text();
+    const saved = [...f.fake.records.values()][0];
+    if (proof === "missing") saved.binding = null;
+    if (proof === "missing-digest") saved.binding = { serverTurnId: turnId, requestId: "request" };
+    if (proof === "invalid-digest") saved.binding = { requestContentSha256: "invalid" };
+    if (proof === "storage-failure") f.fake.failNext("readBinding");
+    const before = structuredClone([...f.fake.records.values()]);
+    const response = await f.call(); expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ code: proof === "storage-failure" ? "result_store_unavailable" : "request_content_identity_unavailable", recoverable: false });
+    expect(structuredClone([...f.fake.records.values()])).toEqual(before); expect(f.acquireRequest).toHaveBeenCalledOnce();
+    expect(f.provider).toHaveBeenCalledOnce();
+    const { externalResultResponse } = await import("./externalResultStore");
+    const effectId = saved.manifest.effectId;
+    expect(await (await externalResultResponse({ actorUserId: "actor", effectId, kind: "text" }, f.fake.port))!.json())
+      .toEqual({ result: saved.manifest });
+  });
+  it("changed Text content cannot resume staged publication", async () => {
+    const f = fixture("text"); f.fake.failNext("publish"); await (await f.call()).text();
+    const before = structuredClone([...f.fake.records.values()]);
+    const calls = f.fake.calls.length;
+    const rejected = await f.call({ ...f.body, providerRequest: null });
+    expect(rejected.status).toBe(409); expect(structuredClone([...f.fake.records.values()])).toEqual(before);
+    expect(f.fake.calls.slice(calls).map(c => c.operation)).toEqual(["read"]);
+    expect((await f.call()).status).toBe(200); expect(f.provider).toHaveBeenCalledOnce();
+  });
   it.each(["read", "publish"])("Image %s transient reconciliation twice preserves same result/action then resumes", async (operation) => {
     const fault = { operation: "", code: "result_store_unavailable" };
     const retrieve = vi.fn(async () => new Blob(["original image"], { type: "image/png" }));

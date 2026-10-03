@@ -7,6 +7,7 @@ import {
   buildAPlusAgentProviderContract,
   buildAPlusExternalToolActionClaims,
   hashAPlusAgentExternalRequest,
+  hashAPlusAgentRequestContent,
   hashAPlusExternalToolActionClaim,
   normalizeAPlusProviderToolCalls,
   parseAPlusAgentProviderRequest
@@ -53,6 +54,17 @@ function providerRequestWithOutput(output: string): unknown {
 }
 
 describe("A+ Provider continuation contract", () => {
+  it("client content proof normalizes object keys but preserves message/order/continuation/optional content", () => {
+    const original = providerRequestWithOutput("original output") as Record<string, unknown>;
+    const hash = hashAPlusAgentRequestContent(original);
+    expect(hashAPlusAgentRequestContent(Object.fromEntries(Object.entries(original).reverse()))).toBe(hash);
+    expect(hashAPlusAgentRequestContent(providerRequestWithOutput("changed output"))).not.toBe(hash);
+    expect(hashAPlusAgentRequestContent({ ...original, input: [] })).not.toBe(hash);
+    expect(hashAPlusAgentRequestContent({ ...original, continuationItems: [...original.continuationItems as unknown[]].reverse() })).not.toBe(hash);
+    expect(hashAPlusAgentRequestContent({ ...original, capabilityIntent: { comparisonAnalysis: true } })).not.toBe(hash);
+    expect(hashAPlusAgentRequestContent({ ...original, taskContract: {} })).not.toBe(hash);
+    expect(() => hashAPlusAgentRequestContent({ input: Infinity })).toThrow();
+  });
   it("accepts a complete Function Call and terminal local Result pair", () => {
     const parsed = parseAPlusAgentProviderRequest(
       providerRequestWithOutput('{"status":"completed"}')

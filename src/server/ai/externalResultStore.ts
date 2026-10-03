@@ -14,12 +14,14 @@ export type ResultBinding = Readonly<{
   localProjectId: string;
   requestId: string;
   stepSequence: number;
+  requestContentSha256?: string;
   actionId?: string;
   actionHash?: string;
   status?: "awaitingNextRequest" | "externallyCompleted";
   claims?: readonly { toolCallId: string; actionKind: string; claimHash: string; maxActionCount: number }[];
 }>;
 export type ExternalResultPort = Readonly<{
+  readBinding?(identity: EffectIdentity): Promise<unknown>;
   call(operation: "probe" | "prepare" | "write" | "publish" | "read" | "chunk" | "ack",
     identity: EffectIdentity, payload?: Record<string, unknown>): Promise<Record<string, unknown>>;
 }>;
@@ -30,6 +32,15 @@ export class ExternalResultError extends Error {
   }
 }
 export const externalResultStore: ExternalResultPort = {
+  async readBinding(identity) {
+    const created = createPrivilegedServerSupabaseClient();
+    if (created.status === "failed") throw new ExternalResultError("result_store_unavailable");
+    const result = await created.client.from("external_result").select("binding")
+      .eq("actor_user_id", identity.actorUserId).eq("effect_id", identity.effectId)
+      .abortSignal(AbortSignal.timeout(10_000)).maybeSingle();
+    if (result.error) throw new ExternalResultError("result_store_unavailable");
+    return result.data?.binding;
+  },
   async call(operation, identity, payload = {}) {
     const created = createPrivilegedServerSupabaseClient();
     if (created.status === "failed") throw new ExternalResultError("result_store_unavailable");
@@ -95,10 +106,23 @@ export function jsonResult(value: unknown): Blob {
 /** Read-only delivery never acquires a Provider execution. Expired identities are tombstones. */
 export async function externalResultResponse(
   identity: EffectIdentity, store: ExternalResultPort = externalResultStore,
-  retrieveImage?: () => Promise<Blob | undefined>
+  retrieveImage?: () => Promise<Blob | undefined>,
+  expectedTextBinding?: Pick<ResultBinding, "serverTurnId" | "localProjectId" | "requestId" | "stepSequence"> & { requestContentSha256: string }
 ): Promise<Response | undefined> {
   let row = await store.call("read", identity);
   if (row.state === "absent") return undefined;
+  if (expectedTextBinding && row.state !== "expired") {
+    // Check before delivery AND staged publication. Missing legacy proof is not an exact replay.
+    const binding = await store.readBinding?.(identity);
+    if (!binding || typeof binding !== "object" || !("requestContentSha256" in binding) ||
+      typeof binding.requestContentSha256 !== "string" || !/^[a-f0-9]{64}$/.test(binding.requestContentSha256)) {
+      throw new ExternalResultError("request_content_identity_unavailable");
+    }
+    const stored = binding as Record<string, unknown>;
+    if (Object.entries(expectedTextBinding).some(([key, value]) => stored[key] !== value)) {
+      throw new ExternalResultError("request_id_conflict");
+    }
+  }
   if (row.state === "unavailable" && isExternalResultManifest(row.manifest)) {
     // Complete chunks survive a lost publish/Journal response. Resume only stored publication.
     try { row = await store.call("publish", identity, { resultId: row.manifest.resultId }); }
