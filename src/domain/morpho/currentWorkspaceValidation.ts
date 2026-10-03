@@ -458,24 +458,17 @@ function validateDeliverySectionDrafts(
     requireKeyId(id, draft.id, path, add);
     validateObjectRef(draft.deliveryObjectId, `${path}.deliveryObjectId`, objects, "delivery", add);
     requireString(draft.sectionId, `${path}.sectionId`, add);
-    if (typeof draft.deliveryObjectId === "string" && typeof draft.sectionId === "string" && objects) {
-      const delivery = objects[draft.deliveryObjectId];
-      if (isRecord(delivery) && Array.isArray(delivery.sections) &&
-          !delivery.sections.some((section) => isRecord(section) && section.id === draft.sectionId)) {
-        add(`${path}.sectionId`, "Delivery section draft target section does not exist.");
-      }
-    }
+    // Historical dependencies remain readable; applicability guards pending writes.
     for (const field of ["userMessageId", "assistantMessageId", "narrative", "createdAt", "updatedAt"] as const) {
       requireString(draft[field], `${path}.${field}`, add);
     }
     requireEnum(draft.status, `${path}.status`, ["pending", "applied", "discarded"], add);
-    validateIdArray(draft.referenceIds, `${path}.referenceIds`, add, (referenceId, itemPath) =>
-      validateRequiredRef(referenceId, itemPath, references, "Delivery reference", add));
+    validateIdArray(draft.referenceIds, `${path}.referenceIds`, add);
     requireRecord(draft.sourceFingerprints, `${path}.sourceFingerprints`, add);
     validateArray(draft.captions, `${path}.captions`, add, (rawCaption, captionPath) => {
       const caption = requireRecord(rawCaption, captionPath, add);
       if (!caption) return;
-      validateRequiredRef(caption.referenceId, `${captionPath}.referenceId`, references, "Delivery reference", add);
+      requireString(caption.referenceId, `${captionPath}.referenceId`, add);
       requireString(caption.caption, `${captionPath}.caption`, add);
     });
     validateArray(draft.suggestedGaps, `${path}.suggestedGaps`, add, (rawGap, gapPath) => {

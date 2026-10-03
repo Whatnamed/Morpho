@@ -1,4 +1,6 @@
 import { isExternalResultManifest } from "@/shared/externalResultProtocol";
+import { isDeliveryGenerationBaseline } from "./deliveryInspection";
+import { hashProductValue } from "@/shared/agentProductHash";
 import { normalizeAgentTaskFulfillment, isAgentReadReceipt } from "@/shared/agentReadCoverage";
 import { isVisualLineageSnapshot, isVisualProviderInputManifest } from "../operations/visualLineage";
 import type {
@@ -446,6 +448,7 @@ function validateDocumentFragmentSource(value: unknown, path: string, add: Works
 
 function validateDeliverySection(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
   const item = record(value, path, add); if (!item) return;
+  optional(item.copyReviewReferenceIds, `${path}.copyReviewReferenceIds`, add, idArray);
   id(item.id, `${path}.id`, add);
   string(item.title, `${path}.title`, add);
   optionalString(item.purpose, `${path}.purpose`, add);
@@ -550,6 +553,8 @@ function validateRelation(value: unknown, path: string, add: WorkspaceContractIs
 
 function validateDeliveryReference(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
   const item = record(value, path, add); if (!item) return;
+  optionalEnum(item.copyReview, `${path}.copyReview`, ["needsReview", "reviewed"], add);
+  optional(item.sourceBaseline, `${path}.sourceBaseline`, add, validateSourceSemanticSnapshot);
   id(item.id, `${path}.id`, add);
   optionalId(item.deliveryObjectId, `${path}.deliveryObjectId`, add);
   optionalId(item.sectionId, `${path}.sectionId`, add);
@@ -571,6 +576,21 @@ function validateDeliveryReference(value: unknown, path: string, add: WorkspaceC
 
 function validateDeliveryReferenceSnapshot(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
   const item = record(value, path, add); if (!item) return;
+  optional(item.provenance, `${path}.provenance`, add, (raw, provenancePath, issue) => {
+    const provenance = record(raw, provenancePath, issue); if (!provenance) return;
+    enumValue(provenance.status, `${provenancePath}.status`, ["recorded", "unknown", "unverified"], issue);
+    optionalEnum(provenance.conclusionState, `${provenancePath}.conclusionState`, ["active", "needsVerification", "superseded", "archived"], issue);
+    optionalEnum(provenance.confidence, `${provenancePath}.confidence`, ["supported", "partial", "needsVerification"], issue);
+    optionalEnum(provenance.visualObservation, `${provenancePath}.visualObservation`, ["observed", "notObserved"], issue);
+    if (provenance.visualLineage !== undefined && !isVisualLineageSnapshot(provenance.visualLineage)) issue(`${provenancePath}.visualLineage`, "Invalid frozen visual lineage.");
+    if (provenance.visualInputs !== undefined && !isVisualProviderInputManifest(provenance.visualInputs)) issue(`${provenancePath}.visualInputs`, "Invalid actual visual input provenance.");
+    optionalString(provenance.reviewStatus, `${provenancePath}.reviewStatus`, issue);
+    optional(provenance.evidenceIssues, `${provenancePath}.evidenceIssues`, issue, stringArray);
+    optional(provenance.researchItems, `${provenancePath}.researchItems`, issue, (items, itemsPath, addItem) => {
+      const grouped = record(items, itemsPath, addItem); if (!grouped) return;
+      for (const field of ["findings", "opportunities", "constraints", "openQuestions"] as const) stringArray(grouped[field], `${itemsPath}.${field}`, addItem);
+    });
+  });
   enumValue(item.sourceType, `${path}.sourceType`, OBJECT_TYPES, add);
   string(item.title, `${path}.title`, add);
   optionalString(item.summary, `${path}.summary`, add);
@@ -599,6 +619,9 @@ function validateDeliveryReferenceSnapshot(value: unknown, path: string, add: Wo
 
 function validateDeliverySectionDraft(value: unknown, path: string, add: WorkspaceContractIssueAdder): void {
   const item = record(value, path, add); if (!item) return;
+  if (item.generationBaseline !== undefined && !isDeliveryGenerationBaseline(item.generationBaseline)) add(`${path}.generationBaseline`, "Invalid generation-time delivery dependency baseline.");
+  if (isDeliveryGenerationBaseline(item.generationBaseline) && (item.generationBaseline.deliveryObjectId !== item.deliveryObjectId || item.generationBaseline.sectionId !== item.sectionId ||
+    hashProductValue(item.generationBaseline.referenceIds) !== hashProductValue(item.referenceIds) || hashProductValue(item.generationBaseline.sourceFingerprints) !== hashProductValue(item.sourceFingerprints))) add(`${path}.generationBaseline`, "Generation baseline must match the draft's historical dependency identities.");
   for (const key of ["id", "deliveryObjectId", "sectionId", "userMessageId", "assistantMessageId"] as const) id(item[key], `${path}.${key}`, add);
   idArray(item.referenceIds, `${path}.referenceIds`, add);
   const fingerprints = record(item.sourceFingerprints, `${path}.sourceFingerprints`, add);

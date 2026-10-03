@@ -56,6 +56,8 @@ import { resolveAgentToolAuthority, type AgentToolAuthorityProfile } from "./age
 import type { AgentTurnHost } from "./agentTurnHost";
 import { createAgentTurnRuntimeState, type AgentTurnRuntimeState } from "./agentTurnRuntimeState";
 import { buildDeliverySectionContext } from "./deliveryPreparationUi";
+import { captureDeliveryGenerationBaseline } from "@/domain/morpho/deliveryInspection";
+import { hashProductValue } from "@/shared/agentProductHash";
 import { collectDocumentExtractsForAi, type AiDocumentExtract } from "./documentContext";
 import {
   buildMorphoAgentUserInput,
@@ -146,6 +148,7 @@ export function snapshotAgentTurnRuntimeFacts(
 ): APlusTurnRecoveryFacts {
   return {
     readReceipts: structuredClone(state.readReceipts), effectReceipts: structuredClone(state.effectReceipts), observationMessages: structuredClone(state.observationMessages),
+    deliveryGenerationEvidence: structuredClone(state.deliveryGenerationEvidence),
     requiredReadState: {
       requiredTools: [...state.requiredReadState.requiredTools],
       requirements: structuredClone(state.requiredReadState.requirements),
@@ -173,6 +176,7 @@ export function restoreAgentTurnRuntimeFacts(
   facts: APlusTurnRecoveryFacts
 ): void {
   state.readReceipts = structuredClone([...(facts.readReceipts ?? [])]);
+  state.deliveryGenerationEvidence = structuredClone([...(facts.deliveryGenerationEvidence ?? [])]);
   state.effectReceipts = structuredClone([...(facts.effectReceipts ?? [])]);
   state.observationMessages = structuredClone([...(facts.observationMessages ?? [])]);
   state.requiredReadState = {
@@ -364,7 +368,7 @@ ${JSON.stringify(deliverySectionContext).slice(0, 8000)}
   if (deliverySectionContext) {
     const serialized = JSON.stringify(deliverySectionContext);
     const receipt = sourceReceipt(workspace, deliverySectionContext.deliveryObjectId, "delivery", "initial:delivery", "request");
-    readReceipts.push({ ...receipt, sectionId: deliverySectionContext.sectionId, status: serialized.length > 8000 ? "partial" : "full", representation: "text", range: { start: 0, end: Math.min(serialized.length, 8000), total: serialized.length, ...(serialized.length > 8000 ? { nextStart: 8000 } : {}) } });
+    readReceipts.push({ ...receipt, contentHash: hashProductValue(serialized), sectionId: deliverySectionContext.sectionId, status: serialized.length > 8000 ? "partial" : "full", representation: "text", range: { start: 0, end: Math.min(serialized.length, 8000), total: serialized.length, ...(serialized.length > 8000 ? { nextStart: 8000 } : {}) } });
   }
   const coverageText = `<morpho_input_coverage>
 ${JSON.stringify(readReceipts)}
@@ -532,6 +536,10 @@ ${JSON.stringify(readReceipts)}
     agentWorkLedger: createAgentTurnWorkLedger()
   });
   runtimeState.readReceipts = readReceipts;
+  if (deliverySectionContext) {
+    const baseline = captureDeliveryGenerationBaseline(workspace, deliverySectionContext.deliveryObjectId, deliverySectionContext.sectionId);
+    if (baseline) runtimeState.deliveryGenerationEvidence.push({ receiptId: "initial:delivery", contentHash: hashProductValue(JSON.stringify(deliverySectionContext)), baseline });
+  }
   host.commitWorkspace((current) => ({ workspace: { ...current, ai: { ...current.ai, messages: current.ai.messages.map((message) => message.id === userMessageId && message.providerInputSnapshot ? { ...message, providerInputSnapshot: { ...message.providerInputSnapshot, coverage: structuredClone(readReceipts) } } : message) } }, value: undefined }));
   if (taskContract.requiredReads.length) providerMessages.push({ role: "user", content: [{ type: "input_text", text: `结束前必须核实 requiredReads；完整且当前的输入可满足读取，摘要或部分不能。缺失时调用有界读取工具；失败必须明确未核实。\n${JSON.stringify(taskContract.requiredReads)}` }] });
   if (requiredMemoryUpdates.length > 0) {

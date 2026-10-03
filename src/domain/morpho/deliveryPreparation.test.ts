@@ -238,7 +238,8 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("detects updated, hidden, missing, and asset-missing source states while preserving old snapshots", () => {
-    const base = createInitialWorkspace();
+    const initial = createInitialWorkspace();
+    const base: MorphoWorkspace = { ...initial, assets: { ...initial.assets, "p5-test-image": { id: "p5-test-image", fileName: "p5.png", mimeType: "image/png", size: 1, createdAt: "2026-10-03", storageKey: "p5-test-image", sourceType: "originalImage" } }, objects: { ...initial.objects, "image-soft-rail-v2": { ...(initial.objects["image-soft-rail-v2"] as import("./types").ImageObject), assetId: "p5-test-image" } } };
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections[0]?.id ?? "";
     const added = addObjectsToDeliverySection(base, {
@@ -607,7 +608,7 @@ describe("delivery preparation domain operations", () => {
 
     const applied = applyDeliverySectionDraft(draft.workspace, {
       deliveryObjectId: delivery.id,
-      draftId: draft.draftId,
+      draftId: draft.draftId, acknowledgeReview: true,
       now: "2026-07-02T08:42:00.000Z"
     });
     expect(applied.status).toBe("updated");
@@ -705,7 +706,7 @@ describe("delivery preparation domain operations", () => {
 
     const applied = applyDeliverySectionDraft(draftResult.workspace, {
       deliveryObjectId: delivery.id,
-      draftId: draftResult.draftId,
+      draftId: draftResult.draftId, acknowledgeReview: true,
       now: "2026-07-02T08:43:00.000Z"
     });
     expect(applied.status).toBe("updated");

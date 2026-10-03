@@ -22,6 +22,7 @@ export type AgentTurnConversationContext = {
 };
 
 export type AgentTurnRuntimeState = {
+  deliveryGenerationEvidence: import("./deliveryGenerationEvidence").DeliveryGenerationEvidence[];
   readReceipts: AgentReadReceipt[];
   effectReceipts: AgentEffectReceipt[];
   observationMessages: APlusAgentProviderMessage[];
@@ -64,6 +65,7 @@ export function createAgentTurnRuntimeState(input: {
   agentWorkLedger: AgentTurnWorkLedger;
 }): AgentTurnRuntimeState {
   return {
+    deliveryGenerationEvidence: [],
     readReceipts: [], effectReceipts: [], observationMessages: [],
     conversationContext: input.conversationContext,
     conversationInput: input.conversationInput,

@@ -1,6 +1,9 @@
 import { acknowledgePersistedExternalResult, flushPendingExternalResultAcks } from "./externalResultClient";
 import { evaluateAgentTaskFulfillment, taskFulfillmentNotice } from "./agentTaskFulfillment";
-import { requirementCovered } from "./agentSourceReads";
+import { requirementCovered, sourceReceipt } from "./agentSourceReads";
+import { buildDeliverySectionContext } from "./deliveryPreparationUi";
+import { captureDeliveryGenerationBaseline } from "@/domain/morpho/deliveryInspection";
+import { hashProductValue } from "@/shared/agentProductHash";
 import { materializeContinuationImages } from "./agentContinuationImages";
 import { recordDeliveredVisualObservations } from "@/domain/morpho/visualObservation";
 import { advanceRequiredAgentReadState, buildRequiredAgentReadReminder } from "./agentTaskStrategy";
@@ -1461,6 +1464,21 @@ async function freshContinuationProviderRequest(session: APlusSession): Promise<
   }
   const state = session.prepared.runtimeState;
   const stepSequence = (session.coordinator.getServerSnapshot()?.latestStepSequence ?? 0) + 1;
+  const deliveryTarget = session.turnInput.pendingDeliveryDraftTarget;
+  const delivery = deliveryTarget ? workspace.objects[deliveryTarget.deliveryObjectId] : undefined;
+  const deliveryContext = deliveryTarget && delivery?.type === "delivery" && delivery.visibility === "active"
+    ? buildDeliverySectionContext(workspace, delivery, deliveryTarget.sectionId) : undefined;
+  let deliveryInput: APlusAgentProviderRequest["input"] = [];
+  if (deliveryContext && deliveryTarget) {
+    const serialized = JSON.stringify(deliveryContext), contentHash = hashProductValue(serialized);
+    const receipt = { ...sourceReceipt(workspace, deliveryTarget.deliveryObjectId, "delivery", `continuation:delivery:${stepSequence}`, "request"),
+      contentHash, sectionId: deliveryTarget.sectionId, representation: "text" as const, status: serialized.length > 8000 ? "partial" as const : "full" as const,
+      range: { start: 0, end: Math.min(serialized.length, 8000), total: serialized.length, ...(serialized.length > 8000 ? { nextStart: 8000 } : {}) } };
+    state.readReceipts.push(receipt);
+    const baseline = captureDeliveryGenerationBaseline(workspace, deliveryTarget.deliveryObjectId, deliveryTarget.sectionId);
+    if (baseline) state.deliveryGenerationEvidence.push({ receiptId: receipt.id, contentHash, baseline });
+    deliveryInput = [{ role: "user", content: [{ type: "input_text", text: `<untrusted_delivery_section>\n${serialized.slice(0, 8000)}\n</untrusted_delivery_section>` }] }];
+  }
   const visual = base.taskContract.readContractVersion === 1 ? materializeContinuationImages({ base,
     observations: state.observationMessages, reads: state.readReceipts, effects: state.effectReceipts,
     workspace, contract: base.taskContract, stepSequence }) : undefined;
@@ -1478,7 +1496,7 @@ async function freshContinuationProviderRequest(session: APlusSession): Promise<
   state.requiredReadState = { ...advanced.state, completedTools: state.requiredReadState.completedTools };
   const reminder = advanced.action === "remind" ? `${buildRequiredAgentReadReminder(advanced.missingTools)}\n${JSON.stringify(base.taskContract.requiredReads.filter((requirement) => !requirementCovered(requirement, state.readReceipts, workspace)))}` : "";
   const fresh = { role: "user" as const, content: [{ type: "input_text" as const, text: `<morpho_fresh_context>\n${JSON.stringify(Object.entries(contexts.activityContexts).map(([id, context]) => ({ activityId: id, context: context.kind === "comparison" ? buildProviderComparisonTaskContext(context) : buildProviderTaskContext(context) })))}\n${reminder}\n</morpho_fresh_context>` }] };
-  const request = { ...base, input: [...(visual?.input ?? base.input), fresh] };
+  const request = { ...base, input: [...(visual?.input ?? base.input), fresh, ...deliveryInput] };
   // Persist the newly built body before submission. Coordinator owns exact
   // replay after submission; recovery never reconstructs that active body.
   session.recovery.updateMetadata((metadata) => ({ ...metadata, runtime: { ...metadata.runtime, pendingReadStepSequence: stepSequence, pendingReadIds: state.readReceipts.filter((receipt) => !receipt.delivered && (receipt.kind !== "image" || receipt.requestImageStatus === "materialized")).map((receipt) => receipt.id), providerBaseRequest: { ...request, continuationItems: undefined }, facts: snapshotAgentTurnRuntimeFacts(state) } }));

@@ -146,7 +146,7 @@ describe("P1B-1 review: event Decisions", () => {
     if (refreshed.status !== "updated") throw new Error(refreshed.reason);
     const draft = createDeliverySectionDraft(refreshed.workspace, { deliveryObjectId: delivery.id, sectionId, userMessageId: "user", assistantMessageId: "assistant", narrative: "章节说明", captions: [], suggestedGaps: [] });
     if (draft.status !== "updated") throw new Error(draft.reason);
-    const applied = applyDeliverySectionDraft(draft.workspace, { deliveryObjectId: delivery.id, draftId: draft.draftId });
+    const applied = applyDeliverySectionDraft(draft.workspace, { deliveryObjectId: delivery.id, draftId: draft.draftId, acknowledgeReview: true });
     if (applied.status !== "updated") throw new Error(applied.reason);
     expect(validateCurrentMorphoWorkspace(applied.workspace).status).toBe("ok");
     const removed = removeDeliveryReference(applied.workspace, { deliveryObjectId: delivery.id, referenceId });

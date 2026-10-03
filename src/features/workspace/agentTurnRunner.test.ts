@@ -9,6 +9,8 @@ import { buildAPlusAgentProviderContract, parseAPlusAgentProviderRequest } from 
 import type { ImageObject } from "@/domain/morpho/types";
 
 import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { captureDeliveryGenerationBaseline, inspectDeliveryDraft } from "@/domain/morpho/deliveryInspection";
+import { applyDeliverySectionDraft, updateDeliverySection } from "@/domain/morpho/deliveryPreparation";
 import type {
   AgentTurnJournalSnapshot,
   AgentTurnRequestStreamEvent,
@@ -1962,6 +1964,60 @@ describe("P2B request materialization and Recovery", () => {
     await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
     expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.status).toBe("fulfilled");
     expect(Object.values(fixture.fake.getWorkspace().deliverySectionDrafts)[0]).toMatchObject({ deliveryObjectId: delivery.id, sectionId: section.id });
+  });
+
+  it("binds Delivery Tool output to the delivered A input even when a user edits B during the request", async () => {
+    const fixture = createFixture([]);
+    const delivery = Object.values(fixture.fake.getWorkspace().objects).find((object) => object.type === "delivery")!;
+    if (delivery.type !== "delivery") throw new Error("delivery");
+    const section = delivery.sections.find((item) => item.referenceIds.length)!;
+    fixture.input.pendingDeliveryDraftTarget = { deliveryObjectId: delivery.id, sectionId: section.id };
+    fixture.input.draft = "准备本节交付草稿";
+    const baselineA = captureDeliveryGenerationBaseline(fixture.fake.getWorkspace(), delivery.id, section.id);
+    fixture.coordinatorHost.appendScripts([(request) => {
+      const text = request.providerRequest.input.flatMap((message) => message.content).find((part) => "text" in part && part.text.startsWith("<untrusted_delivery_section>"));
+      if (!text || !("text" in text)) throw new Error("missing actual input");
+      const received = JSON.parse(text.text.split("\n")[1]!) as { existingNarrative?: string; references: Array<{ referenceId: string }> };
+      expect(received.existingNarrative).toBe(section.narrative);
+      fixture.host.commitWorkspace((current) => {
+        const result = updateDeliverySection(current, { deliveryObjectId: delivery.id, sectionId: section.id, narrative: "later manual B" });
+        return { workspace: result.workspace, value: undefined };
+      });
+      return { status: "awaitingNextRequest", toolCalls: [deliveryToolCall("p5-baseline-A", received.references[0].referenceId)] };
+    }, { status: "externallyCompleted", outputText: "草稿已创建，待复核" }]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const workspace = fixture.fake.getWorkspace();
+    const saved = Object.values(workspace.deliverySectionDrafts)[0];
+    expect(saved.generationBaseline).toEqual(baselineA);
+    expect(saved.sourceFingerprints).toEqual(baselineA?.sourceFingerprints);
+    expect(inspectDeliveryDraft(workspace, saved).status).toBe("stale");
+    expect(applyDeliverySectionDraft(workspace, { deliveryObjectId: delivery.id, draftId: saved.id, acknowledgeReview: true }).status).toBe("blocked");
+    expect(fixture.coordinatorHost.executions).toHaveLength(2);
+  });
+
+  it("rematerializes the exact current Delivery chapter and its baseline for a fresh generation request", async () => {
+    const fixture = createFixture([]);
+    const delivery = Object.values(fixture.fake.getWorkspace().objects).find((object) => object.type === "delivery")!;
+    if (delivery.type !== "delivery") throw new Error("delivery");
+    const section = delivery.sections.find((item) => item.referenceIds.length)!;
+    fixture.input.pendingDeliveryDraftTarget = { deliveryObjectId: delivery.id, sectionId: section.id };
+    fixture.input.draft = "准备本节交付草稿";
+    let baselineB: ReturnType<typeof captureDeliveryGenerationBaseline>;
+    fixture.coordinatorHost.appendScripts([() => {
+      fixture.host.commitWorkspace((current) => ({ workspace: updateDeliverySection(current, { deliveryObjectId: delivery.id, sectionId: section.id, narrative: "current B before fresh continuation" }).workspace, value: undefined }));
+      return { status: "awaitingNextRequest", toolCalls: [{ callId: "read-before-generation", name: "read_selected_context", argumentsText: "{}" }] };
+    }, (request) => {
+      const sections = request.providerRequest.input.flatMap((message) => message.content).filter((part) => "text" in part && part.text.startsWith("<untrusted_delivery_section>"));
+      const text = sections.at(-1); if (!text || !("text" in text)) throw new Error("missing chapter");
+      const received = JSON.parse(text.text.split("\n")[1]!) as { existingNarrative: string; references: Array<{ referenceId: string }> };
+      expect(received.existingNarrative).toBe("current B before fresh continuation");
+      baselineB = captureDeliveryGenerationBaseline(fixture.fake.getWorkspace(), delivery.id, section.id);
+      return { status: "awaitingNextRequest", toolCalls: [deliveryToolCall("p5-fresh-B", received.references[0].referenceId)] };
+    }, { status: "externallyCompleted", outputText: "基于 B 创建草稿" }]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    const workspace = fixture.fake.getWorkspace(), saved = Object.values(workspace.deliverySectionDrafts)[0];
+    expect(saved.generationBaseline).toEqual(baselineB);
+    expect(inspectDeliveryDraft(workspace, saved).status).not.toBe("stale");
   });
 
   it("keeps an in-flight continuation frozen while a later legal request reads fresh state", async () => {

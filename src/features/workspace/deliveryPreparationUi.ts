@@ -1,5 +1,6 @@
 import type { DeliveryObject, DeliveryReference, DeliverySection, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import { createDeliveryReferenceSnapshot, resolveDeliveryReferenceState } from "@/domain/morpho/deliveryPreparation";
+import { getOrderedDeliverySectionReferences, inspectDelivery, inspectDeliveryReference, type DeliveryReferenceInspection } from "@/domain/morpho/deliveryInspection";
 
 export type DeliveryReferenceUiState = ReturnType<typeof resolveDeliveryReferenceState>;
 
@@ -9,6 +10,7 @@ export type DeliverySectionAiContext = {
   sectionTitle: string;
   sectionPurpose?: string;
   existingNarrative?: string;
+  inspection: ReturnType<typeof inspectDelivery>;
   openGaps: Array<{ id: string; label: string }>;
   references: Array<{
     referenceId: string;
@@ -18,6 +20,8 @@ export type DeliverySectionAiContext = {
       summary?: string;
       body?: string;
       bodyKind?: "complete" | "excerpt";
+      provenance?: DeliveryReference["snapshot"]["provenance"];
+      sourceRevision?: DeliveryReference["snapshot"]["sourceRevision"];
       sourceFile?: {
         fileObjectId: string;
         title: string;
@@ -33,6 +37,7 @@ export type DeliverySectionAiContext = {
     editorialCaption?: string;
     editorialNote?: string;
     sourceState: DeliveryReferenceUiState["status"];
+    inspection: DeliveryReferenceInspection;
   }>;
   truncated: boolean;
 };
@@ -95,10 +100,7 @@ export function getDeliverySectionReferences(
   workspace: MorphoWorkspace,
   section: DeliverySection
 ): DeliveryReference[] {
-  return section.referenceIds
-    .map((referenceId) => workspace.deliveryReferences[referenceId])
-    .filter((reference): reference is DeliveryReference => Boolean(reference))
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  return getOrderedDeliverySectionReferences(workspace, section);
 }
 
 export function canAddObjectToDelivery(object: MorphoObject): boolean {
@@ -114,6 +116,13 @@ export function buildDeliverySectionContext(
   if (!section || section.referenceIds.length === 0) {
     return undefined;
   }
+  const inspection = inspectDelivery(workspace, delivery);
+  const sectionInspection: ReturnType<typeof inspectDelivery> = {
+    references: Object.fromEntries(section.referenceIds.filter((id) => inspection.references[id]).map((id) => [id, inspection.references[id]])),
+    sections: { [section.id]: inspection.sections[section.id] },
+    drafts: Object.fromEntries(Object.values(workspace.deliverySectionDrafts).filter((draft) => draft.sectionId === section.id && draft.deliveryObjectId === delivery.id && inspection.drafts[draft.id]).map((draft) => [draft.id, inspection.drafts[draft.id]])),
+    openGapIds: delivery.gaps.filter((gap) => gap.status === "open" && (!gap.sectionId || gap.sectionId === section.id)).map((gap) => gap.id)
+  };
 
   return {
     deliveryObjectId: delivery.id,
@@ -121,6 +130,7 @@ export function buildDeliverySectionContext(
     sectionTitle: section.title,
     sectionPurpose: section.purpose,
     existingNarrative: section.narrative,
+    inspection: sectionInspection,
     openGaps: delivery.gaps
       .filter((gap) => gap.status === "open" && (!gap.sectionId || gap.sectionId === section.id))
       .map((gap) => ({ id: gap.id, label: gap.label })),
@@ -132,6 +142,8 @@ export function buildDeliverySectionContext(
         summary: reference.snapshot.summary,
         body: reference.snapshot.body,
         bodyKind: reference.snapshot.bodyKind,
+        provenance: reference.snapshot.provenance,
+        sourceRevision: reference.snapshot.sourceRevision,
         sourceFile: reference.snapshot.sourceFile
           ? {
               fileObjectId: reference.snapshot.sourceFile.fileObjectId,
@@ -150,7 +162,8 @@ export function buildDeliverySectionContext(
       },
       editorialCaption: reference.editorial?.caption,
       editorialNote: reference.editorial?.note,
-      sourceState: resolveDeliveryReferenceState(workspace, reference.id).status
+      sourceState: resolveDeliveryReferenceState(workspace, reference.id).status,
+      inspection: inspectDeliveryReference(workspace, reference)
     })),
     truncated: false
   };
@@ -172,6 +185,8 @@ export function deliverySourceStateLabel(state: DeliveryReferenceUiState["status
       return "原始资产不可用";
     case "sourceUpdated":
       return "当前版本已有更新";
+    case "sourceUnknown":
+      return "来源版本未验证";
   }
 }
 

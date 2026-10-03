@@ -10,6 +10,7 @@ import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore"
 import { collectAiProviderImageAttachments } from "./aiAttachments";
 import type { APlusAgentProviderMessage } from "@/shared/agentTurnJournalProtocol";
 import { buildDeliverySectionContext } from "./deliveryPreparationUi";
+import { captureDeliveryGenerationBaseline } from "@/domain/morpho/deliveryInspection";
 import { getCurrentProjectMemoryRevision, getCurrentStageRecordRevision, reconcileProjectMemory } from "@/domain/morpho/projectMemory";
 
 export function sourceReceipt(workspace: MorphoWorkspace, objectId: string, kind: AgentReadReceipt["kind"], id: string, source: AgentReadReceipt["source"] = "tool"): AgentReadReceipt {
@@ -22,7 +23,7 @@ export async function readAgentWorkspaceSource(input: {
   workspace: MorphoWorkspace; contract?: TurnTaskContract; args: ReadWorkspaceSourceArgs; callId: string;
   generatedObjectIds: readonly string[]; readableObjectIds?: readonly string[]; deliveryTarget?: { deliveryObjectId: string; sectionId: string };
   signal: AbortSignal; blobStore?: BlobStore;
-}): Promise<{ receipt: AgentReadReceipt; text?: string; images?: APlusAgentProviderMessage[] }> {
+}): Promise<{ receipt: AgentReadReceipt; text?: string; images?: APlusAgentProviderMessage[]; deliveryBaseline?: import("@/domain/morpho/types").DeliveryGenerationBaseline }> {
   const { workspace, args } = input;
   const receipt = sourceReceipt(workspace, args.objectId, args.kind, input.callId);
   const scoped = input.contract?.activities.some((activity) => [...activity.sourceObjectIds, ...activity.targetObjectIds, ...activity.referenceObjectIds].includes(args.objectId));
@@ -43,6 +44,7 @@ export async function readAgentWorkspaceSource(input: {
         ...packed.attachments.map((attachment) => ({ type: "input_image" as const, image_url: attachment.dataUrl }))] }] };
   }
   let text: string;
+  let deliveryBaseline: import("@/domain/morpho/types").DeliveryGenerationBaseline | undefined;
   let extractionTruncated = false;
   if (args.kind === "document") {
     if (object.type !== "file" || object.parseStatus !== "parsed" || !object.extractedAssetId) return { receipt: { ...receipt, status: "unavailable" } };
@@ -57,6 +59,7 @@ export async function readAgentWorkspaceSource(input: {
     if (!section || !delivery) return { receipt: { ...receipt, status: "missing" } };
     text = JSON.stringify(section);
     receipt.sectionId = args.sectionId;
+    deliveryBaseline = captureDeliveryGenerationBaseline(workspace, object.id, args.sectionId!);
   } else {
     if (object.type === "file" || object.type === "image") {
       const metadata = JSON.stringify(object);
@@ -82,7 +85,7 @@ export async function readAgentWorkspaceSource(input: {
   if (start >= text.length && text.length > 0) return { receipt: { ...receipt, status: "missing", range: { start: text.length, end: text.length, total: text.length } } };
   const end = Math.min(text.length, start + (args.length ?? 8000));
   return { receipt: { ...receipt, status: start === 0 && end === text.length && !extractionTruncated ? "full" : "partial",
-    representation: "text", extractionTruncated, range: { start, end, total: text.length, ...(end < text.length ? { nextStart: end } : {}) } }, text: text.slice(start, end) };
+    representation: "text", extractionTruncated, range: { start, end, total: text.length, ...(end < text.length ? { nextStart: end } : {}) } }, text: text.slice(start, end), deliveryBaseline };
 }
 
 /** Coverage unions only identical source incarnations, revisions and content. */

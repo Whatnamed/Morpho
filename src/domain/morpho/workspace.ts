@@ -3321,7 +3321,7 @@ function normalizeDeliverySections(
   now: string
 ): DeliverySection[] {
   const remaining = new Set(references);
-  const normalized = sections.map((section, index) => {
+  const normalized: DeliverySection[] = sections.map((section, index) => {
     const referenceIds = Array.isArray(section.referenceIds)
       ? section.referenceIds.filter((referenceId) => {
           if (!remaining.has(referenceId)) {
@@ -3338,6 +3338,7 @@ function normalizeDeliverySections(
       order: index,
       referenceIds,
       narrative: typeof section.narrative === "string" && section.narrative.trim() ? section.narrative : undefined,
+      copyReviewReferenceIds: section.copyReviewReferenceIds,
       createdAt: typeof section.createdAt === "string" ? section.createdAt : now,
       updatedAt: typeof section.updatedAt === "string" ? section.updatedAt : now
     };
@@ -3435,11 +3436,11 @@ function normalizeDeliveryReferences(
         {
           ...reference,
           deliveryObjectId: reference.deliveryObjectId ?? membership?.deliveryObjectId,
-          sectionId: reference.sectionId ?? membership?.sectionId,
-          order: reference.order ?? membership?.order,
+          sectionId: membership?.sectionId ?? reference.sectionId,
+          order: membership?.order ?? reference.order,
           snapshot,
           updatedAt: reference.updatedAt ?? reference.createdAt,
-          sourceFingerprint: reference.sourceFingerprint ?? (source ? createDeliverySourceFingerprint(workspaceForSnapshots, source) : undefined),
+          sourceFingerprint: reference.sourceFingerprint,
           sourceAssetId: reference.sourceAssetId ?? (source ? getDeliveryReferenceAssetId(source) : undefined)
         }
       ];

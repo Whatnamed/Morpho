@@ -275,7 +275,7 @@ function diff(before: unknown, after: unknown, path = "", excluded = new Set<str
     const change = diff(before ?? {}, after ?? {}, `${path}#fields`, excluded);
     return change?.kind === "fields" ? { ...change, optionalEditorial: true } : change;
   }
-  if (/\.(referenceIds|references|memberObjectIds|revisionIds|sourceObjectIds|citationIds)$/.test(path) &&
+  if (/\.(referenceIds|references|copyReviewReferenceIds|memberObjectIds|revisionIds|sourceObjectIds|citationIds)$/.test(path) &&
       Array.isArray(before) && Array.isArray(after) && [...before, ...after].every((id: unknown) => typeof id === "string") &&
       new Set(before).size === before.length && new Set(after).size === after.length) {
     const change = diff(before.map((id: string) => ({ id })), after.map((id: string) => ({ id })), `${path}#ids`, excluded);

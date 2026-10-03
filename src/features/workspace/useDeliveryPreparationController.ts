@@ -15,6 +15,7 @@ import {
   addDeliveryGap,
   addObjectsToDeliverySection,
   applyDeliverySectionDraft,
+  confirmDeliveryCopyReview,
   createDeliveryPreparation,
   createDeliverySection,
   discardDeliverySectionDraft,
@@ -116,7 +117,8 @@ export type DeliveryPreparationController = {
   addGap: (input: { deliveryObjectId: string; sectionId?: string; label: string }) => DeliveryGapMutationResult;
   setGapStatus: (input: { deliveryObjectId: string; gapId: string; status: "open" | "resolved" }) => DeliveryPreparationMutationResult;
   removeGap: (input: { deliveryObjectId: string; gapId: string }) => DeliveryPreparationMutationResult;
-  applyDraft: (input: { deliveryObjectId: string; draftId: string }) => DeliveryPreparationMutationResult;
+  applyDraft: (input: { deliveryObjectId: string; draftId: string; acknowledgeReview?: boolean }) => DeliveryPreparationMutationResult;
+  confirmCopyReview: (input: { deliveryObjectId: string; sectionId: string }) => DeliveryPreparationMutationResult;
   discardDraft: (input: { deliveryObjectId: string; draftId: string }) => DeliveryPreparationMutationResult;
   requestSectionDraft: (input: { deliveryObjectId: string; sectionId: string }) => DeliverySectionDraftRequestResult;
 };
@@ -136,6 +138,7 @@ type DeliveryDomainOperationResult =
   | ReturnType<typeof setDeliveryGapStatus>
   | ReturnType<typeof removeDeliveryGap>
   | ReturnType<typeof applyDeliverySectionDraft>
+  | ReturnType<typeof confirmDeliveryCopyReview>
   | ReturnType<typeof discardDeliverySectionDraft>;
 
 type DeliveryDomainOperationPublicResult<T> = T extends { workspace: MorphoWorkspace } ? Omit<T, "workspace"> : never;
@@ -398,8 +401,14 @@ export function useDeliveryPreparationController({
   );
 
   const applyDraft = useCallback(
-    (input: { deliveryObjectId: string; draftId: string }): DeliveryPreparationMutationResult =>
+    (input: { deliveryObjectId: string; draftId: string; acknowledgeReview?: boolean }): DeliveryPreparationMutationResult =>
       runDomainOperation<ReturnType<typeof applyDeliverySectionDraft>>((current) => applyDeliverySectionDraft(current, input)),
+    [runDomainOperation]
+  );
+
+  const confirmCopyReview = useCallback(
+    (input: { deliveryObjectId: string; sectionId: string }): DeliveryPreparationMutationResult =>
+      runDomainOperation<ReturnType<typeof confirmDeliveryCopyReview>>((current) => confirmDeliveryCopyReview(current, input)),
     [runDomainOperation]
   );
 
@@ -470,6 +479,7 @@ export function useDeliveryPreparationController({
     setGapStatus,
     removeGap,
     applyDraft,
+    confirmCopyReview,
     discardDraft,
     requestSectionDraft
   };

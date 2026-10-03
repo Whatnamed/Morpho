@@ -368,6 +368,8 @@ export type DeliverySection = {
   order: number;
   referenceIds: DeliveryReferenceId[];
   narrative?: string;
+  /** Snapshot refresh never rewrites narrative; explicit manual review clears this. */
+  copyReviewReferenceIds?: DeliveryReferenceId[];
   createdAt: string;
   updatedAt: string;
 };
@@ -659,6 +661,18 @@ export type DeliveryReferenceSnapshot = {
   summary?: string;
   body?: string;
   bodyKind?: "complete" | "excerpt";
+  /** Frozen interpretation metadata, consuming P1B/P4 facts only. */
+  provenance?: {
+    status: "recorded" | "unknown" | "unverified";
+    conclusionState?: KeyConclusionState;
+    confidence?: "supported" | "partial" | "needsVerification";
+    evidenceIssues?: string[];
+    visualObservation?: "observed" | "notObserved";
+    visualLineage?: import("../operations/types").VisualLineageSnapshot;
+    visualInputs?: import("../operations/types").VisualProviderInputManifest;
+    reviewStatus?: string;
+    researchItems?: { findings: string[]; opportunities: string[]; constraints: string[]; openQuestions: string[] };
+  };
   sourceRevision?: {
     revisionId: string;
     revisionNumber: number;
@@ -687,6 +701,7 @@ export type DeliveryReference = {
   updatedAt?: string;
   snapshot: DeliveryReferenceSnapshot;
   sourceFingerprint?: string;
+  sourceBaseline?: import("../operations/types").SourceSemanticSnapshot;
   sourceRevisionId?: string;
   sourceRevisionNumber?: number;
   sourceAssetId?: AssetId;
@@ -694,6 +709,19 @@ export type DeliveryReference = {
     caption?: string;
     note?: string;
   };
+  copyReview?: "needsReview" | "reviewed";
+};
+
+/** Generation-time dependency evidence; never synthesized from a later Workspace. */
+export type DeliveryGenerationBaseline = {
+  version: 1;
+  deliveryObjectId: string;
+  deliveryIncarnationId?: string;
+  sectionId: string;
+  sectionFingerprint: string;
+  referenceIds: string[];
+  referenceFingerprints: Record<string, string>;
+  sourceFingerprints: Record<string, string | undefined>;
 };
 
 export type DeliverySectionDraft = {
@@ -704,6 +732,7 @@ export type DeliverySectionDraft = {
   assistantMessageId: string;
   referenceIds: DeliveryReferenceId[];
   sourceFingerprints: Record<DeliveryReferenceId, string | undefined>;
+  generationBaseline?: DeliveryGenerationBaseline;
   title?: string;
   narrative: string;
   captions: Array<{

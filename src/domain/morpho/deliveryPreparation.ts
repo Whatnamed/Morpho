@@ -1,10 +1,13 @@
 import { createObjectIncarnationId } from "./objectIdentity";
 import { applyProjectContinuityEvent } from "./projectContinuity";
 import { reconcileWorkspaceDerivedState } from "./derivedState";
+import { captureSourceSnapshot } from "./sourceResolution";
+import { captureDeliveryProvenance, inspectDeliveryDraft, inspectDeliveryReference } from "./deliveryInspection";
 import type {
   AssetId,
   CanvasPoint,
   DeliveryGap,
+  DeliveryGenerationBaseline,
   DeliveryObject,
   DeliveryReference,
   DeliveryReferenceId,
@@ -82,7 +85,8 @@ export type DeliveryReferenceState =
   | { status: "sourceHidden"; label: "来源已隐藏" }
   | { status: "sourceMissing"; label: "来源不可用" }
   | { status: "assetMissing"; label: "原始资产不可用" }
-  | { status: "sourceUpdated"; label: "当前版本已有更新" };
+  | { status: "sourceUpdated"; label: "当前版本已有更新" }
+  | { status: "sourceUnknown"; label: "来源版本未验证" };
 
 export type DeliveryPreparationSignals = {
   emptySectionIds: string[];
@@ -424,6 +428,7 @@ export function addObjectsToDeliverySection(
       updatedAt: now,
       snapshot,
       sourceFingerprint: fingerprint,
+      sourceBaseline: captureSourceSnapshot(workspace, source.id),
       sourceRevisionId: revision?.revisionId,
       sourceRevisionNumber: revision?.revisionNumber,
       sourceAssetId: assetId
@@ -561,19 +566,18 @@ export function moveDeliveryReference(
   if (!targetPosition) {
     return blocked(workspace, "目标章节不存在。");
   }
+  const deliveryReferences = { ...workspace.deliveryReferences };
+  for (const [id, position] of sectionIds) {
+    const existing = deliveryReferences[id];
+    if (existing && (existing.sectionId !== position.sectionId || existing.order !== position.order)) {
+      deliveryReferences[id] = { ...existing, ...position, updatedAt: now };
+    }
+  }
   return updatedWithDelivery(workspace, {
     ...target,
     sections,
     updatedAt: now
-  }, {
-    ...workspace.deliveryReferences,
-    [input.referenceId]: {
-      ...reference,
-      sectionId: targetPosition.sectionId,
-      order: targetPosition.order,
-      updatedAt: now
-    }
-  });
+  }, deliveryReferences);
 }
 
 export function updateDeliveryReferenceEditorial(
@@ -598,6 +602,7 @@ export function updateDeliveryReferenceEditorial(
             caption: input.caption !== undefined ? normalizedOptional(input.caption) : reference.editorial?.caption,
             note: input.note !== undefined ? normalizedOptional(input.note) : reference.editorial?.note
           },
+          copyReview: reference.copyReview,
           updatedAt: now
         }
       }
@@ -606,47 +611,14 @@ export function updateDeliveryReferenceEditorial(
 }
 
 export function resolveDeliveryReferenceState(workspace: MorphoWorkspace, referenceId: DeliveryReferenceId): DeliveryReferenceState {
-  const reference = workspace.deliveryReferences[referenceId];
-  if (!reference || !reference.sourceObjectId) {
-    return { status: "sourceMissing", label: "来源不可用" };
-  }
-  if (reference.snapshot.previewAsset?.assetId && !workspace.assets[reference.snapshot.previewAsset.assetId]) {
-    return { status: "assetMissing", label: "原始资产不可用" };
-  }
-  const source = workspace.objects[reference.sourceObjectId];
-  if (!source) {
-    return { status: "sourceMissing", label: "来源不可用" };
-  }
-  if (source.type === "documentFragment") {
-    if (!workspace.assets[source.source.sourceExtractAssetId]) {
-      return { status: "assetMissing", label: "原始资产不可用" };
-    }
-    const file = workspace.objects[source.source.fileObjectId];
-    if (!file || file.type !== "file") {
-      return { status: "sourceMissing", label: "来源不可用" };
-    }
-    if (file.visibility === "hidden") {
-      return { status: "sourceHidden", label: "来源已隐藏" };
-    }
-    if (file.extractedAssetId !== source.source.sourceExtractAssetId) {
-      return { status: "sourceUpdated", label: "当前版本已有更新" };
-    }
-    if (reference.sourceFingerprint && reference.sourceFingerprint !== createDeliverySourceFingerprint(workspace, source)) {
-      return { status: "sourceUpdated", label: "当前版本已有更新" };
-    }
-    return { status: "current", label: "当前快照" };
-  }
-  const sourceForAvailability = source;
-  if (sourceForAvailability.visibility === "hidden") {
-    return { status: "sourceHidden", label: "来源已隐藏" };
-  }
-  const currentAssetId = getSourceAssetId(source);
-  if (currentAssetId && !workspace.assets[currentAssetId]) {
-    return { status: "assetMissing", label: "原始资产不可用" };
-  }
-  if (reference.sourceFingerprint && reference.sourceFingerprint !== createDeliverySourceFingerprint(workspace, source)) {
-    return { status: "sourceUpdated", label: "当前版本已有更新" };
-  }
+  const candidate = workspace.deliveryReferences[referenceId];
+  if (!candidate) return { status: "sourceMissing", label: "来源不可用" };
+  const facts = inspectDeliveryReference(workspace, candidate);
+  if (facts.sourceExistence === "sourceMissing") return { status: "sourceMissing", label: "来源不可用" };
+  if (facts.assetAvailability === "assetMissing") return { status: "assetMissing", label: "原始资产不可用" };
+  if (facts.sourceVisibility === "sourceHidden") return { status: "sourceHidden", label: "来源已隐藏" };
+  if (facts.sourceFreshness === "sourceUpdated") return { status: "sourceUpdated", label: "当前版本已有更新" };
+  if (facts.sourceFreshness === "unknown") return { status: "sourceUnknown", label: "来源版本未验证" };
   return { status: "current", label: "当前快照" };
 }
 
@@ -696,6 +668,8 @@ export function refreshDeliveryReferenceSnapshot(
     ...reference,
     snapshot: snapshotResult.snapshot,
     sourceFingerprint: createDeliverySourceFingerprint(workspace, source),
+    sourceBaseline: captureSourceSnapshot(workspace, source.id),
+    copyReview: "needsReview",
     sourceRevisionId: revision?.revisionId,
     sourceRevisionNumber: revision?.revisionNumber,
     sourceAssetId: assetId,
@@ -705,6 +679,9 @@ export function refreshDeliveryReferenceSnapshot(
   const nextWorkspace = applyProjectContinuityEvent(
     reconcileWorkspaceDerivedState({
       ...workspace,
+      objects: { ...workspace.objects, [target.id]: { ...target, sections: target.sections.map((section) => section.id === reference.sectionId ? {
+        ...section, copyReviewReferenceIds: uniqueStrings([...(section.copyReviewReferenceIds ?? []), reference.id])
+      } : section) } },
       deliveryReferences: {
         ...workspace.deliveryReferences,
         [reference.id]: refreshed
@@ -839,6 +816,7 @@ export function createDeliverySectionDraft(
     suggestedGaps: Array<{ label: string }>;
     /** Stable replay identity supplied by A+ Tool execution. */
     draftId?: string;
+    generationBaseline?: DeliveryGenerationBaseline;
     now?: string;
   }
 ): DraftOperationResult {
@@ -850,7 +828,7 @@ export function createDeliverySectionDraft(
   if (!section) {
     return { status: "blocked", workspace, reason: "章节不存在。" };
   }
-  if (section.referenceIds.length === 0) {
+  if ((input.generationBaseline?.referenceIds ?? section.referenceIds).length === 0) {
     return { status: "blocked", workspace, reason: "先加入至少一项交付内容，再生成章节说明草案。" };
   }
   const narrative = input.narrative.trim();
@@ -860,7 +838,9 @@ export function createDeliverySectionDraft(
   if (input.suggestedGaps.length > MAX_DRAFT_GAPS) {
     return { status: "blocked", workspace, reason: "建议待补内容数量超过上限。" };
   }
-  const sectionReferenceIds = new Set(section.referenceIds);
+  if (input.generationBaseline && (input.generationBaseline.deliveryObjectId !== target.id || input.generationBaseline.sectionId !== section.id)) return blocked(workspace, "生成时依赖基线不属于当前草稿目标。");
+  if (new Set(input.captions.map((item) => item.referenceId)).size !== input.captions.length) return blocked(workspace, "草稿不能重复写入同一引用的图注。");
+  const sectionReferenceIds = new Set(input.generationBaseline?.referenceIds ?? section.referenceIds);
   for (const caption of input.captions) {
     if (!sectionReferenceIds.has(caption.referenceId)) {
       return { status: "blocked", workspace, reason: "草案图注引用了不属于当前章节的交付引用。" };
@@ -890,8 +870,9 @@ export function createDeliverySectionDraft(
     sectionId: section.id,
     userMessageId: input.userMessageId,
     assistantMessageId: input.assistantMessageId,
-    referenceIds: [...section.referenceIds],
-    sourceFingerprints: Object.fromEntries(section.referenceIds.map((referenceId) => [referenceId, workspace.deliveryReferences[referenceId]?.sourceFingerprint])),
+    referenceIds: [...(input.generationBaseline?.referenceIds ?? section.referenceIds)],
+    sourceFingerprints: { ...(input.generationBaseline?.sourceFingerprints ?? {}) },
+    generationBaseline: input.generationBaseline ? structuredClone(input.generationBaseline) : undefined,
     title: normalizedOptional(input.title),
     narrative,
     captions: input.captions.map((caption) => ({ referenceId: caption.referenceId, caption: caption.caption.trim() })),
@@ -916,7 +897,7 @@ export function createDeliverySectionDraft(
 
 export function applyDeliverySectionDraft(
   workspace: MorphoWorkspace,
-  input: { deliveryObjectId: MorphoObjectId; draftId: string; now?: string }
+  input: { deliveryObjectId: MorphoObjectId; draftId: string; acknowledgeReview?: boolean; now?: string }
 ): DeliveryOperationResult {
   const target = getDeliveryObject(workspace, input.deliveryObjectId);
   const draft = workspace.deliverySectionDrafts[input.draftId];
@@ -929,6 +910,12 @@ export function applyDeliverySectionDraft(
   const section = target.sections.find((candidate) => candidate.id === draft.sectionId);
   if (!section) {
     return blocked(workspace, "章节不存在。");
+  }
+
+  const applicability = inspectDeliveryDraft(workspace, draft);
+  if (applicability.status === "stale" || applicability.status === "blocked" ||
+      (applicability.status === "review-required" && !input.acknowledgeReview)) {
+    return blocked(workspace, applicability.reasons.join(" "));
   }
 
   const now = input.now ?? new Date().toISOString();
@@ -1046,6 +1033,17 @@ export function discardDeliverySectionDraft(
   };
 }
 
+/** Explicit user review; the existing manual history boundary owns this mutation. */
+export function confirmDeliveryCopyReview(workspace: MorphoWorkspace, input: { deliveryObjectId: string; sectionId: string; now?: string }): DeliveryOperationResult {
+  const delivery = getDeliveryObject(workspace, input.deliveryObjectId);
+  const section = delivery?.sections.find((item) => item.id === input.sectionId);
+  if (!delivery || !section) return blocked(workspace, "章节不存在。");
+  const now = input.now ?? new Date().toISOString();
+  const references = { ...workspace.deliveryReferences };
+  for (const id of section.referenceIds) if (references[id]) references[id] = { ...references[id], copyReview: "reviewed", updatedAt: now };
+  return updatedWithDelivery(workspace, { ...delivery, sections: delivery.sections.map((item) => item.id === section.id ? { ...item, copyReviewReferenceIds: [], updatedAt: now } : item), updatedAt: now }, references);
+}
+
 export function deriveDeliveryPreparationSignals(workspace: MorphoWorkspace, deliveryObjectId: MorphoObjectId): DeliveryPreparationSignals {
   const target = getDeliveryObject(workspace, deliveryObjectId);
   if (!target) {
@@ -1066,17 +1064,19 @@ export function deriveDeliveryPreparationSignals(workspace: MorphoWorkspace, del
     sourceUpdatedReferenceIds: []
   };
   for (const referenceId of target.references) {
-    const state = resolveDeliveryReferenceState(workspace, referenceId);
-    if (state.status === "sourceHidden") {
+    const reference = workspace.deliveryReferences[referenceId];
+    if (!reference) { signals.sourceMissingReferenceIds.push(referenceId); continue; }
+    const facts = inspectDeliveryReference(workspace, reference);
+    if (facts.sourceVisibility === "sourceHidden") {
       signals.sourceHiddenReferenceIds.push(referenceId);
     }
-    if (state.status === "sourceMissing") {
+    if (facts.sourceExistence === "sourceMissing") {
       signals.sourceMissingReferenceIds.push(referenceId);
     }
-    if (state.status === "assetMissing") {
+    if (facts.assetAvailability === "assetMissing") {
       signals.assetMissingReferenceIds.push(referenceId);
     }
-    if (state.status === "sourceUpdated") {
+    if (facts.sourceFreshness === "sourceUpdated") {
       signals.sourceUpdatedReferenceIds.push(referenceId);
     }
   }
@@ -1098,6 +1098,10 @@ function createBoundedDeliveryReferenceSnapshot(
 }
 
 export function createDeliveryReferenceSnapshot(workspace: MorphoWorkspace, source: MorphoObject): DeliveryReferenceSnapshot {
+  return { ...createDeliveryContentSnapshot(workspace, source), provenance: captureDeliveryProvenance(workspace, source) };
+}
+
+function createDeliveryContentSnapshot(workspace: MorphoWorkspace, source: MorphoObject): DeliveryReferenceSnapshot {
   switch (source.type) {
     case "image":
       return {
@@ -1199,7 +1203,9 @@ export function createDeliverySourceFingerprint(workspace: MorphoWorkspace, sour
         title: source.title,
         summary: source.summary,
         directionId: source.directionId,
-        visualBranchId: source.visualBranchId
+        visualBranchId: source.visualBranchId,
+        pendingReview: source.pendingReview,
+        provenance: captureDeliveryProvenance(workspace, source)
       });
     case "documentFragment":
       return stableStringify({
@@ -1224,6 +1230,7 @@ export function createDeliverySourceFingerprint(workspace: MorphoWorkspace, sour
     case "research":
       return stableStringify({
         type: source.type,
+        title: source.title,
         summary: source.summary,
         findings: source.findings,
         opportunities: source.opportunities,

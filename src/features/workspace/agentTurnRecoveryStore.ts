@@ -2,6 +2,7 @@ import { isExternalResultManifest } from "@/shared/externalResultProtocol";
 import { EXTERNAL_REQUEST_MAX_BYTES, EXTERNAL_RECOVERY_RUNTIME_MAX_BYTES } from "@/shared/externalResultProtocol";
 import { isAgentReadReceipt, isAgentEffectReceipt, type AgentReadReceipt, type AgentEffectReceipt } from "@/shared/agentReadCoverage";
 import { isReadRequirement } from "@/shared/turnTaskContract";
+import { isDeliveryGenerationEvidence } from "./deliveryGenerationEvidence";
 import { isExternalEffectSnapshot, type ExternalEffectSnapshot } from "@/shared/externalEffectProtocol";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import type {
@@ -41,6 +42,7 @@ const MAX_PROVIDER_PAYLOAD_BYTES = EXTERNAL_RECOVERY_RUNTIME_MAX_BYTES;
 export const A_PLUS_TURN_RECOVERY_RECORD_VERSION = 2 as const;
 
 export type APlusTurnRecoveryFacts = Readonly<{
+  deliveryGenerationEvidence?: readonly import("./deliveryGenerationEvidence").DeliveryGenerationEvidence[];
   readReceipts?: readonly AgentReadReceipt[];
   effectReceipts?: readonly AgentEffectReceipt[];
   observationMessages?: readonly import("@/shared/agentTurnJournalProtocol").APlusAgentProviderMessage[];
@@ -745,7 +747,8 @@ function isRecoveryRuntime(value: unknown): value is APlusTurnRecoveryRuntime {
 function isRecoveryFacts(value: unknown): value is APlusTurnRecoveryFacts {
   if (!isRecord(value) || !isRecord(value.requiredReadState)) return false;
   const reads = value.requiredReadState;
-  return (value.readReceipts === undefined || Array.isArray(value.readReceipts) && value.readReceipts.length <= 4096 && value.readReceipts.every(isAgentReadReceipt)) &&
+  return (value.deliveryGenerationEvidence === undefined || Array.isArray(value.deliveryGenerationEvidence) && value.deliveryGenerationEvidence.length <= 4096 && value.deliveryGenerationEvidence.every(isDeliveryGenerationEvidence)) &&
+    (value.readReceipts === undefined || Array.isArray(value.readReceipts) && value.readReceipts.length <= 4096 && value.readReceipts.every(isAgentReadReceipt)) &&
     (value.effectReceipts === undefined || Array.isArray(value.effectReceipts) && value.effectReceipts.length <= 1024 && value.effectReceipts.every(isAgentEffectReceipt)) &&
     (value.observationMessages === undefined || Array.isArray(value.observationMessages) && value.observationMessages.length <= 64 && value.observationMessages.every((message) => isRecord(message) && message.role === "user" && Array.isArray(message.content) && message.content.length <= 5 && message.content.every((part) => isRecord(part) && (part.type === "input_text" && typeof part.text === "string" || part.type === "input_image" && typeof part.image_url === "string")))) &&
     Array.isArray(reads.requiredTools) &&

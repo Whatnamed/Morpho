@@ -47,6 +47,7 @@ import {
 import type { AgentTurnRuntimeState } from "./agentTurnRuntimeState";
 import type { AgentVisualGenerationBatch } from "./agentVisualGenerationBatch";
 import { buildDeliverySectionContext } from "./deliveryPreparationUi";
+import { resolveDeliveryGenerationEvidence } from "./deliveryGenerationEvidence";
 import { applySelectedProposalDraftRevision } from "./proposalDraftRevision";
 import {
   getPlacementNearObjects,
@@ -172,6 +173,7 @@ export const AGENT_TOOL_EXECUTORS: AgentToolExecutorRegistry = {
       args: input.parsed.args, callId: input.callId, readableObjectIds: input.context.objectIds, generatedObjectIds: input.runtimeState.effectReceipts.filter((receipt) => receipt.tool === "generate_visuals").flatMap((receipt) => receipt.objectIds),
       deliveryTarget: input.deliverySectionContext ? { deliveryObjectId: input.deliverySectionContext.deliveryObjectId, sectionId: input.deliverySectionContext.sectionId } : undefined, signal: input.signal });
     if (result.images) input.runtimeState.observationMessages.push(...result.images);
+    if (result.deliveryBaseline && result.receipt.contentHash) input.runtimeState.deliveryGenerationEvidence.push({ receiptId: result.receipt.id, contentHash: result.receipt.contentHash, baseline: result.deliveryBaseline });
     return { provenance: { kind: "untrustedLocalEvidence", grantsAuthority: false }, receipt: result.receipt, text: result.text };
   },
   read_selected_context: executeReadSelectedContext,
@@ -722,10 +724,11 @@ function executePrepareDeliverySectionDraft(
   if (!sectionContext) {
     throw new Error("当前没有已授权的交付章节上下文。");
   }
+  const generationBaseline = resolveDeliveryGenerationEvidence(input.runtimeState.deliveryGenerationEvidence, input.runtimeState.readReceipts, sectionContext);
   const validation = validateDeliverySectionDraftPayload(input.parsed.args, {
     deliveryObjectId: sectionContext.deliveryObjectId,
     sectionId: sectionContext.sectionId,
-    referenceIds: sectionContext.references.map((reference) => reference.referenceId)
+    referenceIds: generationBaseline?.referenceIds ?? sectionContext.references.map((reference) => reference.referenceId)
   });
   if (validation.status !== "ok") {
     throw new Error(validation.reason);
@@ -741,6 +744,7 @@ function executePrepareDeliverySectionDraft(
       narrative: input.parsed.args.narrative,
       captions: input.parsed.args.captions,
       suggestedGaps: input.parsed.args.suggestedGaps,
+      generationBaseline,
       now: new Date().toISOString()
     });
     return { workspace: created.workspace, value: created };

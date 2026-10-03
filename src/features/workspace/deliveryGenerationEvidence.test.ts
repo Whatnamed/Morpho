@@ -1,0 +1,43 @@
+import { describe, expect, it } from "vitest";
+import { captureDeliveryGenerationBaseline } from "@/domain/morpho/deliveryInspection";
+import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { hashProductValue } from "@/shared/agentProductHash";
+import { buildDeliverySectionContext } from "./deliveryPreparationUi";
+import { readAgentWorkspaceSource } from "./agentSourceReads";
+import { resolveDeliveryGenerationEvidence, type DeliveryGenerationEvidence } from "./deliveryGenerationEvidence";
+import { createAgentTurnRuntimeState } from "./agentTurnRuntimeState";
+import { snapshotAgentTurnRuntimeFacts, restoreAgentTurnRuntimeFacts } from "./agentTurnProductPreparationAPlus";
+import { createAgentContextBudgetState } from "@/shared/providerInputBudget";
+import { createRequiredAgentReadState } from "./agentTaskStrategy";
+import { createAgentTurnWorkLedger } from "./agentTurnMessages";
+
+describe("Delivery generation evidence consumes P2B coverage", () => {
+  it("requires complete delivered ranges of one content version, survives Recovery, and never samples current B", async () => {
+    const workspace = createInitialWorkspace();
+    const delivery = Object.values(workspace.objects).find((object) => object.type === "delivery")!;
+    if (delivery.type !== "delivery") throw new Error("delivery");
+    const section = delivery.sections.find((item) => item.referenceIds.length)!;
+    const target = { deliveryObjectId: delivery.id, sectionId: section.id };
+    const length = JSON.stringify(buildDeliverySectionContext(workspace, delivery, section.id)).length;
+    const read = (callId: string, start: number, count: number, current = workspace) => readAgentWorkspaceSource({ workspace: current, args: { kind: "delivery", objectId: delivery.id, sectionId: section.id, start, length: count }, callId, generatedObjectIds: [], deliveryTarget: target, signal: new AbortController().signal });
+    const first = await read("first-A", 0, 400);
+    const last = await read("rest-A", 400, length);
+    const baselineA = captureDeliveryGenerationBaseline(workspace, delivery.id, section.id)!;
+    const evidence: DeliveryGenerationEvidence[] = [first, last].map((result) => ({ receiptId: result.receipt.id, contentHash: result.receipt.contentHash!, baseline: result.deliveryBaseline! }));
+    const receipts = [first.receipt, last.receipt].map((receipt) => ({ ...receipt, delivered: true }));
+    expect(resolveDeliveryGenerationEvidence(evidence, [receipts[0]], target)).toBeUndefined();
+    expect(resolveDeliveryGenerationEvidence(evidence, [first.receipt, last.receipt], target)).toBeUndefined();
+    expect(resolveDeliveryGenerationEvidence(evidence, receipts, target)).toEqual(baselineA);
+    const b = { ...workspace, objects: { ...workspace.objects, [delivery.id]: { ...delivery, sections: delivery.sections.map((item) => item.id === section.id ? { ...item, narrative: "B" } : item) } } };
+    const restB = await read("rest-B", 400, length, b);
+    expect(resolveDeliveryGenerationEvidence([...evidence, { receiptId: restB.receipt.id, contentHash: restB.receipt.contentHash!, baseline: restB.deliveryBaseline! }], [...receipts, { ...restB.receipt, delivered: true }], target)).toBeUndefined();
+    expect(resolveDeliveryGenerationEvidence([...evidence, { receiptId: restB.receipt.id, contentHash: restB.receipt.contentHash!, baseline: restB.deliveryBaseline! }], [receipts[0], { ...restB.receipt, delivered: true }], target)).toBeUndefined();
+    const state = createAgentTurnRuntimeState({ conversationContext: { messages: [], rawMessageCount: 0, coveredMessageCount: 0, estimatedInputTokens: 0, pressure: "normal" }, conversationInput: [], requiredReadState: createRequiredAgentReadState([]), contextBudgetState: createAgentContextBudgetState(0), agentWorkLedger: createAgentTurnWorkLedger() });
+    state.deliveryGenerationEvidence = evidence; state.readReceipts = receipts;
+    const facts = JSON.parse(JSON.stringify(snapshotAgentTurnRuntimeFacts(state)));
+    state.deliveryGenerationEvidence = []; state.readReceipts = [];
+    restoreAgentTurnRuntimeFacts(state, facts);
+    expect(resolveDeliveryGenerationEvidence(state.deliveryGenerationEvidence, state.readReceipts, target)).toEqual(baselineA);
+    expect(hashProductValue(baselineA)).not.toBe(hashProductValue(captureDeliveryGenerationBaseline(b, delivery.id, section.id)));
+  });
+});

@@ -401,7 +401,7 @@ describe("useDeliveryPreparationController", () => {
     }
     act(() => harness.updateWorkspace(() => draft.workspace));
 
-    expect(harness.current().applyDraft({ deliveryObjectId: delivery.id, draftId: draft.draftId })).toEqual({ status: "updated" });
+    expect(harness.current().applyDraft({ deliveryObjectId: delivery.id, draftId: draft.draftId, acknowledgeReview: true })).toEqual({ status: "updated" });
     expect(getDelivery(harness.workspace(), delivery.id).sections[0]).toMatchObject({ narrative: "应用说明" });
     expect(harness.workspace().deliverySectionDrafts[draft.draftId]?.status).toBe("applied");
 
