@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import type { MorphoWorkspace, ResearchObject } from "@/domain/morpho/types";
 import { getResearchItemParts } from "@/domain/operations/researchItems";
 import { evidenceConfidenceLabel } from "@/domain/morpho/evidenceAuthority";
-import { getResearchExtractionItems, type ResearchExtractionItem } from "../researchExtraction";
+import { getResearchExtractionItems, getResearchExtractionRecommendationKeys, type ResearchExtractionItem } from "../researchExtraction";
 
 type ResearchDetailPanelProps = {
   workspace: MorphoWorkspace;
@@ -20,7 +20,7 @@ const sectionOrder = ["发现", "设计机会", "现实约束", "待验证"] as 
 export function ResearchDetailPanel({ workspace, research, onClose, onApplySelection }: ResearchDetailPanelProps) {
   const items = useMemo(() => getResearchExtractionItems(workspace, research.id), [research.id, workspace]);
   const activeKeys = useMemo(() => new Set(items.filter((item) => item.activeObjectId).map((item) => item.key)), [items]);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set(activeKeys));
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set([...activeKeys, ...getResearchExtractionRecommendationKeys(workspace, research.id)]));
 
   const selectedCount = selectedKeys.size;
   const activeCount = activeKeys.size;
@@ -41,7 +41,7 @@ export function ResearchDetailPanel({ workspace, research, onClose, onApplySelec
   };
 
   return (
-    <div className="research-panel-backdrop" role="presentation" onPointerDown={onClose}>
+    <div data-workspace-surface="researchDetail" className="research-panel-backdrop" role="presentation" onPointerDown={onClose}>
       <section
         className="research-panel"
         aria-label="研究与分析详情"
@@ -85,7 +85,7 @@ export function ResearchDetailPanel({ workspace, research, onClose, onApplySelec
                           </span>
                           <ResearchPanelItemText text={item.text} />
                           <span className="research-panel-item-state muted">{evidenceConfidenceLabel(item.confidence)}</span>
-                          {item.activeObjectId ? <span className="research-panel-item-state">已在画布</span> : null}
+                          {item.activeObjectId ? <span className="research-panel-item-state">已保留</span> : null}
                           {!item.activeObjectId && item.hiddenObjectId ? (
                             <span className="research-panel-item-state muted">可恢复</span>
                           ) : null}
@@ -104,7 +104,7 @@ export function ResearchDetailPanel({ workspace, research, onClose, onApplySelec
         <footer className="research-panel-footer">
           <div>
             <strong>已选 {selectedCount}</strong>
-            <span>当前画布已有 {activeCount} 条摘录。取消已在画布的条目会先移出画布，可再次恢复。</span>
+            <span>已保留 {activeCount} 条项目依据。推荐只预选候选；取消候选不会撤销先前保留。</span>
           </div>
           <div className="research-panel-actions">
             <button type="button" onClick={() => setSelectedKeys(new Set(activeKeys))} disabled={!changed}>
@@ -112,7 +112,7 @@ export function ResearchDetailPanel({ workspace, research, onClose, onApplySelec
               还原
             </button>
             <button className="brand" type="button" onClick={() => onApplySelection([...selectedKeys])} disabled={!changed}>
-              更新画布摘录
+              保留为项目依据
             </button>
           </div>
         </footer>

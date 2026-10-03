@@ -69,7 +69,7 @@ import type { AssignableKeyConclusionCategory, CanvasInstance, MorphoWorkspace }
 import { readClipboardAsImportPayload } from "./canvasClipboardImport";
 import { AiConversationPanel } from "./components/AiConversationPanel";
 import type { PendingAiConfirmation } from "./workspaceConfirmation";
-import { BottomDetailBar } from "./components/BottomDetailBar";
+import { BottomDetailBar, type DetailTab } from "./components/BottomDetailBar";
 import { ConceptDirectionDetail } from "./components/ConceptDirectionDetail";
 import { DesignDefinitionDetail } from "./components/DesignDefinitionDetail";
 import { DeliveryPreparationPanel } from "./components/DeliveryPreparationPanel";
@@ -90,7 +90,8 @@ import { useProjectBundleController } from "./useProjectBundleController";
 import { useWorkspaceAssetUrls } from "./useWorkspaceAssetUrls";
 import { compactObjectList, getKeyConclusionCategoryLabel, getSuggestionsForSelection, type Suggestion } from "./workspaceUi";
 import { getFloatingMenuPlacement, type SelectionToolbarPlacement } from "./selectionToolbar";
-import { resolveWorkspaceShortcut } from "./workspaceShortcuts";
+import { focusRemainingWorkspaceSurface, WORKSPACE_SURFACE_CLOSE_EVENT, getTopWorkspaceSurfaceElement } from "./workspaceSurfacePriority";
+import { isInsideFloatingEditingSurface, resolveWorkspaceShortcut } from "./workspaceShortcuts";
 import type { DeliveryReferenceReaderTransition } from "./deliveryPreparationUi";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import {
@@ -115,8 +116,7 @@ import {
   type WorkspaceImportSessionHandle
 } from "./useWorkspaceImportController";
 import {
-  applyResearchExtractionSelection,
-  getResearchExtractionRecommendationKeys
+  applyResearchExtractionSelection
 } from "./researchExtraction";
 import {
   type TaskContextDefaultReference
@@ -284,6 +284,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   } = workspaceSurface;
   const {
     selectedObjectIds,
+    captureAttention,
     selectionRequest,
     focusRequest,
     setSelectedObjectIds,
@@ -349,7 +350,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const [aiDraft, setAiDraft] = useState("");
   const [agentTurnMode, setAgentTurnMode] = useState<MorphoAgentTurnMode>("auto");
   const [taskMode, setTaskMode] = useState<AiTaskMode>("chatAnalysis");
-  const workIntent = workspace.ui.workIntent;
+  // A chapter request is owned only by its visible transient target, never by a stale persisted input mode.
+  const workIntent = workspace.ui.workIntent === "prepareDeliverySection" ? "discussion" : workspace.ui.workIntent;
   const [aiOpen, setAiOpen] = useState(true);
   const [localEditObjectId, setLocalEditObjectId] = useState<string | null>(null);
   const {
@@ -377,6 +379,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     activeTextPromptSessionRef.current = textPromptSession;
     setTextPrompt((current) => (current?.session === textPromptSession ? current : null));
   }, [textPromptSession]);
+  const [detailTabRequest, setDetailTabRequest] = useState<{ selectionKey: string; tab: DetailTab } | null>(null);
+  const relationshipTab = detailTabRequest?.selectionKey === selectedObjectIds.join("|") ? detailTabRequest.tab : "信息";
   const [detailHoverObjectId, setDetailHoverObjectId] = useState<string | null>(null);
   const [traceStartObjectId, setTraceStartObjectId] = useState<string | null>(null);
   const [canvasTraceMode, setCanvasTraceMode] = useState<"direct" | "chain">("direct");
@@ -450,7 +454,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     workspaceReady: canMutateWorkspace,
     commitWorkspace: commitWorkspaceNow,
     commitManualWorkspace,
-    selectObjects: requestCanvasSelection,
+    selectObjects: setSelectedObjectIds,
+    captureAttention,
     onImportRejected: setContextWarning
   });
   const selectedObjects = useMemo(
@@ -497,6 +502,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     clearPendingDraftTarget,
     requestSectionDraft
   } = deliveryPreparation;
+  useLayoutEffect(() => {
+    if (pendingDeliveryDraftTarget && taskMode !== "chatAnalysis") clearPendingDraftTarget();
+  }, [clearPendingDraftTarget, pendingDeliveryDraftTarget, taskMode]);
   const activeResearchDetailObject = useMemo(() => {
     if (!activeResearchDetailObjectId) {
       return null;
@@ -610,6 +618,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleWorkIntentChange = useCallback(
     (nextWorkIntent: AiWorkIntent) => {
+      if (nextWorkIntent !== "prepareDeliverySection") clearPendingDraftTarget();
       setWorkspace((current) => {
         if (current.ui.workIntent === nextWorkIntent) {
           return current;
@@ -624,7 +633,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         };
       });
     },
-    [setWorkspace]
+    [clearPendingDraftTarget, setWorkspace]
   );
 
   const proposalWorkflow = useWorkspaceProposalWorkflowController({
@@ -669,18 +678,26 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const focusObject = useCallback(
     (objectId: string, options: { rememberView?: boolean } = {}) => {
+      if (workspace.objects[objectId]?.visibility !== "active") {
+        showWorkspaceNotice("该对象当前不可定位；隐藏内容请先恢复。");
+        return;
+      }
       requestFocusObject(objectId, options);
       changeDrawer(null);
     },
-    [changeDrawer, requestFocusObject]
+    [changeDrawer, requestFocusObject, showWorkspaceNotice, workspace.objects]
   );
 
   const locateObjectFromDetail = useCallback(
     (objectId: string) => {
+      if (workspace.objects[objectId]?.visibility !== "active") {
+        showWorkspaceNotice("该对象当前不可定位；隐藏内容请先恢复。");
+        return;
+      }
       requestLocateObjectFromDetail(objectId);
       changeDrawer(null);
     },
-    [changeDrawer, requestLocateObjectFromDetail]
+    [changeDrawer, requestLocateObjectFromDetail, showWorkspaceNotice, workspace.objects]
   );
 
   const requestLocalPendingConfirmation = useCallback(
@@ -743,6 +760,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleSelectionChange = useCallback(
     (objectIds: string[]) => {
+      setDetailTabRequest(null);
       acceptCanvasSelection(objectIds);
       closeCanvasContextMenu();
       setTraceStartObjectId((current) => {
@@ -995,6 +1013,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     commitWorkspace: commitWorkspaceNow,
     setPendingImageGenerationSlots,
     setImageTaskStatus,
+    captureAttention,
     selectObjects: setSelectedObjectIds,
     focusObject: requestObjectFocus
   });
@@ -1023,6 +1042,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     setTaskMode,
     openConversation: () => setAiOpen(true),
     requestPendingConfirmation,
+    captureAttention,
     selectObjects: setSelectedObjectIds,
     focusObject: requestObjectFocus,
     openProposal: activateProposal,
@@ -1101,10 +1121,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       }
       setAiOpen(true);
       setTaskMode("chatAnalysis");
-      handleWorkIntentChange("prepareDeliverySection");
       setAiDraft(result.prompt);
     },
-    [handleWorkIntentChange, requestSectionDraft]
+    [requestSectionDraft]
   );
 
   const handleCancelAiRequest = cancelAiRequest;
@@ -1115,9 +1134,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         selectedObjectIds,
         suggestion: suggestion.prompt
       });
+      clearPendingDraftTarget();
       setAiDraft(result.draft);
     },
-    [selectedObjectIds, workspace]
+    [clearPendingDraftTarget, selectedObjectIds, workspace]
   );
 
   const handleAskAi = useCallback(() => {
@@ -1456,16 +1476,9 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    const proposalObjects = selectedObjects.filter((object) => object.type === "proposalDraft");
-    const objectIds = selectedObjects.filter((object) => object.type !== "proposalDraft").map((object) => object.id);
-    if (objectIds.length > 0) {
-      setManualWorkspace((current) => hideObjects(current, objectIds));
-    }
-    rejectProposals(
-      proposalObjects.map((object) => object.proposalId),
-      "用户从画布隐藏并放弃当前草案。"
-    );
-    const removedIds = [...objectIds, ...proposalObjects.map((object) => object.id)];
+    const removedIds = selectedObjects.map((object) => object.id);
+    setManualWorkspace((current) => hideObjects(current, removedIds));
+    requestCanvasSelection([]);
     setSelectedObjectIds((current) => current.filter((selectedId) => !removedIds.includes(selectedId)));
     setLocalEditObjectId((current) => (current && removedIds.includes(current) ? null : current));
     clearActiveProposalIf(removedIds);
@@ -1475,7 +1488,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     clearActiveProposalIf,
     closeCanvasContextMenu,
     closeProposalDetailIf,
-    rejectProposals,
+    requestCanvasSelection,
     selectedObjects,
     setSelectedObjectIds,
     canMutateWorkspace,
@@ -1487,9 +1500,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       if (!canMutateWorkspace) return;
       setManualWorkspace((current) => restoreObject(current, objectId));
       setSelectedObjectIds([objectId]);
-      focusObject(objectId);
+      requestObjectFocus(objectId);
+      changeDrawer(null);
     },
-    [canMutateWorkspace, focusObject, setSelectedObjectIds, setManualWorkspace]
+    [canMutateWorkspace, changeDrawer, requestObjectFocus, setSelectedObjectIds, setManualWorkspace]
   );
 
   const handleDeleteSelected = useCallback(() => {
@@ -1653,24 +1667,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       return;
     }
 
-    const selectedKeys = getResearchExtractionRecommendationKeys(workspace, research.id);
-    if (selectedKeys.length === 0) {
-      setAiOpen(true);
-      setTaskMode("chatAnalysis");
-      setAiDraft("这张研究卡暂时没有可保留的研究点。");
-      return;
-    }
-
-    const result = commitManualWorkspace((current) => {
-      const applied = applyResearchExtractionSelection(current, research.id, getResearchExtractionRecommendationKeys(current, research.id));
-      return { workspace: applied.workspace, value: applied };
-    }, "保留研究提取");
-    if (result.activeObjectIds.length > 0) {
-      setSelectedObjectIds(result.activeObjectIds);
-      requestObjectFocus(result.activeObjectIds[0]);
-    }
-    closeResearchDetail();
-  }, [closeResearchDetail, requestObjectFocus, selectedObjects, setSelectedObjectIds, commitManualWorkspace, workspace]);
+    openResearchDetail(research.id);
+  }, [openResearchDetail, selectedObjects]);
 
   const handleApplyResearchExtractionSelection = useCallback(
     (selectedKeys: string[]) => {
@@ -1706,10 +1704,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleViewCreatedDocumentFragment = useCallback(
     (fragmentId: string) => {
-      acceptCanvasSelection([fragmentId]);
+      setSelectedObjectIds([fragmentId]);
       requestObjectFocus(fragmentId);
     },
-    [acceptCanvasSelection, requestObjectFocus]
+    [setSelectedObjectIds, requestObjectFocus]
   );
 
   const {
@@ -1731,12 +1729,12 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
   const handleOpenDocumentReader = useCallback(
     (fileObjectId: string, initialLocation?: Parameters<typeof openDocumentReader>[1]) => {
-      setSelectedObjectIds([]);
+      clearPendingDraftTarget();
       setLocalEditObjectId(null);
       closeCanvasContextMenu();
       openDocumentReader(fileObjectId, initialLocation);
     },
-    [closeCanvasContextMenu, openDocumentReader, setSelectedObjectIds]
+    [clearPendingDraftTarget, closeCanvasContextMenu, openDocumentReader]
   );
 
   const handleOpenDeliveryReferenceReader = useCallback(
@@ -1770,6 +1768,19 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   }, [clearControllerCanvasSelection, closeCanvasContextMenu]);
 
   const closeTopWorkspaceSurface = useCallback(() => {
+    const top = getTopWorkspaceSurfaceElement();
+    if (top instanceof HTMLDetailsElement) {
+      top.open = false;
+      return true;
+    }
+    if (top?.dataset.workspaceSurface === "toolbarPopover") {
+      top.dispatchEvent(new Event(WORKSPACE_SURFACE_CLOSE_EVENT, { bubbles: true }));
+      return true;
+    }
+    if (top?.dataset.workspaceSurface === "textPrompt") {
+      setTextPrompt(null);
+      return true;
+    }
     const ports: WorkspaceExternalSurfacePorts = {
       documentReaderOpen: Boolean(documentReader),
       closeDocumentReader: handleCloseDocumentReader,
@@ -1799,9 +1810,18 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     const handleKeyDown = (event: KeyboardEvent) => {
       const shortcut = resolveWorkspaceShortcut(event, event.target);
       if (!shortcut) {
+        if (isInsideFloatingEditingSurface(event.target) && (event.key === "Delete" || event.key === "Backspace" || ((event.ctrlKey || event.metaKey) && ["a", "k"].includes(event.key.toLowerCase())))) {
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+        }
         return;
       }
 
+      if ((shortcut === "deleteSelection" || shortcut === "selectAllCanvas") && getTopWorkspaceSurfaceElement()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       let handled = false;
       switch (shortcut) {
         case "deleteSelection":
@@ -1826,6 +1846,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           break;
         case "closeOrClearSelection":
           handled = closeTopWorkspaceSurface();
+          if (handled) focusRemainingWorkspaceSurface();
           break;
       }
 
@@ -1993,6 +2014,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         readOnly={!canMutateWorkspace}
         annotatedObjectId={localEditObjectId}
         canvasTrace={canvasTrace}
+        relationshipView={selectedObjectIds.length === 1 && (relationshipTab === "来源" || relationshipTab === "版本" || relationshipTab === "关联") ? { objectId: selectedObjectIds[0], tab: relationshipTab } : null}
         highlightedObjectId={detailHoverObjectId}
         assetUrls={assetUrls}
         pendingImageGenerationSlots={pendingImageGenerationSlots}
@@ -2034,8 +2056,8 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
             requestCanvasSelection([request.objectId]);
           }
           if (request.stageId) {
-            // Stage selection lives in the editor; clear Morpho object selection so toolbars don't mix.
-            setSelectedObjectIds([]);
+            // Stage selection lives in the editor; mirror its object selection without deselecting the Region.
+            acceptCanvasSelection([]);
           }
         }}
       />
@@ -2051,7 +2073,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ) : null}
 
       {detailProposal ? (
-        <aside className="proposal-detail-dialog" aria-label="草案详情">
+        <aside data-workspace-surface="proposalDetail" className="proposal-detail-dialog" aria-label="草案详情">
           <button
             className="proposal-detail-close"
             type="button"
@@ -2075,7 +2097,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ) : null}
 
       {detailDesignDefinition ? (
-        <aside className="proposal-detail-dialog" aria-label="设计定义详情">
+        <aside data-workspace-surface="designDefinitionDetail" className="proposal-detail-dialog" aria-label="设计定义详情">
           <button
             className="proposal-detail-close"
             type="button"
@@ -2092,7 +2114,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
       ) : null}
 
       {detailConceptDirection ? (
-        <aside className="proposal-detail-dialog" aria-label="概念方向详情">
+        <aside data-workspace-surface="conceptDirectionDetail" className="proposal-detail-dialog" aria-label="概念方向详情">
           <button
             className="proposal-detail-close"
             type="button"
@@ -2377,6 +2399,11 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         selectedObjects={selectedObjects}
         suggestions={suggestions}
         draft={aiDraft}
+        deliveryDraftTargetLabel={pendingDeliveryDraftTarget ? (() => {
+          const delivery = workspace.objects[pendingDeliveryDraftTarget.deliveryObjectId];
+          return delivery?.type === "delivery" ? delivery.sections.find((section) => section.id === pendingDeliveryDraftTarget.sectionId)?.title : undefined;
+        })() : undefined}
+        onClearDeliveryDraftTarget={clearPendingDraftTarget}
         isOpen={aiOpen}
         isImageTaskContext={taskMode === "imageGeneration" || recommendedTaskMode === "imageGeneration"}
         isImageGenerationAuthorized={taskMode === "imageGeneration"}
@@ -2397,9 +2424,10 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
         onToggleOpen={() => setAiOpen((open) => !open)}
         onDraftChange={setAiDraft}
         onTurnModeChange={setAgentTurnMode}
-        onImageGenerationAuthorizationChange={(authorized) =>
-          setTaskMode(authorized ? "imageGeneration" : "chatAnalysis")
-        }
+        onImageGenerationAuthorizationChange={(authorized) => {
+          clearPendingDraftTarget();
+          setTaskMode(authorized ? "imageGeneration" : "chatAnalysis");
+        }}
         onImageGenerationSettingsChange={updateImageGenerationSettings}
         onDirectionPreviewCountChange={setDirectionPreviewCount}
         onSuggestionClick={handleSuggestionClick}
@@ -2432,6 +2460,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
 
       {!documentReader ? (
         <BottomDetailBar
+          key={selectedObjectIds.join("|")}
+          activeTab={relationshipTab}
+          onTabChange={(tab) => setDetailTabRequest({ selectionKey: selectedObjectIds.join("|"), tab })}
+          onEditText={canMutateWorkspace ? (objectId) => {
+            const object = workspace.objects[objectId];
+            if (object?.type !== "text") return;
+            setTextPrompt({ session: textPromptSession, prompt: { kind: "editText", objectId, incarnationId: object.incarnationId, title: "编辑文本", body: "修改这条文本笔记，可撤销。", label: "文本内容", initialValue: object.body } });
+          } : undefined}
           workspace={workspace}
           selectedObjects={selectedObjects}
           assets={workspace.assets}
@@ -2473,7 +2509,7 @@ function WorkspaceTextPromptDialog({
   const canSubmit = Boolean(prompt.allowEmpty) || Boolean(value.trim());
 
   return (
-    <aside className="workspace-text-prompt" aria-label={prompt.title}>
+    <aside data-workspace-surface="textPrompt" className="workspace-text-prompt" aria-label={prompt.title}>
       <form
         onSubmit={(event) => {
           event.preventDefault();

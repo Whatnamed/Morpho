@@ -3505,3 +3505,14 @@ function omitRecordKey<T>(record: Record<string, T>, key: string): Record<string
 function uniqueObjectIds(objectIds: MorphoObjectId[]): MorphoObjectId[] {
   return [...new Set(objectIds.filter(Boolean))];
 }
+
+/** Edit an ordinary note, preserving identity and refusing a changed source. */
+export function updateTextObject(workspace: MorphoWorkspace, input: { objectId: string; incarnationId?: string; expectedBody: string; body: string }):
+  { status: "updated"; workspace: MorphoWorkspace } | { status: "blocked"; reason: string } {
+  const object = workspace.objects[input.objectId];
+  if (!object || object.type !== "text" || object.visibility !== "active" || object.incarnationId !== input.incarnationId || object.body !== input.expectedBody) return { status: "blocked", reason: "文本已变化或不可用，请重新打开编辑。" };
+  const body = input.body.trim();
+  if (!body) return { status: "blocked", reason: "文本内容不能为空。" };
+  if (body === object.body) return { status: "updated", workspace };
+  return { status: "updated", workspace: reconcileWorkspaceDerivedState({ ...workspace, objects: { ...workspace.objects, [object.id]: { ...object, body, summary: body, title: body.length > 28 ? `${body.slice(0, 28)}...` : body } } }) };
+}

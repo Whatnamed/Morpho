@@ -474,6 +474,18 @@ describe("useDeliveryPreparationController", () => {
     expect(harness.current().pendingDraftTarget).toEqual({ deliveryObjectId: delivery.id, sectionId });
     expect(harness.current().activeDeliveryObjectId).toBe(delivery.id);
 
+    const boundWorkspace = harness.workspace();
+    act(() => harness.updateWorkspace((current) => ({ ...current, objects: { ...current.objects, [delivery.id]: { ...delivery, sections: delivery.sections.filter((section) => section.id !== sectionId) } } })));
+    expect(harness.current().pendingDraftTarget).toBeNull();
+    act(() => harness.updateWorkspace(boundWorkspace));
+    expect(harness.current().pendingDraftTarget).toBeNull(); // Undo restores content, not invisible input ownership.
+    act(() => harness.current().close());
+    expect(harness.current().pendingDraftTarget).toBeNull();
+    act(() => { harness.current().open(delivery.id); harness.current().requestSectionDraft({ deliveryObjectId: delivery.id, sectionId }); });
+    expect(harness.current().pendingDraftTarget).not.toBeNull();
+    act(() => harness.current().selectSection(null)); expect(harness.current().pendingDraftTarget).toBeNull();
+    act(() => harness.current().requestSectionDraft({ deliveryObjectId: delivery.id, sectionId }));
+    act(() => harness.current().selectDelivery(delivery.id)); expect(harness.current().pendingDraftTarget).toBeNull();
     act(() => harness.current().clearPendingDraftTarget());
     expect(harness.current().pendingDraftTarget).toBeNull();
   });

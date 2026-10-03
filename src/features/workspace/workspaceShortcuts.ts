@@ -5,17 +5,7 @@ export type WorkspaceShortcut =
   | "focusAiInput"
   | "manualSave";
 
-const FLOATING_EDITING_SURFACE_SELECTOR = [
-  ".proposal-detail-dialog",
-  ".research-detail-panel",
-  ".document-reader-panel",
-  ".delivery-preparation-panel",
-  ".delivery-output-panel",
-  ".project-bundle-panel",
-  ".project-menu",
-  ".side-drawer",
-  ".search-layer"
-].join(", ");
+const FLOATING_EDITING_SURFACE_SELECTOR = "[data-workspace-keyboard-owner], [data-workspace-surface]";
 
 export function resolveWorkspaceShortcut(event: KeyboardEvent, target: EventTarget | null): WorkspaceShortcut | null {
   const key = event.key.toLowerCase();
@@ -25,12 +15,12 @@ export function resolveWorkspaceShortcut(event: KeyboardEvent, target: EventTarg
     return "manualSave";
   }
 
-  if (isEditableShortcutTarget(target)) {
-    return null;
-  }
-
   if (event.key === "Escape") {
     return "closeOrClearSelection";
+  }
+
+  if (isEditableShortcutTarget(target)) {
+    return null;
   }
 
   if (isInsideFloatingEditingSurface(target)) {
@@ -61,7 +51,7 @@ export function isEditableShortcutTarget(target: EventTarget | null): boolean {
   return Boolean(element.closest("textarea, input, select, [contenteditable='true']"));
 }
 
-function isInsideFloatingEditingSurface(target: EventTarget | null): boolean {
+export function isInsideFloatingEditingSurface(target: EventTarget | null): boolean {
   const element = toElementLike(target);
   return Boolean(element?.closest(FLOATING_EDITING_SURFACE_SELECTOR));
 }

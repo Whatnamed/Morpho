@@ -57,6 +57,7 @@ export type UseWorkspaceAgentRuntimeControllerInput = {
   setTaskMode: (value: AiTaskMode) => void;
   openConversation: () => void;
   requestPendingConfirmation: (value: PendingAiConfirmation) => PendingConfirmationRequestResult;
+  captureAttention?: () => () => boolean;
   selectObjects: (objectIds: string[]) => void;
   focusObject: (objectId: string) => void;
   openProposal: (proposalId: string) => void;
@@ -117,6 +118,7 @@ export function useWorkspaceAgentRuntimeController(
     setTaskMode,
     openConversation,
     requestPendingConfirmation,
+    captureAttention,
     selectObjects,
     focusObject,
     openProposal,
@@ -373,12 +375,32 @@ export function useWorkspaceAgentRuntimeController(
     };
   }, [detachSession, session, setContextWarningInput]);
 
+  const captureAttentionHost = useCallback((base: AgentTurnHost): AgentTurnHost => {
+    const allowed = captureAttention?.() ?? (() => true);
+    return { ...base,
+      commitWorkspace: (transform) => base.commitWorkspace((current) => {
+        const result = transform(current);
+        if (allowed()) return result;
+        const ids = current.ui.lastSelectionIds.filter((id) => result.workspace.objects[id]?.visibility === "active");
+        return { ...result, workspace: { ...result.workspace, ui: { ...result.workspace.ui, lastSelectionIds: ids } } };
+      }),
+      ui: { ...base.ui,
+        selectObjects: (ids) => { if (allowed()) base.ui.selectObjects(ids); },
+        focusObject: (id) => { if (allowed()) base.ui.focusObject(id); },
+        openProposal: (id) => { if (allowed()) base.ui.openProposal(id); },
+        openConversation: () => { if (allowed()) base.ui.openConversation(); }
+      },
+      executeVisualGenerationPlan: (input) => base.executeVisualGenerationPlan({ ...input, allowAttentionHandoff: allowed })
+    };
+  }, [captureAttention]);
+
   const recoveredSessionRef = useRef<WorkspaceAgentRuntimeSession | null>(null);
   useEffect(() => {
     if (!session.workspaceReady || currentSessionRef.current !== session || recoveredSessionRef.current === session) {
       return;
     }
-    const expectedHost = activeHostRef.current;
+    const baseHost = activeHostRef.current;
+    const expectedHost = baseHost ? captureAttentionHost(baseHost) : null;
     if (!expectedHost) return;
     recoveredSessionRef.current = session;
     void recoverMorphoAgentTurn(session.projectId, expectedHost).catch((error: unknown) => {
@@ -390,11 +412,12 @@ export function useWorkspaceAgentRuntimeController(
       }
       expectedHost.ui.showFailure();
     });
-  }, [session]);
+  }, [captureAttentionHost, session]);
 
   const send = useCallback(async (input: RunMorphoAgentTurnAPlusInput): Promise<void> => {
     const expectedSession = currentSessionRef.current;
-    const expectedHost = activeHostRef.current;
+    const baseHost = activeHostRef.current;
+    const expectedHost = baseHost ? captureAttentionHost(baseHost) : null;
     if (!expectedSession || !expectedSession.workspaceReady || !expectedHost) return;
     const draft = input.draft.trim();
     if (!draft || runtimeStateRef.current.isStreaming) return;
@@ -428,11 +451,12 @@ export function useWorkspaceAgentRuntimeController(
       if (isAgentTurnHostSessionDetachedError(error)) return;
       throw error;
     }
-  }, [updateRuntimeDisplay]);
+  }, [captureAttentionHost, updateRuntimeDisplay]);
 
   const retryRecovery = useCallback(async (): Promise<void> => {
     const expectedSession = currentSessionRef.current;
-    const expectedHost = activeHostRef.current;
+    const baseHost = activeHostRef.current;
+    const expectedHost = baseHost ? captureAttentionHost(baseHost) : null;
     if (!expectedSession || !expectedSession.workspaceReady || !expectedHost) return;
     updateRuntimeDisplay(expectedSession, { showFailure: false });
     try {
@@ -446,7 +470,7 @@ export function useWorkspaceAgentRuntimeController(
       if (isAgentTurnHostSessionDetachedError(error)) return;
       throw error;
     }
-  }, [updateRuntimeDisplay]);
+  }, [captureAttentionHost, updateRuntimeDisplay]);
 
   const editFailedTurn = useCallback((): boolean => {
     const expectedSession = currentSessionRef.current;

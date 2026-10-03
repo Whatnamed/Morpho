@@ -1,5 +1,7 @@
 "use client";
 
+import { DesignDefinitionDetail } from "./DesignDefinitionDetail";
+import { ConceptDirectionDetail } from "./ConceptDirectionDetail";
 import { BookOpen } from "lucide-react";
 import { useState } from "react";
 
@@ -53,6 +55,9 @@ type BottomDetailBarProps = {
   onLocateObject?: (objectId: string) => void;
   onKeepReviewedVisual?: (objectId: string) => void;
   onRegenerateReviewedVisual?: (objectId: string) => void;
+  activeTab?: DetailTab;
+  onTabChange?: (tab: DetailTab) => void;
+  onEditText?: (objectId: string) => void;
   onSetKeyConclusionCategory?: (objectId: string, category: AssignableKeyConclusionCategory) => void;
 };
 
@@ -66,6 +71,7 @@ export type DetailRelationRow = {
   label: string;
   title: string;
   meta: string;
+  content?: import("react").ReactNode;
 };
 
 type DetailTabAvailabilityInput = {
@@ -327,9 +333,11 @@ export function BottomDetailBar({
   onLocateObject,
   onKeepReviewedVisual,
   onRegenerateReviewedVisual,
-  onSetKeyConclusionCategory
+  onSetKeyConclusionCategory,
+  activeTab = "信息",
+  onTabChange,
+  onEditText
 }: BottomDetailBarProps) {
-  const [activeTab, setActiveTab] = useState<DetailTab>("信息");
 
   if (selectedObjects.length === 0) {
     return null;
@@ -369,7 +377,7 @@ export function BottomDetailBar({
   const hasInlineActions = documentReaderAction.visible || primary.type === "documentFragment";
 
   return (
-    <div className="detail-popover" aria-label="对象详情">
+    <div data-workspace-keyboard-owner="detail" className="detail-popover" aria-label="对象详情">
       <div className="detail-popover-head">
         <div className="detail-object-chip" title={primary.title}>
           <span className="detail-object-type">{getObjectTypeLabel(primary)}</span>
@@ -385,7 +393,7 @@ export function BottomDetailBar({
               role="tab"
               aria-selected={visibleTab === tab}
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => onTabChange?.(tab)}
             >
               {tab}
             </button>
@@ -393,6 +401,7 @@ export function BottomDetailBar({
         </div>
       </div>
       <div className="detail-content" role="tabpanel">
+        {selectedObjects.length === 1 && primary.type === "text" && onEditText ? <button className="plain-button" type="button" onClick={() => onEditText(primary.id)}>编辑文本</button> : null}
         <div className="detail-content-stack">
           {visibleTab === "信息" &&
           selectedObjects.length === 1 &&
@@ -952,6 +961,8 @@ export function DetailRelationRows({
           <button
             className="detail-row detail-object-reference"
             data-object-id={referenceObject.id}
+            disabled={referenceObject.visibility !== "active"}
+            title={referenceObject.visibility !== "active" ? "已隐藏，请先从隐藏内容恢复后定位" : undefined}
             key={`${row.label}-${row.id}`}
             type="button"
             onBlur={() => onPreviewObject?.(null)}
@@ -1004,6 +1015,7 @@ function RevisionDetailRows({
   return (
     <>
       <DetailRelationRows rows={rows} />
+      {rows.map((row) => row.content ? <details key={row.id}><summary>阅读{row.label}：{row.title}</summary>{row.content}</details> : null)}
       {pendingRevisionDraft ? <span className="detail-meta">有修订草稿待应用。</span> : null}
     </>
   );
@@ -1077,6 +1089,7 @@ function buildDesignDefinitionRevisionRows(
       id: revision.id,
       label: revision.id === currentRevisionId ? "当前修订" : `修订 ${revision.revisionNumber}`,
       title: revision.title,
+      content: (() => { const object = Object.values(workspace.objects).find((object) => object.type === "designDefinition" && object.revisionIds.includes(revision.id)); return object?.type === "designDefinition" ? <DesignDefinitionDetail object={object} revision={revision} /> : null; })(),
       meta: revision.id === currentRevisionId ? "当前有效内容" : "历史修订"
     }));
 }
@@ -1093,6 +1106,7 @@ function buildConceptDirectionRevisionRows(
       id: revision.id,
       label: revision.id === currentRevisionId ? "当前修订" : `修订 ${revision.revisionNumber}`,
       title: revision.title,
+      content: (() => { const object = Object.values(workspace.objects).find((object) => object.type === "conceptDirection" && object.revisionIds.includes(revision.id)); return object?.type === "conceptDirection" ? <ConceptDirectionDetail object={object} revision={revision} /> : null; })(),
       meta: revision.id === currentRevisionId ? "当前方向内容" : "历史修订"
     }));
 }

@@ -169,19 +169,19 @@ describe("researchExtraction", () => {
     )?.activeObjectId).toBeUndefined();
   });
 
-  it("hides previously extracted cards and restores them when selected again", () => {
+  it("keeps previously retained conclusions when a different candidate set is retained", () => {
     const workspace = createInitialWorkspace();
     const selectedKey = getResearchExtractionKey("finding", 0);
     const first = applyResearchExtractionSelection(workspace, "research-night-path", [selectedKey]);
     const objectId = first.activeObjectIds[0];
 
     const removed = applyResearchExtractionSelection(first.workspace, "research-night-path", []);
-    expect(removed.hiddenCount).toBe(1);
-    expect(removed.workspace.objects[objectId]?.visibility).toBe("hidden");
+    expect(removed.hiddenCount).toBe(0);
+    expect(removed.workspace.objects[objectId]?.visibility).toBe("active");
 
     const restored = applyResearchExtractionSelection(removed.workspace, "research-night-path", [selectedKey]);
     expect(restored.createdCount).toBe(0);
-    expect(restored.restoredCount).toBe(1);
+    expect(restored.restoredCount).toBe(0);
     expect(restored.workspace.objects[objectId]?.visibility).toBe("active");
   });
 });

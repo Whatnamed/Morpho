@@ -48,6 +48,9 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
     const deliveryModule = await server.ssrLoadModule("/e2e/support/deliveryHandoffSeed.ts");
     await writeFile(resolve(process.cwd(), "e2e/.seed/delivery-handoff.json"), `${JSON.stringify(deliveryModule.buildDeliveryHandoffSeed())}\n`, "utf8");
 
+    const interactionModule = await server.ssrLoadModule("/e2e/support/interactionSeed.ts");
+    await writeFile(resolve(process.cwd(), "e2e/.seed/interaction.json"), `${JSON.stringify(interactionModule.buildInteractionSeed())}\n`, "utf8");
+
     // Skipped unless the perf project is running: building four scaled workspaces
     // costs several seconds and the acceptance suite never reads the result.
     if (needsPerfSeed) {

@@ -127,3 +127,17 @@ export function collectDirectCanvasEdges(workspace: MorphoWorkspace): DirectCanv
 
   return [...edgeByPair.values()];
 }
+
+export type CanvasRelationshipView = { objectId: string; tab: "来源" | "版本" | "关联" };
+
+/** Only direct edges for the actively requested detail; trace remains an explicit separate consumer. */
+export function collectRequestedCanvasEdges(workspace: MorphoWorkspace, view?: CanvasRelationshipView | null): DirectCanvasEdge[] {
+  if (!view) return [];
+  const sources = new Set<CanvasRelationshipKind>(["source", "generationReference", "researchSource", "keyConclusionSource", "directionRevisionSource", "definitionRevisionSource", "definitionBase", "documentFragmentExtractedFromFile", "supports", "supportsConclusion"]);
+  return collectDirectCanvasEdges(workspace).filter((edge) => {
+    if (edge.fromObjectId !== view.objectId && edge.toObjectId !== view.objectId) return false;
+    if (view.tab === "版本") return edge.relationKind === "version";
+    if (view.tab === "来源") return edge.toObjectId === view.objectId && sources.has(edge.relationKind);
+    return edge.relationKind !== "version" && !(edge.toObjectId === view.objectId && sources.has(edge.relationKind));
+  });
+}

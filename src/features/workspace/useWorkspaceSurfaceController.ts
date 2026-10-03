@@ -5,8 +5,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import type { DrawerMode } from "./components/LeftRail";
 import type { LeftRailAnchor } from "./leftRailPopoverPlacement";
 import {
-  resolveTopWorkspaceSurface,
-  type WorkspaceSurfacePriorityState
+  getTopWorkspaceSurfaceElement,
+  type WorkspaceSurfaceCloseTarget
 } from "./workspaceSurfacePriority";
 
 export type WorkspaceCanvasContextMenuState = {
@@ -350,21 +350,7 @@ export function useWorkspaceSurfaceController({
       if (!isCurrentSession(session)) {
         return false;
       }
-      const priorityState: WorkspaceSurfacePriorityState = {
-        canvasContextMenuOpen: canvasContextMenuState !== null,
-        proposalDetailOpen: detailProposalIdState !== null,
-        designDefinitionDetailOpen: detailDesignDefinitionIdState !== null,
-        conceptDirectionDetailOpen: detailConceptDirectionIdState !== null,
-        researchDetailOpen: activeResearchDetailObjectIdState !== null,
-        documentReaderOpen: ports.documentReaderOpen,
-        deliveryPreparationOpen: ports.deliveryPreparationOpen,
-        deliveryOutputOpen: ports.deliveryOutputOpen,
-        projectBundleOpen: ports.projectBundleOpen,
-        projectMenuOpen: projectMenuOpenState,
-        drawerOpen: activeDrawerState !== null
-      };
-
-      switch (resolveTopWorkspaceSurface(priorityState)) {
+      switch ((getTopWorkspaceSurfaceElement()?.dataset.workspaceSurface ?? "canvasSelection") as WorkspaceSurfaceCloseTarget) {
         case "canvasContextMenu":
           closeCanvasContextMenu();
           return true;
@@ -400,12 +386,11 @@ export function useWorkspaceSurfaceController({
           return true;
         case "canvasSelection":
           return ports.clearCanvasSelection();
+        default:
+          return false;
       }
     },
     [
-      activeDrawerState,
-      activeResearchDetailObjectIdState,
-      canvasContextMenuState,
       closeCanvasContextMenu,
       closeConceptDirectionDetail,
       closeDesignDefinitionDetail,
@@ -413,10 +398,6 @@ export function useWorkspaceSurfaceController({
       closeProjectMenu,
       closeProposalDetail,
       closeResearchDetail,
-      detailConceptDirectionIdState,
-      detailDesignDefinitionIdState,
-      detailProposalIdState,
-      projectMenuOpenState,
       isCurrentSession,
       session
     ]
@@ -432,21 +413,6 @@ export function useWorkspaceSurfaceController({
     // The external workspace session changed; clear all transient surfaces before exposing it.
     resetSurfaceState(projectTitle);
   }, [committedSession, commitSession, projectTitle, resetSurfaceState, session]);
-
-  useEffect(() => {
-    if (!sessionMatchesProject || !activeDrawerState) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        closeDrawer();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeDrawerState, closeDrawer, sessionMatchesProject]);
 
   useEffect(() => {
     if (!sessionMatchesProject || !activeDrawerState) {

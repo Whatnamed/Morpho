@@ -38,6 +38,7 @@ export type UseWorkspaceVisualGenerationControllerInput = {
     update: (current: PendingImageGenerationSlot[]) => PendingImageGenerationSlot[]
   ) => void;
   setImageTaskStatus: (status: ImageTaskStatus | null) => void;
+  captureAttention?: () => () => boolean;
   selectObjects: (objectIds: string[]) => void;
   focusObject: (objectId: string) => void;
   persistWorkspace?: () => import("./workspacePersistence").WorkspacePersistenceState;
@@ -79,6 +80,7 @@ export function useWorkspaceVisualGenerationController(
     commitWorkspace: commitWorkspaceInput,
     setPendingImageGenerationSlots: setPendingImageGenerationSlotsInput,
     setImageTaskStatus: setImageTaskStatusInput,
+    captureAttention,
     selectObjects: selectObjectsInput,
     focusObject: focusObjectInput
   } = input;
@@ -224,12 +226,21 @@ export function useWorkspaceVisualGenerationController(
     void resumeIndependentImageDeliveries(ports).catch(() => undefined);
   }, [ports, session]);
   const executeVisualGenerationPlan = useCallback<ExecuteAgentVisualGenerationPlan>(
-    (executionInput) => executeWorkspaceVisualGenerationPlan(
-      executionInput,
-      effectiveImageGenerationSettings,
-      ports
-    ),
-    [effectiveImageGenerationSettings, ports]
+    (executionInput) => {
+      const allowed = executionInput.allowAttentionHandoff ?? captureAttention?.() ?? (() => true);
+      return executeWorkspaceVisualGenerationPlan(executionInput, effectiveImageGenerationSettings, {
+        ...ports,
+        commitWorkspace: (session, transform) => ports.commitWorkspace(session, (current) => {
+          const result = transform(current);
+          if (allowed()) return result;
+          const ids = current.ui.lastSelectionIds.filter((id) => result.workspace.objects[id]?.visibility === "active");
+          return { ...result, workspace: { ...result.workspace, ui: { ...result.workspace.ui, lastSelectionIds: ids } } };
+        }),
+        selectObjects: (session, ids) => { if (allowed()) ports.selectObjects(session, ids); },
+        focusObject: (session, id) => { if (allowed()) ports.focusObject(session, id); }
+      });
+    },
+    [captureAttention, effectiveImageGenerationSettings, ports]
   );
 
   return { executeVisualGenerationPlan };

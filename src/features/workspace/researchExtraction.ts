@@ -1,6 +1,6 @@
 import type { CanvasPoint, CanvasSize, MorphoObjectId, MorphoWorkspace, ResearchObject } from "@/domain/morpho/types";
 import { getResearchItemParts, normalizeResearchItem } from "@/domain/operations/researchItems";
-import { buildKeyConclusionDraftFromResearchSource, createKeyConclusion, hideObject, restoreObject } from "@/domain/morpho/workspace";
+import { buildKeyConclusionDraftFromResearchSource, createKeyConclusion, restoreObject } from "@/domain/morpho/workspace";
 import type { ProviderCitation } from "@/server/ai/types";
 import type { CreateResearchAnalysisArgs } from "./morphoAgent";
 
@@ -143,7 +143,7 @@ export function applyResearchExtractionSelection(
   let nextWorkspace = workspace;
   let createdCount = 0;
   let restoredCount = 0;
-  let hiddenCount = 0;
+  const hiddenCount = 0;
   let skippedCount = 0;
 
   for (const item of items) {
@@ -189,11 +189,6 @@ export function applyResearchExtractionSelection(
       nextWorkspace = created.workspace;
       createdCount += 1;
       continue;
-    }
-
-    if (!wantsActive && item.activeObjectId) {
-      nextWorkspace = hideObject(nextWorkspace, item.activeObjectId);
-      hiddenCount += 1;
     }
   }
 

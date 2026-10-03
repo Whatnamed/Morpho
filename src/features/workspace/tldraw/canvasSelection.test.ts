@@ -37,3 +37,9 @@ describe("normalizeCanvasSelectionIds", () => {
     expect(shouldApplyCanvasSelectionRequest({ objectIds: [], nonce: 2 }, 1)).toBe(true);
   });
 });
+
+it("admits one explicit Region/member joint selection without enabling arbitrary mixed selections", () => {
+  const kind = (id: string) => id === "stage" ? "stage" as const : "morpho" as const;
+  expect(normalizeCanvasSelectionIds(["stage"], ["stage", "a", "b"], kind, (_stage, ids) => ids.length === 2)).toEqual(["stage", "a", "b"]);
+  expect(normalizeCanvasSelectionIds(["stage"], ["stage", "a"], kind, (_stage, ids) => ids.length === 2)).toEqual(["a"]);
+});

@@ -49,6 +49,8 @@ type AiConversationPanelProps = {
   selectedObjects: MorphoObject[];
   suggestions: Suggestion[];
   draft: string;
+  deliveryDraftTargetLabel?: string;
+  onClearDeliveryDraftTarget?: () => void;
   isOpen: boolean;
   isImageTaskContext: boolean;
   isImageGenerationAuthorized: boolean;
@@ -132,6 +134,8 @@ export function AiConversationPanel({
   selectedObjects,
   suggestions,
   draft,
+  deliveryDraftTargetLabel,
+  onClearDeliveryDraftTarget,
   isOpen,
   isImageTaskContext,
   isImageGenerationAuthorized,
@@ -290,7 +294,7 @@ export function AiConversationPanel({
 
   return (
     <>
-      <section className={`ai-panel ${isOpen ? "" : "collapsed"}`} aria-label="AI 对话" onCopyCapture={handleCopy}>
+      <section data-workspace-keyboard-owner="conversation" className={`ai-panel ${isOpen ? "" : "collapsed"}`} aria-label="AI 对话" onCopyCapture={handleCopy}>
         <div className="ai-top">
           <div className="ai-top-handle" aria-hidden="true" />
           <button className="icon-button" type="button" aria-label="收起 AI 面板" onClick={onToggleOpen}>
@@ -470,7 +474,7 @@ export function AiConversationPanel({
             <div className="failure-card">
               <strong>{failureCopy?.title}</strong>
               <p>{failureCopy?.body}</p>
-              <div className="failure-actions">
+          <div className="failure-actions">
                 <button className="plain-button" type="button" disabled={!canMutateWorkspace} onClick={onFailureRetry}>
                   重试
                 </button>
@@ -502,19 +506,25 @@ export function AiConversationPanel({
             .filter(Boolean)
             .join(" ")}
         >
+          {deliveryDraftTargetLabel ? (
+            <div className="context-warning" role="status" aria-label="交付章节输入目标">
+              本次输入绑定章节：{deliveryDraftTargetLabel}
+              <button type="button" className="plain-button" onClick={onClearDeliveryDraftTarget}>解除章节目标</button>
+            </div>
+          ) : null}
           <div className="input-context-strip" aria-label="当前输入语境">
             <span className={`input-context-count${selectedObjects.length > 0 ? " has-items" : ""}`}>
-              {selectedObjects.length > 0 ? `已选 ${selectedObjects.length}` : "无选择"}
+              {deliveryDraftTargetLabel ? "仅绑定交付章节" : selectedObjects.length > 0 ? `已选 ${selectedObjects.length}` : "无选择"}
             </span>
-            {visibleContextObjects.map((object) => (
+            {!deliveryDraftTargetLabel && visibleContextObjects.map((object) => (
               <span className="input-context-chip" title={object.title} key={object.id}>
                 {object.title}
               </span>
             ))}
-            {hiddenContextCount > 0 ? <span className="input-context-more">+{hiddenContextCount}</span> : null}
+            {!deliveryDraftTargetLabel && hiddenContextCount > 0 ? <span className="input-context-more">+{hiddenContextCount}</span> : null}
           </div>
 
-          <details className="mode-disclosure">
+          <details data-workspace-surface="inputMode" className="mode-disclosure">
             <summary>
               <span>{modeSummary}</span>
             </summary>

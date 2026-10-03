@@ -111,7 +111,7 @@ export function OverlayDrawers({
 
   if (mode === "map") {
     return (
-      <section ref={panelRef} className="project-map" aria-label="项目地图" style={anchoredStyle}>
+      <section ref={panelRef} data-workspace-surface="drawer" className="project-map" aria-label="项目地图" style={anchoredStyle}>
         <div className="map-title">项目地图</div>
         <button className="map-item" type="button" onClick={() => onFocusArea("overview")}>
           项目概览 <span>↗</span>
@@ -204,7 +204,7 @@ export function OverlayDrawers({
       : deliveryReferenceResults.slice(0, 5);
 
     return (
-      <section className="search-layer" aria-label="项目内搜索">
+      <section data-workspace-surface="drawer" className="search-layer" aria-label="项目内搜索">
         <div className="search-head">
           <div>
             <div className="search-title">项目内搜索</div>
@@ -226,7 +226,7 @@ export function OverlayDrawers({
           ) : (
             <>
               <div className="result-group-title">画布内容 · {objectResults.length}</div>
-              <SearchRows results={visibleObjectResults} onLocateObject={onLocateObject} />
+              <SearchRows results={visibleObjectResults} onLocateObject={onLocateObject} onRestoreObject={onRestoreObject} />
               {objectResults.length > 8 ? (
                 <button className="plain-button drawer-more-button" type="button" onClick={() => setShowAllObjectResults((current) => !current)}>
                   {showAllObjectResults ? "收起" : `显示全部 ${objectResults.length} 条`}
@@ -732,7 +732,7 @@ function Drawer({
   style: React.CSSProperties;
 }) {
   return (
-    <section ref={panelRef} className="side-drawer" aria-label={title} style={style}>
+    <section ref={panelRef} data-workspace-surface="drawer" className="side-drawer" aria-label={title} style={style}>
       <div className="drawer-head">
         <div className="drawer-title">{title}</div>
         <button className="icon-button" type="button" aria-label={`关闭${title}`} onClick={onClose}>
@@ -785,10 +785,12 @@ function ObjectRows({
 
 function SearchRows({
   results,
-  onLocateObject
+  onLocateObject,
+  onRestoreObject
 }: {
   results: ReturnType<typeof searchWorkspace>;
   onLocateObject: (objectId: string) => void;
+  onRestoreObject?: (objectId: string) => void;
 }) {
   if (results.length === 0) {
     return <p className="drawer-muted">没有匹配结果。</p>;
@@ -824,8 +826,8 @@ function SearchRows({
               </div>
               {result.kind === "object" ? (
                 <div className="row-action-line">
-                  <button className="plain-button row-action" type="button" onClick={() => onLocateObject(result.objectId)}>
-                    定位
+                  <button className="plain-button row-action" type="button" disabled={result.hidden && !onRestoreObject} onClick={() => result.hidden ? onRestoreObject?.(result.objectId) : onLocateObject(result.objectId)}>
+                    {result.hidden ? "恢复并定位" : "定位"}
                   </button>
                   {source && source.status === "active" ? (
                     <button

@@ -37,6 +37,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import type { CanvasLayerReorderAction } from "@/domain/morpho/workspace";
 import type { MorphoObject } from "@/domain/morpho/types";
 import type { SelectionToolbarPlacement } from "../selectionToolbar";
+import { WORKSPACE_SURFACE_CLOSE_EVENT } from "../workspaceSurfacePriority";
 import { CanvasIconButton } from "./CanvasIconButton";
 
 export type SelectionToolbarProps = {
@@ -125,9 +126,13 @@ export function SelectionToolbar({
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setIsDirectionMenuOpen(false);
     };
+    const menu = directionMenuRef.current;
+    const closePopover = () => setIsDirectionMenuOpen(false);
+    menu?.addEventListener(WORKSPACE_SURFACE_CLOSE_EVENT, closePopover);
     document.addEventListener("pointerdown", close, { capture: true });
     document.addEventListener("keydown", closeOnEscape);
     return () => {
+      menu?.removeEventListener(WORKSPACE_SURFACE_CLOSE_EVENT, closePopover);
       document.removeEventListener("pointerdown", close, { capture: true });
       document.removeEventListener("keydown", closeOnEscape);
     };
@@ -231,7 +236,7 @@ export function SelectionToolbar({
           <CanvasIconButton label="查看研究详情" onClick={onOpenResearchDetail}>
             <BookOpen size={15} />
           </CanvasIconButton>
-          <CanvasIconButton label="AI 代选" onClick={onAutoSelectResearch}>
+          <CanvasIconButton label="推荐候选" onClick={onAutoSelectResearch}>
             <ListChecks size={15} />
           </CanvasIconButton>
         </div>
@@ -339,6 +344,7 @@ export function SelectionToolbar({
             {isDirectionMenuOpen ? (
               <div
                 ref={directionMenuRef}
+                data-workspace-surface="toolbarPopover"
                 className="canvas-toolbar-menu"
                 role="menu"
                 aria-label="方向更多操作"
@@ -446,7 +452,7 @@ function ContextMenuShell({
 }) {
   return (
     <div
-      className="canvas-context-menu"
+      data-workspace-surface="canvasContextMenu" className="canvas-context-menu"
       style={{ left: x, top: y }}
       role="menu"
       aria-label={label}

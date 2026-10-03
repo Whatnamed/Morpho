@@ -6,6 +6,8 @@ import {
   Rectangle2d,
   T,
   resizeBox,
+  track,
+  useEditor,
   type Geometry2d,
   type RecordProps,
   type TLResizeInfo,
@@ -129,96 +131,13 @@ export class StageRegionShapeUtil extends BaseBoxShapeUtil<StageRegionShape> {
     });
   }
 
-  /**
-   * Move explicit members by the same delta inside one interactive translate.
-   * tldraw batches the drag into a single history entry with these updates.
-  */
+  /** A region drag moves only the landmark. Select members explicitly for a joint drag. */
   override onTranslate = (initial: StageRegionShape, current: StageRegionShape) => {
-    if (current.props.locked) {
-      return {
-        id: current.id,
-        type: "stageRegion" as const,
-        x: initial.x,
-        y: initial.y
-      };
-    }
-    const dx = current.x - initial.x;
-    const dy = current.y - initial.y;
-    if (dx === 0 && dy === 0) {
-      return;
-    }
-
-    const members = new Set(current.props.memberObjectIds);
-    if (members.size === 0) {
-      return;
-    }
-
-    // Relative step from previous frame: current already moved; members need the
-    // same step as this frame. We compute against the last applied position stored
-    // on the util instance.
-    const last = this.lastTranslateByShapeId.get(current.id) ?? { x: initial.x, y: initial.y };
-    const stepX = current.x - last.x;
-    const stepY = current.y - last.y;
-    this.lastTranslateByShapeId.set(current.id, { x: current.x, y: current.y });
-    if (stepX === 0 && stepY === 0) {
-      return;
-    }
-
-    const updates: TLShapePartial[] = [];
-    for (const shape of this.editor.getCurrentPageShapes()) {
-      if (shape.type !== "morpho-object") {
-        continue;
-      }
-      const objectId = (shape.props as { objectId?: string }).objectId;
-      if (!objectId || !members.has(objectId)) {
-        continue;
-      }
-      updates.push({
-        id: shape.id,
-        type: shape.type,
-        x: shape.x + stepX,
-        y: shape.y + stepY
-      });
-    }
-    if (updates.length > 0) {
-      this.editor.updateShapes(updates);
-    }
+    if (current.props.locked) return { id: current.id, type: "stageRegion" as const, x: initial.x, y: initial.y };
   };
-
-  override onTranslateStart = (shape: StageRegionShape) => {
-    this.lastTranslateByShapeId.set(shape.id, { x: shape.x, y: shape.y });
-  };
-
-  override onTranslateEnd = (initial: StageRegionShape, current: StageRegionShape) => {
-    this.lastTranslateByShapeId.delete(current.id);
-    void initial;
-  };
-
-  private lastTranslateByShapeId = new Map<string, { x: number; y: number }>();
 
   override component(shape: StageRegionShape) {
-    const color = getStageRegionColorPreset(shape.props.colorKey);
-    const fill = shape.props.backgroundVisible ? `color-mix(in srgb, ${color.fill} ${shape.props.fillOpacity}%, transparent)` : "transparent";
-    const borderColor = shape.props.borderStyle === "none" ? "transparent" : color.border;
-    return (
-      <HTMLContainer
-        className={`stage-region-shape stage-region-${shape.props.stageKey} is-border-${shape.props.borderStyle}`}
-        style={{
-          width: shape.props.w,
-          height: shape.props.h,
-          pointerEvents: "all",
-          "--stage-region-fill": fill,
-          "--stage-region-border": borderColor,
-          "--stage-region-title": color.title
-        } as CSSProperties}
-      >
-        <div className="stage-region-wash" aria-hidden="true" />
-        <div className="stage-region-title">
-          <span>{shape.props.title}</span>
-          {shape.props.locked ? <LockKeyhole size={11} aria-label="已锁定分区" /> : null}
-        </div>
-      </HTMLContainer>
-    );
+    return <StageRegionCard shape={shape} />;
   }
 
   override getIndicatorPath(shape: StageRegionShape) {
@@ -227,3 +146,33 @@ export class StageRegionShapeUtil extends BaseBoxShapeUtil<StageRegionShape> {
     return path;
   }
 }
+
+const StageRegionCard = track(function StageRegionCard({ shape }: { shape: StageRegionShape }) {
+  const editor = useEditor();
+  const selected = editor.getSelectedShapes();
+  const memberCount = selected.filter((candidate) => candidate.type === "morpho-object" && shape.props.memberObjectIds.includes(candidate.props.objectId)).length;
+  const jointlySelected = selected.some((candidate) => candidate.id === shape.id) && memberCount > 0;
+  const color = getStageRegionColorPreset(shape.props.colorKey);
+  const fill = shape.props.backgroundVisible ? `color-mix(in srgb, ${color.fill} ${shape.props.fillOpacity}%, transparent)` : "transparent";
+  const borderColor = shape.props.borderStyle === "none" ? "transparent" : color.border;
+  return (
+    <HTMLContainer
+      className={`stage-region-shape stage-region-${shape.props.stageKey} is-border-${shape.props.borderStyle}`}
+      style={{
+        width: shape.props.w,
+        height: shape.props.h,
+        pointerEvents: "all",
+        "--stage-region-fill": fill,
+        "--stage-region-border": borderColor,
+        "--stage-region-title": color.title
+      } as CSSProperties}
+    >
+      <div className="stage-region-wash" aria-hidden="true" />
+      <div className="stage-region-title">
+        <span>{shape.props.title}</span>
+        <span className="drawer-muted">{jointlySelected ? `拖动地标与 ${memberCount} 个已选成员一起移动` : "拖动仅移动地标"}</span>
+        {shape.props.locked ? <LockKeyhole size={11} aria-label="已锁定分区" /> : null}
+      </div>
+    </HTMLContainer>
+  );
+});

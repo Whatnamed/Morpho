@@ -35,6 +35,7 @@ import {
   updateStageRegionStyle
 } from "@/domain/morpho/stageRegions";
 import { buildRelationshipPath, buildRelationshipRoute, createRelationshipRouteCache, type CanvasPageBounds } from "./canvasRelationshipRouting";
+import { collectRequestedCanvasEdges, type CanvasRelationshipView } from "./canvasRelationships";
 import { canvasEdgeKey, collectPrimaryCanvasEdges } from "./primaryCanvasEdges";
 import type { PrimaryCanvasTrace } from "./primaryCanvasTrace";
 import {
@@ -87,6 +88,7 @@ type MorphoCanvasProps = {
   annotatedObjectId: string | null;
   /** Full primary-chain highlight payload for canvas (not only object ids). */
   canvasTrace: PrimaryCanvasTrace | null;
+  relationshipView?: CanvasRelationshipView | null;
   highlightedObjectId: string | null;
   assetUrls: Record<string, string>;
   pendingImageGenerationSlots: PendingImageGenerationSlot[];
@@ -195,6 +197,7 @@ export function MorphoCanvas({
   readOnly = false,
   annotatedObjectId,
   canvasTrace,
+  relationshipView,
   highlightedObjectId,
   assetUrls,
   pendingImageGenerationSlots,
@@ -273,6 +276,7 @@ export function MorphoCanvas({
       OnTheCanvas: () => (
         <CanvasRelationshipOverlay
           workspace={workspace}
+          relationshipView={relationshipView}
           emphasizedObjectId={highlightedObjectId}
           isChainTraceActive={isChainTraceActive}
           traceEdgeKeys={traceEdgeKeySet}
@@ -302,6 +306,7 @@ export function MorphoCanvas({
       renderSelectionToolbar,
       secondaryTraceEdgeKeys,
       secondaryTraceObjectIds,
+      relationshipView,
       traceEdgeKeySet,
       workspace,
       canvasOverlayHost,
@@ -1088,8 +1093,9 @@ export function MorphoCanvas({
     if (focusRequest.objectId) {
       const shape = editor.getCurrentPageShapes().filter(isMorphoShape).find((candidate) => candidate.props.objectId === focusRequest.objectId);
       if (shape) {
-        editor.select(shape.id);
-        editor.zoomToSelection({
+        const bounds = editor.getShapePageBounds(shape);
+        if (!bounds) return;
+        editor.zoomToBounds(bounds, {
           animation: { duration: 360 }
         });
         window.setTimeout(() => {
@@ -1150,7 +1156,12 @@ export function MorphoCanvas({
             return "other";
           };
           const cleanupBeforeSelection = editor.sideEffects.registerBeforeChangeHandler("instance_page_state", (previous, next) => {
-            const normalizedIds = normalizeCanvasSelectionIds(previous.selectedShapeIds, next.selectedShapeIds, selectionKind);
+            const normalizedIds = normalizeCanvasSelectionIds(previous.selectedShapeIds, next.selectedShapeIds, selectionKind, (stageId, ids) => {
+              const stage = editor.getShape(stageId as TLShapeId);
+              if (!stage || !isStageRegionShape(stage) || stage.props.locked) return false;
+              const members = editor.getCurrentPageShapes().filter(isMorphoShape).filter((shape) => stage.props.memberObjectIds.includes(shape.props.objectId));
+              return members.length > 0 && members.length === ids.length && members.every((shape) => ids.includes(shape.id));
+            });
             return areSelectionIdsEqual(next.selectedShapeIds, normalizedIds) ? next : { ...next, selectedShapeIds: normalizedIds as TLShapeId[] };
           });
           const cleanupAfterSelection = editor.sideEffects.registerAfterChangeHandler("instance_page_state", (_previous, next) => {
@@ -1205,6 +1216,7 @@ export function MorphoCanvas({
 const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
   workspace,
   emphasizedObjectId,
+  relationshipView,
   isChainTraceActive,
   traceEdgeKeys,
   secondaryTraceEdgeKeys,
@@ -1212,6 +1224,7 @@ const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
 }: {
   workspace: MorphoWorkspace;
   emphasizedObjectId: string | null;
+  relationshipView?: CanvasRelationshipView | null;
   isChainTraceActive: boolean;
   traceEdgeKeys: Set<string>;
   secondaryTraceEdgeKeys: Set<string>;
@@ -1239,7 +1252,7 @@ const CanvasRelationshipOverlay = track(function CanvasRelationshipOverlay({
   }
 
   // Permanent overlay draws only primary edges (full aggregate stays available elsewhere).
-  const visibleEdges = collectPrimaryCanvasEdges(workspace).filter(
+  const visibleEdges = (isChainTraceActive ? collectPrimaryCanvasEdges(workspace).filter((edge) => traceEdgeKeys.has(canvasEdgeKey(edge.fromObjectId, edge.toObjectId)) || secondaryTraceEdgeKeys.has(canvasEdgeKey(edge.fromObjectId, edge.toObjectId))) : collectRequestedCanvasEdges(workspace, relationshipView)).filter(
     (edge) => boundsByObjectId.has(edge.fromObjectId) && boundsByObjectId.has(edge.toObjectId)
   );
   const routes = visibleEdges.map((edge) => {
@@ -1629,6 +1642,12 @@ function CanvasStageRegionToolbar({
     <StageRegionToolbar
       region={region}
       placement={placement}
+      visibleMemberCount={editor.getCurrentPageShapes().filter(isMorphoShape).filter((shape) => region.memberObjectIds.includes(shape.props.objectId)).length}
+      onSelectMembers={() => {
+        const ids = editor.getCurrentPageShapes().filter(isMorphoShape).filter((shape) => region.memberObjectIds.includes(shape.props.objectId)).map((shape) => shape.id);
+        editor.select(`shape:${region.id}` as StageRegionShape["id"], ...ids);
+        editor.zoomToSelection({ animation: { duration: 360 } });
+      }}
       canFit={!region.locked && hasVisibleStageRegionMembers(workspace, region.id)}
       openPopover={openPopover}
       onOpenPopoverChange={onOpenPopoverChange}

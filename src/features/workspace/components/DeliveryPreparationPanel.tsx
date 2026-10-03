@@ -107,7 +107,7 @@ export function DeliveryPreparationPanel({
     : [];
 
   return (
-    <section className="delivery-panel" aria-label="交付准备">
+    <section data-workspace-surface="deliveryPreparation" className="delivery-panel" aria-label="交付准备">
       <div className="delivery-panel-head">
         <div>
           <span className="delivery-eyebrow">交付准备</span>

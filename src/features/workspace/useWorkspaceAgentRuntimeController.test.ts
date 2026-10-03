@@ -52,6 +52,19 @@ afterEach(async () => {
 });
 
 describe("useWorkspaceAgentRuntimeController", () => {
+  it("preserves live selection across a late domain result while keeping the generated object and ui ownership", async () => {
+    runnerMocks.recover.mockResolvedValue("none");
+    const input = createInput(); input.captureAttention = () => () => false;
+    const harness = await renderController(input);
+    runnerMocks.run.mockImplementation(async (_turn, host: AgentTurnHost) => {
+      host.commitWorkspace((current) => ({ workspace: { ...current, objects: { ...current.objects, result: { id: "result", type: "text", title: "result", summary: "result", body: "result", visibility: "active", createdBy: "ai" } }, ui: { ...current.ui, lastSelectionIds: ["result"] } }, value: undefined }));
+      host.ui.selectObjects(["result"]); host.ui.focusObject("result"); host.ui.openProposal("result");
+    });
+    await act(async () => harness.current().send(createTurnInput("create result")));
+    expect(input.workspace().objects.result).toBeDefined(); expect(input.workspace().ui.lastSelectionIds).toEqual([]);
+    expect(input.selectObjects).not.toHaveBeenCalled(); expect(input.focusObject).not.toHaveBeenCalled(); expect(input.openProposal).not.toHaveBeenCalled();
+    runnerMocks.run.mockReset();
+  });
   it("recovers once for a ready session and does not repeat on ordinary rerenders", async () => {
     runnerMocks.recover.mockResolvedValue("none");
     const harness = await renderController(createInput());

@@ -241,7 +241,7 @@ describe("SelectionToolbar", () => {
     );
 
     expect(html).toContain("研究详情");
-    expect(html).toContain("AI 代选");
+    expect(html).toContain("推荐候选");
   });
 
   const contextMenuHandlers = {

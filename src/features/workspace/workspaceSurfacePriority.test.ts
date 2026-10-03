@@ -1,76 +1,22 @@
-import { describe, expect, it } from "vitest";
-
-import { resolveTopWorkspaceSurface, type WorkspaceSurfacePriorityState } from "./workspaceSurfacePriority";
-
-describe("workspace surface close priority", () => {
-  it("returns canvas selection when no surface is open", () => {
-    expect(resolveTopWorkspaceSurface(emptyPriority())).toBe("canvasSelection");
-  });
-
-  it("returns the first open surface in the complete priority order", () => {
-    const order: Array<keyof WorkspaceSurfacePriorityState> = [
-      "canvasContextMenuOpen",
-      "proposalDetailOpen",
-      "designDefinitionDetailOpen",
-      "conceptDirectionDetailOpen",
-      "researchDetailOpen",
-      "documentReaderOpen",
-      "deliveryPreparationOpen",
-      "deliveryOutputOpen",
-      "projectBundleOpen",
-      "projectMenuOpen",
-      "drawerOpen"
-    ];
-
-    order.forEach((key, index) => {
-      const state = emptyPriority();
-      for (const earlierKey of order.slice(0, index)) {
-        state[earlierKey] = false;
-      }
-      state[key] = true;
-      expect(resolveTopWorkspaceSurface(state)).toBe(
-        [
-          "canvasContextMenu",
-          "proposalDetail",
-          "designDefinitionDetail",
-          "conceptDirectionDetail",
-          "researchDetail",
-          "documentReader",
-          "deliveryPreparation",
-          "deliveryOutput",
-          "projectBundle",
-          "projectMenu",
-          "drawer"
-        ][index]
-      );
-    });
-  });
-
-  it("keeps a higher surface ahead of every lower surface", () => {
-    expect(
-      resolveTopWorkspaceSurface({
-        ...emptyPriority(),
-        canvasContextMenuOpen: true,
-        proposalDetailOpen: true,
-        documentReaderOpen: true,
-        drawerOpen: true
-      })
-    ).toBe("canvasContextMenu");
-  });
-});
-
-function emptyPriority(): WorkspaceSurfacePriorityState {
-  return {
-    canvasContextMenuOpen: false,
-    proposalDetailOpen: false,
-    designDefinitionDetailOpen: false,
-    conceptDirectionDetailOpen: false,
-    researchDetailOpen: false,
-    documentReaderOpen: false,
-    deliveryPreparationOpen: false,
-    deliveryOutputOpen: false,
-    projectBundleOpen: false,
-    projectMenuOpen: false,
-    drawerOpen: false
-  };
+// @vitest-environment happy-dom
+import { afterEach, expect, it } from "vitest";
+import { getTopWorkspaceSurfaceElement } from "./workspaceSurfacePriority";
+afterEach(() => document.body.replaceChildren());
+function surface(id: string, z: number, parent = document.body) {
+  const node = document.createElement("section"); node.dataset.workspaceSurface = id;
+  node.style.position = "fixed"; node.style.zIndex = String(z);
+  node.getClientRects = () => [{ width: 1 }] as unknown as DOMRectList;
+  parent.append(node); return node;
 }
+it("uses real stacking levels and later DOM order, skipping hidden surfaces", () => {
+  const research = surface("researchDetail", 58), proposal = surface("proposalDetail", 65), archive = surface("projectBundle", 45);
+  expect(getTopWorkspaceSurfaceElement()).toBe(proposal);
+  proposal.hidden = true; expect(getTopWorkspaceSurfaceElement()).toBe(research);
+  const reader = surface("documentReader", 58); expect(getTopWorkspaceSurfaceElement()).toBe(reader);
+  reader.style.display = "none"; expect(getTopWorkspaceSurfaceElement()).toBe(research);
+  research.remove(); expect(getTopWorkspaceSurfaceElement()).toBe(archive);
+});
+it("does not mistake a high child z-index for its lower ancestor stacking context", () => {
+  const parent = surface("drawer", 45); surface("projectMenu", 999, parent);
+  const reader = surface("documentReader", 58); expect(getTopWorkspaceSurfaceElement()).toBe(reader);
+});

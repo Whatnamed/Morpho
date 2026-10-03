@@ -36,6 +36,19 @@ afterEach(async () => {
 vi.mock("./independentImageDelivery", () => ({ prepareIndependentImageDelivery: async () => "fake-intent", completeIndependentImageDelivery: async () => undefined, resumeIndependentImageDeliveries: async () => undefined }));
 
 describe("useWorkspaceVisualGenerationController", () => {
+  it("persists a late image result while relinquishing selection/focus after attention changes", async () => {
+    const harness = createControllerHarness(); let ownsAttention = true;
+    const input = { ...createInput(harness, resolveGenerationSettings({ aspectRatio: "1:1" })), captureAttention: () => () => ownsAttention };
+    const rendered = await renderController(input);
+    const execution = rendered.current().executeVisualGenerationPlan(createPlanInput(harness));
+    await waitFor(() => harness.requests.length > 0); ownsAttention = false;
+    harness.response.resolve(controllerImageResponse());
+    let result!: Awaited<typeof execution>; await act(async () => { result = await execution; });
+    expect(result.createdObjectIds.length).toBeGreaterThan(0);
+    expect(harness.workspace.objects[result.createdObjectIds[0]]).toBeDefined();
+    expect(harness.focused).toBeNull(); expect(harness.selected).toEqual([]);
+  });
+
   it("uses the latest effective settings after a rerender", async () => {
     const harness = createControllerHarness();
     const firstSettings = resolveGenerationSettings({ aspectRatio: "1:1" });

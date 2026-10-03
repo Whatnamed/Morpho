@@ -2,10 +2,12 @@ import type { MorphoWorkspace } from "@/domain/morpho/types";
 import {
   createVisualBranch,
   eliminateDirection,
-  renameVisualBranch
+  renameVisualBranch,
+  updateTextObject
 } from "@/domain/morpho/workspace";
 
 export type WorkspaceTextPrompt =
+  | { kind: "editText"; objectId: string; incarnationId?: string; title: string; body: string; label: string; initialValue: string; allowEmpty?: false }
   | {
       kind: "createVisualBranch";
       directionId: string;
@@ -86,6 +88,10 @@ export function applyWorkspaceTextPrompt(
   value: string
 ): WorkspaceTextPromptApplyResult {
   const trimmedValue = value.trim();
+
+  if (prompt.kind === "editText") {
+    return updateTextObject(workspace, { objectId: prompt.objectId, incarnationId: prompt.incarnationId, expectedBody: prompt.initialValue, body: trimmedValue });
+  }
 
   if (prompt.kind === "createVisualBranch") {
     const result = createVisualBranch(workspace, {

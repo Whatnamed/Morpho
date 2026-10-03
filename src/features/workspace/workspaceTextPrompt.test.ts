@@ -181,3 +181,16 @@ function eliminatePrompt(directionId: string): WorkspaceTextPrompt {
     allowEmpty: true
   };
 }
+
+it("edits a stable ordinary note and refuses changed text or reincarnated identity", () => {
+  const workspace = createInitialWorkspace();
+  workspace.objects.note = { id: "note", incarnationId: "note-v1", type: "text", title: "before", summary: "before", body: "before", createdBy: "user", visibility: "active" };
+  const session = createWorkspaceTextPromptSession(workspace.project.id, workspace.project.id, true);
+  const prompt: WorkspaceTextPrompt = { kind: "editText", objectId: "note", incarnationId: "note-v1", title: "Edit", body: "", label: "text", initialValue: "before" };
+  const result = applyWorkspaceTextPromptIfCurrent(workspace, { session, prompt }, session, "after");
+  expect(result.status).toBe("updated"); if (result.status !== "updated") throw new Error("edit");
+  expect(result.workspace.objects.note).toMatchObject({ id: "note", body: "after" });
+  expect(applyWorkspaceTextPromptIfCurrent(result.workspace, { session, prompt }, session, "overwrite").status).toBe("blocked");
+  workspace.objects.note = { ...workspace.objects.note, incarnationId: "note-v2" };
+  expect(applyWorkspaceTextPromptIfCurrent(workspace, { session, prompt }, session, "overwrite").status).toBe("blocked");
+});

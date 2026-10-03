@@ -20,10 +20,13 @@ export function shouldApplyCanvasSelectionRequest(
 export function normalizeCanvasSelectionIds(
   previousIds: readonly string[],
   nextIds: readonly string[],
-  getKind: (shapeId: string) => CanvasSelectableKind
+  getKind: (shapeId: string) => CanvasSelectableKind,
+  canMoveStageWithMembers: (stageId: string, objectShapeIds: string[]) => boolean = () => false
 ): string[] {
   const ordinaryIds = nextIds.filter((id) => getKind(id) === "morpho");
   if (ordinaryIds.length > 0) {
+    const stages = nextIds.filter((id) => getKind(id) === "stage");
+    if (stages.length === 1 && canMoveStageWithMembers(stages[0], ordinaryIds)) return [stages[0], ...ordinaryIds];
     return ordinaryIds;
   }
 

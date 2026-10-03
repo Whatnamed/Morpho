@@ -57,7 +57,7 @@ export function DeliveryOutputPanel({
   }, [onInspect, selectedDeliveryIdForInspect]);
 
   return (
-    <section className="archive-panel delivery-output-panel" aria-label="交付输出">
+    <section data-workspace-surface="deliveryOutput" className="archive-panel delivery-output-panel" aria-label="交付输出">
       <div className="archive-panel-head">
         <div>
           <div className="archive-panel-title">交付输出</div>

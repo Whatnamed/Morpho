@@ -10,10 +10,14 @@ import { CanvasIconButton } from "./CanvasIconButton";
 
 export type StageRegionOpenPopover = "color" | "opacity" | "border" | null;
 
+import { WORKSPACE_SURFACE_CLOSE_EVENT } from "../workspaceSurfacePriority";
+
 export type StageRegionToolbarProps = {
   region: StageRegionRecord;
   placement: SelectionToolbarPlacement;
   canFit: boolean;
+  visibleMemberCount?: number;
+  onSelectMembers?: () => void;
   /** Controlled popover — kept by the host so brief toolbar unmounts do not discard it. */
   openPopover: StageRegionOpenPopover;
   onOpenPopoverChange: (next: StageRegionOpenPopover) => void;
@@ -35,6 +39,8 @@ export function StageRegionToolbar({
   region,
   placement,
   canFit,
+  visibleMemberCount = 0,
+  onSelectMembers,
   openPopover,
   onOpenPopoverChange,
   onUpdateStyle,
@@ -105,6 +111,16 @@ export function StageRegionToolbar({
     }
     onOpenPopoverChange(next);
   };
+
+  useEffect(() => {
+    const root = rootRef.current;
+    const close = () => {
+      if (openPopover === "opacity") { onCancelOpacity(); setPreviewOpacity(null); }
+      onOpenPopoverChange(null);
+    };
+    root?.addEventListener(WORKSPACE_SURFACE_CLOSE_EVENT, close);
+    return () => root?.removeEventListener(WORKSPACE_SURFACE_CLOSE_EVENT, close);
+  }, [onCancelOpacity, onOpenPopoverChange, openPopover]);
 
   const togglePopover = (next: Exclude<StageRegionOpenPopover, null>) => {
     setOpenPopover(openPopover === next ? null : next);
@@ -179,7 +195,7 @@ export function StageRegionToolbar({
             />
           </CanvasIconButton>
           {openPopover === "color" ? (
-            <div className="stage-toolbar-popover stage-color-popover" role="dialog" aria-label="分区颜色">
+            <div className="stage-toolbar-popover stage-color-popover" data-workspace-surface="toolbarPopover" role="dialog" aria-label="分区颜色">
               {STAGE_REGION_COLOR_PRESETS.map((preset) => (
                 <button
                   key={preset.key}
@@ -214,6 +230,7 @@ export function StageRegionToolbar({
           {openPopover === "opacity" ? (
             <div
               className="stage-toolbar-popover stage-opacity-popover"
+              data-workspace-surface="toolbarPopover"
               role="dialog"
               aria-label="分区背景透明度"
               onPointerDown={(event) => event.stopPropagation()}
@@ -286,7 +303,7 @@ export function StageRegionToolbar({
             <BorderStyleIcon borderStyle={borderStyle} />
           </CanvasIconButton>
           {openPopover === "border" ? (
-            <div className="stage-toolbar-popover stage-border-popover" role="dialog" aria-label="分区边框">
+            <div className="stage-toolbar-popover stage-border-popover" data-workspace-surface="toolbarPopover" role="dialog" aria-label="分区边框">
               <BorderOption
                 borderStyle="none"
                 current={borderStyle}
@@ -335,6 +352,9 @@ export function StageRegionToolbar({
         >
           {locked ? <LockKeyhole size={16} /> : <LockKeyholeOpen size={16} />}
         </CanvasIconButton>
+        <button className="plain-button" type="button" disabled={locked || visibleMemberCount === 0} onClick={onSelectMembers}>
+          选择地标与 {visibleMemberCount} 个成员一起移动
+        </button>
         <CanvasIconButton label="适应内容" disabled={locked || !canFit} onClick={onFit}>
           <Scan size={16} />
         </CanvasIconButton>

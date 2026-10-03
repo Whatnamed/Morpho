@@ -132,7 +132,7 @@ function DocumentReaderPanelContent({
   };
 
   return (
-    <section className="document-reader-panel" aria-label="文档阅读面板">
+    <section data-workspace-surface="documentReader" className="document-reader-panel" aria-label="文档阅读面板">
       <div className="document-reader-head">
         <div>
           <span className="document-reader-kicker">源文件与解析文本</span>

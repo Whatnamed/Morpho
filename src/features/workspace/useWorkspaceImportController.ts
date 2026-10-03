@@ -43,6 +43,7 @@ export type UseWorkspaceImportControllerInput = Readonly<{
   workspaceReady: boolean;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
   commitManualWorkspace?: <T>(transform: WorkspaceCommitTransform<T>, label?: string) => T;
+  captureAttention?: () => () => boolean;
   selectObjects: (objectIds: string[]) => void;
   onImportRejected?: (message: string) => void;
   services?: Partial<WorkspaceImportControllerServices>;
@@ -75,6 +76,7 @@ export function useWorkspaceImportController({
   workspaceReady,
   commitWorkspace: commitWorkspaceInput,
   commitManualWorkspace: commitManualWorkspaceInput,
+  captureAttention,
   selectObjects: selectObjectsInput,
   onImportRejected,
   services: serviceOverrides
@@ -177,7 +179,20 @@ export function useWorkspaceImportController({
       expectedSession: WorkspaceImportExecutionSession
     ): Promise<void> => {
       try {
-        await executeWorkspaceImport(request, ports, expectedSession);
+        const allowed = captureAttention?.() ?? (() => true);
+        const guardTransform = <T,>(transform: WorkspaceCommitTransform<T>): WorkspaceCommitTransform<T> => (current) => {
+          const result = transform(current);
+          if (allowed()) return result;
+          const ids = current.ui.lastSelectionIds.filter((id) => result.workspace.objects[id]?.visibility === "active");
+          return { ...result, workspace: { ...result.workspace, ui: { ...result.workspace.ui, lastSelectionIds: ids } } };
+        };
+        const commitManual = ports.commitManualWorkspace;
+        await executeWorkspaceImport(request, {
+          ...ports,
+          commitWorkspace: (session, transform) => ports.commitWorkspace(session, guardTransform(transform)),
+          commitManualWorkspace: commitManual ? (session, transform) => commitManual(session, guardTransform(transform)) : undefined,
+          selectObjects: (session, ids) => { if (allowed()) ports.selectObjects(session, ids); }
+        }, expectedSession);
       } catch (error) {
         if (isStaleWorkspaceImportExecutionError(error)) {
           return;
@@ -189,7 +204,7 @@ export function useWorkspaceImportController({
         throw error;
       }
     },
-    [onImportRejected, ports]
+    [captureAttention, onImportRejected, ports]
   );
 
   const importRequest = useCallback(

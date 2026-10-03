@@ -35,6 +35,19 @@ afterEach(async () => {
 });
 
 describe("useWorkspaceImportController", () => {
+  it("keeps an imported image after attention moves away, preserving live input selection", async () => {
+    const harness = createHarness(); let allowed = true;
+    const save = deferred<SaveLocalAssetResult>(), started = deferred<void>();
+    harness.saveAsset = async () => { started.resolve(); return save.promise; };
+    const input = { ...createInput(harness), captureAttention: () => () => allowed };
+    const rendered = await renderController(input);
+    const execution = rendered.current().importRequest(imageImportRequest()); await started.promise;
+    allowed = false; save.resolve(okAsset("p6i-image", "p6i.png", "originalImage"));
+    await act(async () => execution);
+    expect(Object.values(harness.workspace.objects).some((object) => object.type === "image")).toBe(true);
+    expect(harness.workspace.ui.lastSelectionIds).toEqual([]); expect(harness.selected).toEqual([]);
+  });
+
   it("keeps an in-flight import alive across an ordinary same-project rerender", async () => {
     const harness = createHarness();
     const saveStarted = deferred<void>();

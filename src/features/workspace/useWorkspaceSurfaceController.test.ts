@@ -56,20 +56,13 @@ describe("useWorkspaceSurfaceController", () => {
     expect(harness.current().highlightedContinuityEntryIds).toEqual([]);
   });
 
-  it("closes only the drawer for Escape and removes both global listeners on unmount", async () => {
-    const removeWindowEventListener = vi.spyOn(window, "removeEventListener");
-    const removeDocumentEventListener = vi.spyOn(document, "removeEventListener");
+  it("leaves Escape to the shared surface owner and cleans up outside dismissal", async () => {
+    const remove = vi.spyOn(document, "removeEventListener");
     const harness = await renderController(createInput());
-
     act(() => harness.current().openDrawer("records", makeAnchor(10)));
     act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
-
-    expect(harness.current().activeDrawer).toBeNull();
-
-    act(() => harness.current().openDrawer("records", makeAnchor(10)));
-    await harness.unmount();
-    expect(removeWindowEventListener).toHaveBeenCalledWith("keydown", expect.any(Function));
-    expect(removeDocumentEventListener).toHaveBeenCalledWith("pointerdown", expect.any(Function), true);
+    expect(harness.current().activeDrawer).toBe("records");
+    await harness.unmount(); expect(remove).toHaveBeenCalledWith("pointerdown", expect.any(Function), true);
   });
 
   it("keeps the drawer open for internal pointer targets and closes for an external Element", async () => {
@@ -207,61 +200,16 @@ describe("useWorkspaceSurfaceController", () => {
     expect(harness.current().detailProposalId).toBeNull();
   });
 
-  it("closes one surface at a time in the complete top-surface order", async () => {
+  it("closes the surface named by the actual DOM and leaves other surfaces open", async () => {
     const harness = await renderController(createInput());
-    const closed: string[] = [];
-    const ports = makePorts(closed);
-    const closeTopSurface = () => {
-      let result = false;
-      act(() => {
-        result = harness.current().closeTopSurface(ports);
-      });
-      return result;
-    };
-
-    act(() => harness.current().openCanvasContextMenu(makeContextRequest()));
-    act(() => harness.current().openProposalDetail("proposal-a"));
-    expect(closeTopSurface()).toBe(true);
-    expect(closed).toEqual([]);
-    expect(harness.current().canvasContextMenu).toBeNull();
-    expect(closeTopSurface()).toBe(true);
-    expect(harness.current().detailProposalId).toBeNull();
-
-    act(() => harness.current().openDesignDefinitionDetail("definition-a"));
-    expect(closeTopSurface()).toBe(true);
-    act(() => harness.current().openConceptDirectionDetail("direction-a"));
-    expect(closeTopSurface()).toBe(true);
-    act(() => harness.current().openResearchDetail("research-a"));
-    expect(closeTopSurface()).toBe(true);
-
-    act(() => {
-      harness.current().toggleProjectMenu();
-      harness.current().openDrawer("records");
-    });
-    expect(closeTopSurface()).toBe(true);
-    expect(closed).toEqual(["documentReader"]);
-    expect(closeTopSurface()).toBe(true);
-    expect(closed).toEqual(["documentReader", "deliveryPreparation"]);
-    expect(closeTopSurface()).toBe(true);
-    expect(closed).toEqual(["documentReader", "deliveryPreparation", "deliveryOutput"]);
-    expect(closeTopSurface()).toBe(true);
-    expect(closed).toEqual(["documentReader", "deliveryPreparation", "deliveryOutput", "projectBundle"]);
-    expect(closeTopSurface()).toBe(true);
-    expect(harness.current().projectMenuOpen).toBe(false);
-    expect(closeTopSurface()).toBe(true);
-    expect(harness.current().activeDrawer).toBeNull();
-    expect(closeTopSurface()).toBe(true);
-    expect(closed).toEqual([
-      "documentReader",
-      "deliveryPreparation",
-      "deliveryOutput",
-      "projectBundle",
-      "canvasSelection"
-    ]);
-    expect(ports.documentReaderOpen).toBe(false);
-    expect(ports.deliveryPreparationOpen).toBe(false);
-    expect(ports.deliveryOutputOpen).toBe(false);
-    expect(ports.projectBundleOpen).toBe(false);
+    const closed: string[] = [], ports = makePorts(closed);
+    act(() => { harness.current().openCanvasContextMenu(makeContextRequest()); harness.current().openProposalDetail("proposal-a"); });
+    const surface = document.createElement("aside"); surface.dataset.workspaceSurface = "proposalDetail";
+    surface.getClientRects = () => [{ width: 1 }] as unknown as DOMRectList; document.body.append(surface);
+    act(() => expect(harness.current().closeTopSurface(ports)).toBe(true));
+    expect(harness.current().detailProposalId).toBeNull(); expect(harness.current().canvasContextMenu).not.toBeNull(); expect(closed).toEqual([]);
+    surface.dataset.workspaceSurface = "documentReader";
+    act(() => expect(harness.current().closeTopSurface(ports)).toBe(true)); expect(closed).toEqual(["documentReader"]);
   });
 
   it("returns the selection clearer result when no surface is open", async () => {

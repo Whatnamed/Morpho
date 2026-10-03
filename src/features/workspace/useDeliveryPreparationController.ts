@@ -215,6 +215,12 @@ export function useDeliveryPreparationController({
     const delivery = deliveryObjects.find((candidate) => candidate.id === activeDeliveryObjectId);
     return delivery?.sections.some((section) => section.id === activeSectionIdState) ? activeSectionIdState : null;
   }, [activeDeliveryObjectId, activeSectionIdState, deliveryObjects]);
+  // Invalidate transient input ownership in the same render that removes its target.
+  // A later Undo can restore the section, but cannot revive the old composer binding.
+  const pendingDelivery = pendingDraftTargetState ? workspace.objects[pendingDraftTargetState.deliveryObjectId] : undefined;
+  if (pendingDraftTargetState && (!pendingDelivery || pendingDelivery.type !== "delivery" || pendingDelivery.visibility !== "active" || !pendingDelivery.sections.some((section) => section.id === pendingDraftTargetState.sectionId))) {
+    setPendingDraftTargetState(null);
+  }
   // The ref marks the project/readiness session whose reset effect has committed; it is not a render data source.
   // eslint-disable-next-line react-hooks/refs
   const sessionMatchesProject = currentSessionRef.current === session && session.workspaceReady && workspaceMatchesProject;
@@ -261,6 +267,7 @@ export function useDeliveryPreparationController({
     }
     if (deliveryObjectId !== undefined) {
       setRequestedActiveDeliveryObjectId(deliveryObjectId);
+      setPendingDraftTargetState((target) => target?.deliveryObjectId === deliveryObjectId ? target : null);
     }
     setIsOpenState(true);
   }, [isCurrentSession, session]);
@@ -270,6 +277,7 @@ export function useDeliveryPreparationController({
       return;
     }
     setIsOpenState(false);
+    setPendingDraftTargetState(null);
   }, [isCurrentSession, session]);
 
   const selectDelivery = useCallback((deliveryObjectId: string) => {
@@ -278,6 +286,7 @@ export function useDeliveryPreparationController({
     }
     setRequestedActiveDeliveryObjectId(deliveryObjectId);
     setActiveSectionIdState(null);
+    setPendingDraftTargetState(null);
   }, [isCurrentSession, session]);
 
   const selectSection = useCallback((sectionId: string | null) => {
@@ -285,6 +294,7 @@ export function useDeliveryPreparationController({
       return;
     }
     setActiveSectionIdState(sectionId);
+    setPendingDraftTargetState((target) => target?.sectionId === sectionId ? target : null);
   }, [isCurrentSession, session]);
 
   const clearPendingDraftTarget = useCallback(() => {
@@ -443,6 +453,7 @@ export function useDeliveryPreparationController({
         onBlocked?.(reason);
         return { status: "blocked", reason };
       }
+      setIsOpenState(true);
       setPendingDraftTargetState(input);
       setRequestedActiveDeliveryObjectId(input.deliveryObjectId);
       onBlocked?.(undefined);
@@ -459,7 +470,7 @@ export function useDeliveryPreparationController({
     isOpen: sessionMatchesProject ? isOpenState : false,
     activeDeliveryObjectId: sessionMatchesProject ? activeDeliveryObjectId : null,
     activeSectionId: sessionMatchesProject ? activeSectionId : null,
-    pendingDraftTarget: sessionMatchesProject ? pendingDraftTargetState : null,
+    pendingDraftTarget: sessionMatchesProject && isOpenState && pendingDraftTargetState && deliveryObjects.some((delivery) => delivery.id === pendingDraftTargetState.deliveryObjectId && delivery.sections.some((section) => section.id === pendingDraftTargetState.sectionId)) ? pendingDraftTargetState : null,
     open,
     close,
     selectDelivery,

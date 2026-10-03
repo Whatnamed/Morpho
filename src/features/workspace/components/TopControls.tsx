@@ -77,7 +77,7 @@ export function TopControls({
           ) : null}
         </button>
         {projectMenuOpen ? (
-          <div className="project-menu" role="menu" aria-label="项目操作">
+          <div data-workspace-surface="projectMenu" className="project-menu" role="menu" aria-label="项目操作">
             <div className="project-menu-title">项目操作</div>
             <label className="project-menu-field">
               <span>重命名项目</span>

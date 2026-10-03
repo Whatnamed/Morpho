@@ -45,7 +45,7 @@ export function ProjectBundlePanel({
   const isBusy = Boolean(busyLabel);
 
   return (
-    <section className="archive-panel" aria-label="项目归档与恢复">
+    <section data-workspace-surface="projectBundle" className="archive-panel" aria-label="项目归档与恢复">
       <div className="archive-panel-head">
         <div>
           <div className="archive-panel-title">项目归档与恢复</div>

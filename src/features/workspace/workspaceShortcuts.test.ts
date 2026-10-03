@@ -38,14 +38,14 @@ describe("workspace shortcuts", () => {
     expect(resolveWorkspaceShortcut(makeKeyEvent("Escape"), workspace)).toBe("closeOrClearSelection");
   });
 
-  it("does not close workspace surfaces while the user is editing text", () => {
+  it("routes Escape to the top visible surface even while editing", () => {
     const textarea = makeTarget({ tagName: "TEXTAREA" });
 
-    expect(resolveWorkspaceShortcut(makeKeyEvent("Escape"), textarea)).toBeNull();
+    expect(resolveWorkspaceShortcut(makeKeyEvent("Escape"), textarea)).toBe("closeOrClearSelection");
   });
 
   it("suspends canvas shortcuts inside floating editing surfaces", () => {
-    const dialog = makeTarget({ className: "proposal-detail-dialog" });
+    const dialog = makeTarget({ surface: true });
 
     expect(resolveWorkspaceShortcut(makeKeyEvent("Delete"), dialog)).toBeNull();
     expect(resolveWorkspaceShortcut(makeKeyEvent("a", { ctrlKey: true }), dialog)).toBeNull();
@@ -65,7 +65,7 @@ function makeKeyEvent(
   } as KeyboardEvent;
 }
 
-function makeTarget(input: { tagName?: string; className?: string; isContentEditable?: boolean }): EventTarget {
+function makeTarget(input: { tagName?: string; className?: string; isContentEditable?: boolean; surface?: boolean }): EventTarget {
   const tagName = input.tagName?.toUpperCase() ?? "DIV";
   const classNames = new Set((input.className ?? "").split(/\s+/).filter(Boolean));
   return {
@@ -80,6 +80,7 @@ function makeTarget(input: { tagName?: string; className?: string; isContentEdit
         if (item === "[contenteditable='true']" && input.isContentEditable) {
           return this;
         }
+        if (item === "[data-workspace-surface]" && input.surface) return this;
         if (item.startsWith(".") && classNames.has(item.slice(1))) {
           return this;
         }

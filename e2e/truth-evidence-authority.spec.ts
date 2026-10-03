@@ -94,9 +94,11 @@ test("schema 17 Research remains review-required and an unbound item inherits no
   const panel = page.getByRole("dialog", { name: "研究与分析详情" });
   await expect(panel).toBeVisible();
   await expect(panel.getByText("依据待复核").first()).toBeVisible();
+  const reset = panel.getByRole("button", { name: "还原", exact: true });
+  if (await reset.isEnabled()) await reset.click();
   const item = panel.locator(".research-panel-item:not(.selected)").first();
   await item.click();
-  await panel.getByRole("button", { name: "更新画布摘录" }).click();
+  await panel.getByRole("button", { name: "保留为项目依据" }).click();
   await expect.poll(async () => page.evaluate(({ key, existingId, researchId }) => {
     const workspace = JSON.parse(localStorage.getItem(key)!);
     const conclusion = Object.values(workspace.objects).find((object) => {

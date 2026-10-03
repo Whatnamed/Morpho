@@ -77,6 +77,7 @@ export type AgentVisualGenerationExecution = {
 };
 
 export type ExecuteAgentVisualGenerationPlan = (input: {
+  allowAttentionHandoff?: () => boolean;
   workspaceSnapshot: MorphoWorkspace;
   draft: string;
   plan: VisualGenerationPlan;
