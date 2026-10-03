@@ -37,7 +37,7 @@ describe("Morpho image generation domain helpers", () => {
     expect(createdObject?.type).toBe("image");
     if (createdObject?.type === "image") {
       expect(createdObject.assetId).toBe("asset-generated-a");
-      expect(createdObject.directionId).toBe("direction-soft-rail");
+      expect(createdObject.directionId).toBeUndefined(); // no lineage contract in legacy input
       expect(createdObject.generation).toMatchObject({
         modelId: "nano-banana-fast",
         aspectRatio: "4:3",
@@ -52,7 +52,7 @@ describe("Morpho image generation domain helpers", () => {
           relation.fromObjectId === "image-soft-rail-v2" &&
           relation.toObjectId === result.createdObjectId
       )
-    ).toBe(true);
+    ).toBe(false);
     expect(
       result.workspace.relations.some(
         (relation) =>
@@ -195,7 +195,7 @@ describe("Morpho image generation domain helpers", () => {
     ).toHaveLength(2);
   });
 
-  it("inherits direction and visual branch when continuing from a branched source image", () => {
+  it("does not fabricate ownership from a legacy reference without a lineage contract", () => {
     const workspace = createInitialWorkspace();
     const result = createGeneratedImageFromAsset(workspace, {
       asset: {
@@ -221,10 +221,9 @@ describe("Morpho image generation domain helpers", () => {
     const createdObject = result.workspace.objects[result.createdObjectId];
     expect(createdObject?.type).toBe("image");
     if (createdObject?.type === "image") {
-      expect(createdObject.directionId).toBe("direction-soft-rail");
-      expect(createdObject.visualBranchId).toBe("visual-branch-soft-rail-detail");
-      expect(createdObject.generation?.directionId).toBe("direction-soft-rail");
-      expect(createdObject.generation?.visualBranchId).toBe("visual-branch-soft-rail-detail");
+      expect(createdObject.directionId).toBeUndefined();
+      expect(createdObject.visualBranchId).toBeUndefined();
+      expect(createdObject.generation?.lineage).toBeUndefined();
     }
   });
 

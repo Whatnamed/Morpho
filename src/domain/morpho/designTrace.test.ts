@@ -4,7 +4,7 @@ import { createInitialWorkspace } from "./workspace";
 import { traceDesignChain } from "./designTrace";
 
 describe("design chain trace", () => {
-  it("traces a final visual back through image versions, direction, definition, insights, research, and source files", () => {
+  it("keeps recorded legacy versions without treating current ownership as a historical cause", () => {
     const workspace = createInitialWorkspace();
     const trace = traceDesignChain(workspace, "image-night-scenario");
 
@@ -12,13 +12,7 @@ describe("design chain trace", () => {
       expect.arrayContaining([
         "image-night-scenario",
         "image-soft-rail-v2",
-        "image-soft-rail-preview",
-        "direction-soft-rail",
-        "definition-current",
-        "insight-continuous-support",
-        "research-night-path",
-        "file-course-brief",
-        "file-path-references"
+        "image-soft-rail-preview"
       ])
     );
     expect(trace.edges).toEqual(
@@ -32,19 +26,11 @@ describe("design chain trace", () => {
           fromObjectId: "direction-soft-rail",
           toObjectId: "image-night-scenario",
           kind: "directionOwnership"
-        }),
-        expect.objectContaining({
-          fromObjectId: "definition-current",
-          toObjectId: "direction-soft-rail",
-          kind: "definitionBase"
-        }),
-        expect.objectContaining({
-          fromObjectId: "research-night-path",
-          toObjectId: "definition-current",
-          kind: "definitionRevisionSource"
         })
       ])
     );
+    expect(trace.objectIds).not.toContain("direction-soft-rail");
+    expect(trace.edges.some((edge) => edge.kind === "definitionBase")).toBe(false);
     expect(trace.decisions.map((decision) => decision.kind)).toContain("setDefaultReference");
     expect(trace.orderedSummary.join("\n")).toContain("柔光轨道");
   });

@@ -42,7 +42,7 @@ describe("primary canvas edges", () => {
     });
 
     const keys = edges.map((edge) => canvasEdgeKey(edge.fromObjectId, edge.toObjectId));
-    expect(keys).toContain("image-rail-detail|image-night-scenario");
+    expect(keys).not.toContain("image-rail-detail|image-night-scenario");
     expect(keys).not.toContain("image-support-island-preview|image-night-scenario");
   });
 

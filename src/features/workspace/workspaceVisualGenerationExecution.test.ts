@@ -427,6 +427,8 @@ describe("workspace visual generation execution core", () => {
 
     expect(harness.requests[0]?.body).toBe(requestBody);
     expect(readReferenceAsset).not.toHaveBeenCalled();
+    const image = Object.values(harness.workspace.objects).find((object) => object.type === "image" && object.generation?.clientRequestId?.endsWith("item-a"));
+    expect(image?.type === "image" && image.generation).toMatchObject({ modelId: "gpt-image-2", aspectRatio: "1:1", prompt: "persisted prompt" });
   });
 
   it("does not consume a restored action when the local result commit fails", async () => {
@@ -611,15 +613,13 @@ describe("workspace visual generation execution core", () => {
     input.sourceObjectIds = ["image-soft-rail-v2"];
     input.selectedImageIds = ["image-soft-rail-v2"];
 
-    await executeWorkspaceVisualGenerationPlan(
+    await expect(executeWorkspaceVisualGenerationPlan(
       input,
       resolveGenerationSettings({ aspectRatio: "1:1" }),
       harness.ports
-    );
+    )).rejects.toThrow("必要参考像素不可用");
 
-    const body = JSON.parse(harness.requests[0]?.body ?? "") as { images?: unknown; referenceObjectIds?: unknown };
-    expect(body.images).toEqual([]);
-    expect(body.referenceObjectIds).toEqual(["image-soft-rail-v2"]);
+    expect(harness.requests).toHaveLength(0);
     expect(readReferenceAsset).toHaveBeenCalled();
   });
 

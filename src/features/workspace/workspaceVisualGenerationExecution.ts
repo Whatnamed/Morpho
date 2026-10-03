@@ -2,7 +2,9 @@ import { prepareIndependentImageDelivery, completeIndependentImageDelivery } fro
 import { materializeExternalResultResponse, acknowledgePersistedExternalResult } from "./externalResultClient";
 import { assertExternalRequestBody, type ExternalResultManifest } from "@/shared/externalResultProtocol";
 import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
-import { GRS_REFERENCE_IMAGE_LIMIT } from "@/domain/morpho/imageLimits";
+import { hashProviderImageDataUrl } from "@/domain/morpho/providerInputSnapshot";
+import { freezeVisualLineage, isVisualLineageSnapshot, isVisualProviderInputManifest } from "@/domain/operations/visualLineage";
+import { materializeVisualProviderInputs } from "./visualProviderInputs";
 import { getImageCanvasSize } from "@/domain/morpho/imageSizing";
 import {
   completeImageGenerationOperation,
@@ -12,7 +14,7 @@ import {
   recordImageGenerationPlan,
   recordImageGenerationOperationResult
 } from "@/domain/operations/operations";
-import type { VisualGenerationPlanItem } from "@/domain/operations/types";
+import type { VisualGenerationPlanItem, VisualLineageSnapshot, VisualProviderInputManifest } from "@/domain/operations/types";
 import { validateVisualGenerationPlan } from "@/domain/operations/visualGenerationPlan";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import type {
@@ -131,7 +133,9 @@ type ValidatedVisualGenerationPlan = Extract<
   ReturnType<typeof validateVisualGenerationPlan>,
   { status: "ok" }
 >;
-type VisualGenerationItem = ValidatedVisualGenerationPlan["plan"]["items"][number];
+type VisualGenerationItem = ValidatedVisualGenerationPlan["plan"]["items"][number] & {
+  requestSettings?: Pick<import("@/domain/morpho/types").ImageGenerationMetadata, "modelId" | "modelLabel" | "aspectRatio" | "sizeOption">;
+};
 type RestoredActionCursor = ReturnType<typeof createAPlusImageRestoredActionCursor>;
 
 type VisualGenerationExecutionContext = Readonly<{
@@ -273,8 +277,22 @@ async function prepareVisualGenerationExecution(
     input.plan.kind === "directionPreview"
       ? input.requestedPreviewCount ?? 1
       : input.plan.items.length;
-  const validatedPlan = validateVisualGenerationPlan(input.workspaceSnapshot, {
-    plan: input.plan,
+  const frozenPlan = input.recoverExactExternalActionOnly || input.restoredExternalAction ? input.plan : {
+    ...input.plan, items: input.plan.items.map((item) => item.lineage ? item : {
+      ...item,
+      lineage: freezeVisualLineage({ workspace: input.workspaceSnapshot, kind: input.plan.kind,
+        sourceObjectIds: input.selectedImageIds, intent: item.visualIntent ?? {
+          id: item.id, title: item.title, purpose: item.purpose, targetDirectionId: item.targetDirectionId,
+          visualBranchId: item.visualBranchId, requestedReferenceObjectIds: item.referenceObjectIds,
+          changeGoals: [], preserve: [], allowToChange: [], productForm: [], materialsAndCmf: [],
+          environmentAndLighting: [], avoid: [], role: item.role
+        } })
+    })
+  };
+  const validatedPlan: ReturnType<typeof validateVisualGenerationPlan> = input.recoverExactExternalActionOnly || input.restoredExternalAction
+    ? { status: "ok", plan: frozenPlan }
+    : validateVisualGenerationPlan(input.workspaceSnapshot, {
+    plan: frozenPlan,
     allowedObjectIds: [
       ...input.sourceObjectIds,
       ...input.plan.items.flatMap((item) => item.referenceObjectIds)
@@ -440,19 +458,32 @@ async function executeVisualGenerationItem(
         "A+ Image 的持久化请求 Body 缺失、损坏或校验失败。"
       );
     }
+    const inputMaterialization = restoredImagePayload ? undefined : await materializeVisualProviderInputs({
+      workspace: context.workspaceAtPlanCommit, item, modelId: context.generationSettings.modelId,
+      userInput: input.draft, signal: input.signal, readAsset: ports.readReferenceAsset
+    });
+    const effectiveItem = restoredImagePayload
+      ? restoreVisualProviderItem(context, item, restoredImagePayload)
+      : inputMaterialization!.item;
     const referenceImages = restoredImagePayload
       ? { images: [], sourceObjectIds: restoredImagePayload.sourceObjectIds }
-      : await collectImageReferenceDataUrls(
-          context.workspaceAtPlanCommit,
-          item.referenceObjectIds,
-          input.signal,
-          ports.readReferenceAsset
-        );
+      : inputMaterialization!;
     ports.assertCurrentSession(context.session);
+    if (!restoredImagePayload) {
+      ports.commitWorkspace(context.session, (current) => {
+        const operation = current.operations[context.operationId];
+        const generation = operation?.imageGeneration;
+        if (!generation) throw new Error("生成 Operation 缺失。");
+        return { workspace: { ...current, operations: { ...current.operations, [operation.id]: { ...operation,
+          imageGeneration: { ...generation, materializedItems: [...(generation.materializedItems ?? []).filter((entry) => entry.id !== item.id), effectiveItem] }
+        } } }, value: undefined };
+      });
+      if (inputMaterialization!.failure) throw new Error(inputMaterialization!.failure);
+    }
     ports.commitWorkspace(context.session, (current) => ({
       workspace: markImageGenerationOperationSubmitted(current, {
         operationId: context.operationId,
-        referenceObjectIds: item.referenceObjectIds,
+        referenceObjectIds: referenceImages.sourceObjectIds,
         imagePixels: restoredImagePayload
           ? restoredImagePayload.imageCount > 0
           : referenceImages.images.length > 0
@@ -462,13 +493,15 @@ async function executeVisualGenerationItem(
 
     const imageInput = {
       modelId: context.generationSettings.modelId,
-      prompt: item.prompt,
+      prompt: effectiveItem.prompt,
       images: referenceImages.images,
       aspectRatio: context.generationSettings.aspectRatio,
       sizeOption: context.generationSettings.sizeOption,
-      referenceObjectIds: item.referenceObjectIds,
-      directionObjectId: item.targetDirectionId,
-      visualBranchId: item.visualBranchId,
+      referenceObjectIds: referenceImages.sourceObjectIds,
+      directionObjectId: effectiveItem.lineage?.direction?.objectId ?? effectiveItem.targetDirectionId,
+      visualBranchId: effectiveItem.lineage?.branch?.id ?? effectiveItem.visualBranchId,
+      visualLineage: effectiveItem.lineage,
+      visualProviderInputs: effectiveItem.providerInputs,
       operationId: context.operationId,
       clientRequestId: itemClientRequestId
     };
@@ -510,7 +543,7 @@ async function executeVisualGenerationItem(
     if (!restoredAction) assertExternalRequestBody(imageRequestBody);
     const independentDeliveryKey = !context.externalAction && typeof window !== "undefined"
       ? await prepareIndependentImageDelivery(context.session.projectId, itemClientRequestId, imageRequestBody,
-        imageCommitDraft(context, item, itemIndex, referenceImages.sourceObjectIds, ports.now())) : undefined;
+        imageCommitDraft(context, effectiveItem, itemIndex, referenceImages.sourceObjectIds, ports.now())) : undefined;
     let imageResponse = context.externalAction && aPlusActionId
       ? await postAPlusExternalAction({
           fetch: ports.fetch,
@@ -586,7 +619,7 @@ async function executeVisualGenerationItem(
     return {
       status: "ok",
       index: itemIndex,
-      item,
+      item: effectiveItem,
       aPlusActionId,
       delivery: materialized.delivery,
       deliveredAction,
@@ -860,85 +893,18 @@ function getPlannedImageSize(aspectRatio: ImageGenerationSettings["aspectRatio"]
   });
 }
 
-async function collectImageReferenceDataUrls(
-  workspace: MorphoWorkspace,
-  objectIds: string[],
-  signal: AbortSignal,
-  readReferenceAsset: (storageKey: string) => Promise<Blob | null>
-): Promise<{
-  images: string[];
-  sourceObjectIds: string[];
-  missingPixelObjectIds: string[];
-}> {
-  const sourceObjectIds: string[] = [];
-  const missingPixelObjectIds: string[] = [];
-  const images: string[] = [];
-
-  for (const objectId of objectIds) {
-    if (signal.aborted || images.length >= GRS_REFERENCE_IMAGE_LIMIT) {
-      break;
-    }
-
-    const object = workspace.objects[objectId];
-    if (!object || object.type !== "image" || object.visibility !== "active") {
-      continue;
-    }
-
-    if (!sourceObjectIds.includes(object.id)) {
-      sourceObjectIds.push(object.id);
-    }
-
-    if (!object.assetId) {
-      missingPixelObjectIds.push(object.id);
-      continue;
-    }
-
-    const asset = workspace.assets[object.assetId];
-    if (!asset) {
-      missingPixelObjectIds.push(object.id);
-      continue;
-    }
-
-    const blob = await readReferenceAsset(asset.storageKey);
-    if (!blob) {
-      missingPixelObjectIds.push(object.id);
-      continue;
-    }
-
-    images.push(await blobToDataUrl(blob));
-  }
-
-  if (signal.aborted) {
-    throw new DOMException("Aborted", "AbortError");
-  }
-
-  return { images, sourceObjectIds, missingPixelObjectIds };
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-
-      reject(new Error("图片参考转换失败。"));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error("图片参考读取失败。"));
-    reader.readAsDataURL(blob);
-  });
-}
-
 function makeGeneratedImageFileName(mimeType: string, now: number): string {
   const extension = mimeType.includes("jpeg") ? "jpg" : mimeType.includes("webp") ? "webp" : "png";
   return `grs-result-${now}.${extension}`;
 }
 
+type PersistedImageInputs = Readonly<{ sourceObjectIds: string[]; imageCount: number; pixelHashes: string[];
+  prompt?: string; modelId?: string; aspectRatio?: string; sizeOption?: string;
+  lineage?: VisualLineageSnapshot; providerInputs?: VisualProviderInputManifest }>;
+
 function parsePersistedAPlusImageRequestBody(
   requestBody: string
-): Readonly<{ sourceObjectIds: string[]; imageCount: number }> | undefined {
+): PersistedImageInputs | undefined {
   try {
     const parsed = JSON.parse(requestBody) as unknown;
     if (!isWorkspaceRecord(parsed) || !isWorkspaceRecord(parsed.input)) return undefined;
@@ -948,17 +914,46 @@ function parsePersistedAPlusImageRequestBody(
       !Array.isArray(referenceObjectIds) ||
       !referenceObjectIds.every((value) => typeof value === "string") ||
       !Array.isArray(images) ||
-      !images.every((value) => typeof value === "string")
+      !images.every((value) => typeof value === "string") ||
+      (parsed.input.visualLineage !== undefined && !isVisualLineageSnapshot(parsed.input.visualLineage)) ||
+      (parsed.input.visualProviderInputs !== undefined && !isVisualProviderInputManifest(parsed.input.visualProviderInputs))
     ) {
       return undefined;
     }
     return {
       sourceObjectIds: [...referenceObjectIds],
-      imageCount: images.length
+      imageCount: images.length,
+      pixelHashes: images.map((image) => hashProviderImageDataUrl(image as string)),
+      prompt: typeof parsed.input.prompt === "string" ? parsed.input.prompt : undefined,
+      modelId: typeof parsed.input.modelId === "string" ? parsed.input.modelId : undefined,
+      aspectRatio: typeof parsed.input.aspectRatio === "string" ? parsed.input.aspectRatio : undefined,
+      sizeOption: typeof parsed.input.sizeOption === "string" ? parsed.input.sizeOption : undefined,
+      lineage: isVisualLineageSnapshot(parsed.input.visualLineage) ? parsed.input.visualLineage : undefined,
+      providerInputs: isVisualProviderInputManifest(parsed.input.visualProviderInputs) ? parsed.input.visualProviderInputs : undefined
     };
   } catch {
     return undefined;
   }
+}
+
+function restoreVisualProviderItem(context: VisualGenerationExecutionContext, item: VisualGenerationItem, payload: PersistedImageInputs): VisualGenerationItem {
+  const frozen = context.workspaceAtPlanCommit.operations[context.operationId]?.imageGeneration?.materializedItems?.find((entry) => entry.id === item.id);
+  const providerInputs = payload.providerInputs ?? frozen?.providerInputs;
+  if (providerInputs) {
+    const sent = providerInputs.references.filter((entry) => entry.status === "sent");
+    if (sent.length !== payload.imageCount || sent.length !== payload.sourceObjectIds.length || sent.some((entry, index) =>
+      entry.source.objectId !== payload.sourceObjectIds[index] || entry.pixelHash !== payload.pixelHashes[index])) {
+      throw aPlusExternalActionPayloadError("原始图像像素与冻结的实际输入清单不一致。");
+    }
+  }
+  return { ...item, ...frozen, prompt: payload.prompt ?? frozen?.prompt ?? item.prompt,
+    referenceObjectIds: providerInputs ? payload.sourceObjectIds : [],
+    lineage: payload.lineage ?? frozen?.lineage,
+    requestSettings: payload.modelId && payload.aspectRatio ? {
+      modelId: payload.modelId, aspectRatio: payload.aspectRatio, sizeOption: payload.sizeOption,
+      modelLabel: payload.modelId === context.generationSettings.modelId ? context.generationSettings.modelLabel : payload.modelId
+    } : undefined,
+    providerInputs, editMode: payload.imageCount ? frozen?.editMode ?? item.editMode ?? "imageToImage" : "textToImage" };
 }
 
 function aPlusExternalActionPayloadError(
@@ -989,14 +984,16 @@ function imageCommitDraft(context: VisualGenerationExecutionContext, item: Visua
           status: "succeeded",
           operationId: context.operationId,
           generation: {
-            modelId: context.generationSettings.modelId,
-            modelLabel: context.generationSettings.modelLabel,
-            aspectRatio: context.generationSettings.aspectRatio,
-            sizeOption: context.generationSettings.sizeOption,
+            modelId: item.requestSettings?.modelId ?? context.generationSettings.modelId,
+            modelLabel: item.requestSettings?.modelLabel ?? context.generationSettings.modelLabel,
+            aspectRatio: item.requestSettings?.aspectRatio ?? context.generationSettings.aspectRatio,
+            sizeOption: item.requestSettings ? item.requestSettings.sizeOption : context.generationSettings.sizeOption,
             prompt: item.prompt,
             compiledPrompt: item.prompt,
             promptContractVersion: item.promptContractVersion,
             editMode: item.editMode,
+            lineage: item.lineage,
+            providerInputs: item.providerInputs,
             referenceObjectIds: item.referenceObjectIds,
             referenceResolution: item.referenceResolution,
             directionId: item.targetDirectionId,
@@ -1014,7 +1011,7 @@ function imageCommitDraft(context: VisualGenerationExecutionContext, item: Visua
           directionObjectId: item.targetDirectionId,
           visualBranchId: item.visualBranchId,
           title: item.title,
-          summary: item.purpose,
+          summary: item.lineage ? `生成目的（计划）：${item.purpose}` : item.purpose,
           role: item.role,
           position: getGeneratedImagePlacement(
             context.workspaceAtPlanCommit,

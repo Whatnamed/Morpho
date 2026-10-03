@@ -837,6 +837,13 @@ export function visualIntentItemSchema(): Record<string, unknown> {
       id: { type: "string" },
       targetDirectionId: { type: "string" },
       visualBranchId: { type: "string" },
+      identityParentObjectId: { type: ["string", "null"], description: "唯一方案父图；新身份用 null。不可从参考数组顺序推断。" },
+      referenceBindings: { type: "array", items: { type: "object", additionalProperties: false,
+        required: ["objectId", "role", "required"], properties: {
+          objectId: { type: "string" }, role: { type: "string", enum: ["structure", "cmf", "environment", "composition", "style", "unspecified"] },
+          required: { type: "boolean" }
+        } } },
+      excludedReferenceObjectIds: stringArraySchema(),
       title: { type: "string" },
       purpose: { type: "string" },
       requestedReferenceObjectIds: stringArraySchema(),

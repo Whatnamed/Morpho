@@ -34,11 +34,21 @@ export function createGeneratedImageFromAsset(
   workspace: MorphoWorkspace,
   input: CreateGeneratedImageInput
 ): CreateGeneratedImageResult {
-  const primarySourceId = input.sourceObjectIds[0];
-  const primarySource = primarySourceId ? workspace.objects[primarySourceId] : undefined;
-  const sourceImages = [...new Set(input.sourceObjectIds)]
+  const lineage = input.generation.lineage;
+  const sentReferences = input.generation.providerInputs?.references.filter((entry) => entry.status === "sent");
+  if (sentReferences && (sentReferences.length !== input.generation.referenceObjectIds.length || sentReferences.some((entry, index) =>
+    entry.source.objectId !== input.generation.referenceObjectIds[index]) || input.generation.providerInputs?.references.some((entry) => entry.required && entry.status !== "sent"))) {
+    throw new Error("生成记录与实际 Provider 输入不一致。");
+  }
+  if (lineage?.identityParent && !sentReferences?.some((entry) => entry.role === "identity" && entry.source.objectId === lineage.identityParent?.objectId)) {
+    throw new Error("身份父图没有对应的实际像素输入。");
+  }
+  const primarySourceId = lineage?.identityParent?.objectId ?? input.sourceObjectIds[0];
+  const sourceImages = [...new Set(sentReferences?.map((entry) => entry.source.objectId) ?? input.sourceObjectIds)]
     .map((objectId) => workspace.objects[objectId])
-    .filter((object): object is ImageObject => Boolean(object) && object.type === "image");
+    .filter((object): object is ImageObject => Boolean(object) && object.type === "image" &&
+      (!sentReferences || sentReferences.some((entry) => entry.source.objectId === object.id &&
+        (!entry.source.incarnationId || entry.source.incarnationId === object.incarnationId))));
   const sourceInstance = primarySourceId
     ? workspace.canvas.instances.find((instance) => instance.objectId === primarySourceId)
     : undefined;
@@ -57,25 +67,18 @@ export function createGeneratedImageFromAsset(
       height: input.asset.height,
       aspectRatio: input.asset.aspectRatio
     });
-  const explicitDirection = input.directionObjectId ? workspace.objects[input.directionObjectId] : undefined;
+  const directionObjectId = lineage ? lineage.direction?.objectId : input.directionObjectId;
+  const explicitDirection = directionObjectId ? workspace.objects[directionObjectId] : undefined;
   const directionId =
-    explicitDirection?.type === "conceptDirection"
+    explicitDirection?.type === "conceptDirection" && (!lineage?.direction?.incarnationId || explicitDirection.incarnationId === lineage.direction.incarnationId)
       ? explicitDirection.id
-      : primarySource?.type === "image"
-        ? primarySource.directionId
-        : undefined;
-  const explicitVisualBranchId = input.visualBranchId ?? input.generation.visualBranchId;
-  const explicitVisualBranch = explicitVisualBranchId ? workspace.visualBranches[explicitVisualBranchId] : undefined;
-  const sourceVisualBranch =
-    primarySource?.type === "image" && primarySource.visualBranchId
-      ? workspace.visualBranches[primarySource.visualBranchId]
       : undefined;
+  const explicitVisualBranchId = lineage ? lineage.branch?.id : input.visualBranchId ?? input.generation.visualBranchId;
+  const explicitVisualBranch = explicitVisualBranchId ? workspace.visualBranches[explicitVisualBranchId] : undefined;
   const visualBranchId =
-    directionId && explicitVisualBranch?.directionId === directionId && !explicitVisualBranch.archivedAt
+    directionId && explicitVisualBranch?.directionId === directionId && (!explicitVisualBranch.archivedAt || Boolean(lineage))
       ? explicitVisualBranch.id
-      : directionId && sourceVisualBranch?.directionId === directionId && !sourceVisualBranch.archivedAt
-        ? sourceVisualBranch.id
-        : undefined;
+      : undefined;
   const preferredPosition = input.position
     ? input.position
     : sourceInstance
@@ -109,9 +112,9 @@ export function createGeneratedImageFromAsset(
     directionId,
     visualBranchId,
     generation: {
-      ...input.generation,
-      directionId,
-      visualBranchId
+      ...structuredClone(input.generation),
+      directionId: lineage ? lineage.direction?.objectId : directionId,
+      visualBranchId: lineage ? lineage.branch?.id : visualBranchId
     }
   };
   const relations: MorphoRelation[] = [];
@@ -121,12 +124,12 @@ export function createGeneratedImageFromAsset(
         Object.fromEntries([...workspace.relations, ...relations].map((relation) => [relation.id, relation])),
         `rel-${sourceImage.id}-${objectId}-source`
       ),
-      kind: "source",
+      kind: lineage ? "usesReference" : "source",
       fromObjectId: sourceImage.id,
       toObjectId: objectId,
-      note: "GrsAI 视觉发展使用该图作为本次明确来源。"
+      note: lineage ? `本次实际使用该参考（${sentReferences?.find((entry) => entry.source.objectId === sourceImage.id)?.role ?? "unspecified"}）；不以辅助参考决定版本或归属。` : "旧生成来源记录；参考角色与身份父图未知。"
     });
-    if (sourceImages.length === 1) {
+    if (lineage?.identityParent?.objectId === sourceImage.id) {
       relations.push({
         id: nextAvailableId(
           Object.fromEntries([...workspace.relations, ...relations].map((relation) => [relation.id, relation])),
@@ -149,7 +152,7 @@ export function createGeneratedImageFromAsset(
       kind: "belongsToDirection",
       fromObjectId: objectId,
       toObjectId: directionId,
-      note: "生成结果沿用来源图所属方向，仅作为本次视觉发展关系。"
+      note: "生成结果归属来自冻结的视觉任务；辅助参考不决定方向。"
     });
   }
 

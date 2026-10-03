@@ -215,6 +215,10 @@ export type ArtifactProposal =
 
 export type VisualIntentItem = {
   id: string;
+  /** Task-local identity; null explicitly requests a new concept. */
+  identityParentObjectId?: OperationObjectId | null;
+  referenceBindings?: VisualReferenceBinding[];
+  excludedReferenceObjectIds?: OperationObjectId[];
   targetDirectionId?: OperationObjectId;
   visualBranchId?: OperationObjectId;
   title: string;
@@ -235,7 +239,50 @@ export type VisualIntentItem = {
   role: ImageRole;
 };
 
+export type VisualReferenceRole = "identity" | "structure" | "cmf" | "environment" | "composition" | "style" | "unspecified";
+
+export type VisualReferenceBinding = {
+  objectId: OperationObjectId;
+  role: Exclude<VisualReferenceRole, "identity">;
+  required: boolean;
+};
+
+/** Generation-time facts. Absence on historical records means unknown, never inferred. */
+export type VisualObjectSnapshot = {
+  objectId: OperationObjectId;
+  incarnationId?: string;
+  title: string;
+  assetId?: string;
+};
+
+export type VisualLineageSnapshot = {
+  version: 1;
+  identityParent: VisualObjectSnapshot | null;
+  parentSource: "explicitTask" | "singleTaskSource" | "newIdentity";
+  direction: VisualObjectSnapshot | null;
+  directionSource: "explicitTask" | "identityParent" | "none";
+  branch: { id: string; directionId: string; label: string; rootObjectId?: string } | null;
+  branchSource: "explicitTask" | "identityParent" | "none";
+};
+
+export type VisualProviderInputManifest = {
+  version: 1;
+  references: Array<{
+    source: VisualObjectSnapshot;
+    role: VisualReferenceRole;
+    required: boolean;
+    status: "sent" | "omitted";
+    omissionReason?: VisualReferenceOmissionReason | "missingPixels" | "invalidPixels" | "providerBytes";
+    payloadIndex?: number;
+    pixelHash?: string;
+  }>;
+};
+
+export type VisualReferenceOmissionReason = "providerLimit" | "duplicate" | "unavailable" | "directionMismatch" | "defaultExcluded" | "taskScopeExcluded" | "explicitExcluded";
+
 export type VisualReferenceReason =
+  | "identityParent"
+  | "roleBinding"
   | "userExplicit"
   | "selectedSource"
   | "branchRoot"
@@ -250,12 +297,14 @@ export type VisualReferenceResolution = {
     objectId: OperationObjectId;
     reason: VisualReferenceReason;
     priority: number;
+    role?: VisualReferenceRole;
+    required?: boolean;
     sourceDirectionId?: OperationObjectId;
     targetDirectionId?: OperationObjectId;
     crossDirection?: boolean;
     retentionReason?: string;
     included: boolean;
-    omissionReason?: "providerLimit" | "duplicate" | "unavailable" | "directionMismatch" | "defaultExcluded" | "taskScopeExcluded";
+    omissionReason?: VisualReferenceOmissionReason;
   }>;
   providerLimit: number;
   defaultReferenceExcluded: boolean;
@@ -263,6 +312,10 @@ export type VisualReferenceResolution = {
 
 export type VisualGenerationPlanItem = {
   id: string;
+  /** The owning P2A activity instruction used during deterministic compilation. */
+  userInstruction?: string;
+  lineage?: VisualLineageSnapshot;
+  providerInputs?: VisualProviderInputManifest;
   targetDirectionId?: OperationObjectId;
   visualBranchId?: OperationObjectId;
   title: string;
@@ -295,6 +348,8 @@ export type ImageGenerationOperationMetadata = {
   resultObjectId?: OperationObjectId;
   resultObjectIds?: OperationObjectId[];
   plan?: VisualGenerationPlan;
+  /** Per-item actual input, frozen before POST; planned plan remains intact. */
+  materializedItems?: VisualGenerationPlanItem[];
   failedItems?: Array<{
     planItemId: string;
     reason: string;

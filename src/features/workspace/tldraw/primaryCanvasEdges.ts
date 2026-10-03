@@ -32,7 +32,7 @@ export function selectFirstBatchDirectionPreviewIds(
       return false;
     }
     const refs = object.generation?.referenceObjectIds ?? [];
-    const hasImageParent = refs.some((refId) => workspace.objects[refId]?.type === "image");
+    const hasImageParent = object.generation?.lineage ? Boolean(object.generation.lineage.identityParent) : refs.some((refId) => workspace.objects[refId]?.type === "image");
     return !hasImageParent;
   });
 

@@ -17,6 +17,9 @@ export type DesignTraceEdge = {
   toObjectId: MorphoObjectId;
   kind: DesignTraceEdgeKind;
   note: string;
+  fromTitle?: string;
+  fromIncarnationId?: string;
+  membership?: boolean;
 };
 
 export type DesignTraceResult = {
@@ -49,7 +52,7 @@ export function traceDesignChain(
   const edges: DesignTraceEdge[] = [];
   const decisions = new Map<string, DecisionRecord>();
   const visualBranchIds = new Set<VisualBranchId>();
-  const queue: Array<{ objectId: MorphoObjectId; depth: number }> = [{ objectId: startObjectId, depth: 0 }];
+  const queue: Array<{ objectId: MorphoObjectId; depth: number; incarnationId?: string; frozen?: boolean }> = [{ objectId: startObjectId, depth: 0 }];
   let truncated = false;
 
   while (queue.length > 0) {
@@ -68,19 +71,18 @@ export function traceDesignChain(
     }
 
     const object = workspace.objects[current.objectId];
-    if (!object) {
-      continue;
-    }
-
     visited.add(current.objectId);
     objectIds.push(current.objectId);
+    if (!object || (current.frozen && (!current.incarnationId || current.incarnationId !== object.incarnationId))) continue;
+    if (current.frozen && object.type === "image" && !object.generation?.lineage) continue;
     collectDecisions(workspace, current.objectId, decisions);
 
     const upstream = collectUpstreamEdges(workspace, current.objectId, visualBranchIds);
     for (const edge of upstream) {
       addEdge(edges, edge);
-      if (!visited.has(edge.fromObjectId)) {
-        queue.push({ objectId: edge.fromObjectId, depth: current.depth + 1 });
+      if (!edge.membership && !visited.has(edge.fromObjectId)) {
+        queue.push({ objectId: edge.fromObjectId, depth: current.depth + 1,
+          incarnationId: edge.fromIncarnationId, frozen: edge.fromTitle !== undefined });
       }
     }
   }
@@ -106,7 +108,8 @@ function collectUpstreamEdges(
     return [];
   }
 
-  const edges: DesignTraceEdge[] = workspace.relations
+  const frozenGeneration = object.type === "image" && object.generation?.lineage;
+  const edges: DesignTraceEdge[] = (frozenGeneration ? [] : workspace.relations)
     .filter((relation) => relation.toObjectId === objectId)
     .map((relation) => ({
       fromObjectId: relation.fromObjectId,
@@ -116,13 +119,34 @@ function collectUpstreamEdges(
     }));
 
   if (object.type === "image") {
+    if (frozenGeneration) {
+      const parent = frozenGeneration.identityParent;
+      if (parent) edges.push({ fromObjectId: parent.objectId, toObjectId: object.id, kind: "version",
+        fromTitle: parent.title, fromIncarnationId: parent.incarnationId, note: "生成当时的唯一身份父图。" });
+      for (const reference of object.generation?.providerInputs?.references ?? []) {
+        if (reference.status !== "sent" || reference.role === "identity") continue;
+        edges.push({ fromObjectId: reference.source.objectId, toObjectId: object.id, kind: "generationReference",
+          fromTitle: reference.source.title, fromIncarnationId: reference.source.incarnationId,
+          note: `生成当时实际发送的辅助参考（${reference.role}），不决定方案身份。` });
+      }
+      if (frozenGeneration.direction) edges.push({ fromObjectId: frozenGeneration.direction.objectId, toObjectId: object.id,
+        kind: "directionOwnership", membership: true, fromTitle: frozenGeneration.direction.title,
+        note: `生成当时的方向归属（${frozenGeneration.directionSource}）；不是因果来源。` });
+      if (frozenGeneration.branch) {
+        const branch = frozenGeneration.branch;
+        visualBranchIds.add(branch.id);
+        if (branch.rootObjectId) edges.push({ fromObjectId: branch.rootObjectId, toObjectId: object.id,
+          kind: "visualBranchRoot", membership: true, note: `生成当时属于视觉分支「${branch.label}」；根图不是直接父版本。` });
+      }
+      return edges;
+    }
     for (const referenceObjectId of object.generation?.referenceObjectIds ?? []) {
       if (workspace.objects[referenceObjectId]) {
         edges.push({
           fromObjectId: referenceObjectId,
           toObjectId: object.id,
           kind: "generationReference",
-          note: "图像生成计划明确引用了该对象。"
+          note: "旧生成记录列出了该参考；实际像素、作用与身份父图未知。"
         });
       }
     }
@@ -132,6 +156,7 @@ function collectUpstreamEdges(
         fromObjectId: object.directionId,
         toObjectId: object.id,
         kind: "directionOwnership",
+        membership: true,
         note: "图像属于该概念方向。"
       });
     }
@@ -140,14 +165,6 @@ function collectUpstreamEdges(
       const branch = workspace.visualBranches[object.visualBranchId];
       if (branch) {
         visualBranchIds.add(branch.id);
-        if (branch.rootObjectId && workspace.objects[branch.rootObjectId]) {
-          edges.push({
-            fromObjectId: branch.rootObjectId,
-            toObjectId: object.id,
-            kind: "visualBranchRoot",
-            note: `图像沿用视觉分支「${branch.label}」。`
-          });
-        }
       }
     }
   }
@@ -268,15 +285,22 @@ function buildOrderedSummary(
   decisions: DecisionRecord[],
   visualBranchIds: VisualBranchId[]
 ): string[] {
+  const frozenBranchLabels = new Map<string, string>();
+  for (const id of objectIds) {
+    const image = workspace.objects[id];
+    const branch = image?.type === "image" ? image.generation?.lineage?.branch : undefined;
+    if (branch) frozenBranchLabels.set(branch.id, branch.label);
+  }
   const lines = objectIds.map((objectId) => {
     const object = workspace.objects[objectId];
-    return object ? `${object.title}（${object.type}${object.visibility === "hidden" ? "，已隐藏" : ""}）` : objectId;
+    const frozenTitle = edges.find((edge) => edge.fromObjectId === objectId && edge.fromTitle)?.fromTitle;
+    return frozenTitle ? `${frozenTitle}（生成时来源）` : object ? `${object.title}（${object.type}${object.visibility === "hidden" ? "，已隐藏" : ""}）` : `${objectId}（历史来源已缺失）`;
   });
 
   if (visualBranchIds.length > 0) {
     lines.push(
       `视觉分支：${visualBranchIds
-        .map((branchId) => workspace.visualBranches[branchId]?.label ?? branchId)
+        .map((branchId) => frozenBranchLabels.get(branchId) ?? workspace.visualBranches[branchId]?.label ?? branchId)
         .join("、")}`
     );
   }

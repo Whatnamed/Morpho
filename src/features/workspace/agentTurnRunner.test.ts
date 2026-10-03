@@ -127,7 +127,7 @@ describe("A+ Agent turn runner", () => {
     if (image.type !== "image") throw new Error("Need image fixture");
     image.assetId = "legacy-source-asset";
     fixture.input.selectedObjectIds = [image.id]; fixture.input.selectedObjects = [image];
-    args.items.forEach((item) => { item.requestedReferenceObjectIds = [image.id]; });
+    args.items.forEach((item) => { item.requestedReferenceObjectIds = [image.id]; Object.assign(item, { identityParentObjectId: null }); });
     fixture.coordinatorHost.appendScripts([{ status: "awaitingNextRequest", toolCalls: [{ ...call, argumentsText: JSON.stringify(args) }] }]);
     let running = true;
     const bodies: string[] = [];
@@ -1856,6 +1856,10 @@ describe("P2B Runner structural fulfillment", () => {
     expect(fixture.coordinatorHost.executions[2]!.providerRequest.input.some((message) => message.content.some((part) => part.type === "input_image"))).toBe(true);
     expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.reads).toEqual(expect.arrayContaining([expect.objectContaining({ objectId: "p2b-generated-0", representation: "pixels", delivered: true })]));
     expect(latestAssistant(fixture.fake.getWorkspace())?.taskFulfillment?.status).toBe("partial"); // second image still unread
+    const observed = fixture.fake.getWorkspace().objects["p2b-generated-0"];
+    const unobserved = fixture.fake.getWorkspace().objects["p2b-generated-1"];
+    expect(observed?.type === "image" && observed.generation?.observations).toEqual([expect.objectContaining({ receiptId: "observe", objectId: "p2b-generated-0", representation: "pixels", stepSequence: 3 })]);
+    expect(unobserved?.type === "image" && unobserved.generation?.observations).toBeUndefined();
     expect(fixture.coordinatorHost.executions[2]!.providerRequest.taskContract).toEqual(fixture.coordinatorHost.executions[0]!.providerRequest.taskContract);
   });
 
@@ -1876,7 +1880,8 @@ function hostWithGeneratedImages(fixture: ReturnType<typeof createFixture>, coun
       const base = Object.values(objects).find((object) => object.type === "image")!;
       if (base.type !== "image") throw new Error("image fixture");
       for (const id of ids) {
-        objects[id] = { ...base, id, incarnationId: `identity-${id}`, assetId: `asset-${id}`, title: id };
+        objects[id] = { ...base, id, incarnationId: `identity-${id}`, assetId: `asset-${id}`, title: id,
+          generation: { modelId: "fixture", modelLabel: "fixture", aspectRatio: "1:1", prompt: "fixture", referenceObjectIds: [], editMode: "textToImage", createdAt: "2026-10-01T00:00:00Z" } };
         assets[`asset-${id}`] = { id: `asset-${id}`, storageKey: `blob-${id}`, sourceType: "aiGeneratedImage", mimeType: "image/png", fileName: `${id}.png`, size: 10, createdAt: "2026-10-01T00:00:00Z" };
       }
       return { workspace: { ...workspace, objects, assets }, value: undefined };
@@ -1888,8 +1893,12 @@ function hostWithGeneratedImages(fixture: ReturnType<typeof createFixture>, coun
 
 describe("P2B request materialization and Recovery", () => {
   it.each([1, 3])("keeps %i original scoped images beside observed results and freezes the submitted visual body", async (sourceCount) => {
+    const visualTemplate = visualToolCall("images");
+    const visualArgs = JSON.parse(visualTemplate.argumentsText) as { items: Array<{ identityParentObjectId?: string }> };
+    visualArgs.items.forEach((item) => { item.identityParentObjectId = "source-0"; });
+    const visualCall = { ...visualTemplate, argumentsText: JSON.stringify(visualArgs) };
     const fixture = createFixture([
-      { status: "awaitingNextRequest", toolCalls: [visualToolCall("images")] },
+      { status: "awaitingNextRequest", toolCalls: [visualCall] },
       { status: "awaitingNextRequest", toolCalls: [{ callId: "observe-0", name: "read_workspace_source", argumentsText: JSON.stringify({ kind: "image", objectId: "p2b-generated-0" }) }] },
       { status: "awaitingNextRequest", toolCalls: [{ callId: "observe-1", name: "read_workspace_source", argumentsText: JSON.stringify({ kind: "image", objectId: "p2b-generated-1" }) }] },
       { status: "providerRunning", outputText: "正在对照原图评价" }

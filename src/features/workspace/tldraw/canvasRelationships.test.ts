@@ -39,7 +39,7 @@ describe("collectDirectCanvasEdges", () => {
     );
   });
 
-  it("keeps the first generation reference primary and marks other references secondary", () => {
+  it("keeps legacy references secondary because their order does not prove a parent", () => {
     const workspace = createInitialWorkspace();
     const image = workspace.objects["image-night-scenario"];
     if (image?.type !== "image") {
@@ -66,7 +66,7 @@ describe("collectDirectCanvasEdges", () => {
           fromObjectId: "image-rail-detail",
           toObjectId: "image-night-scenario",
           relationKind: "generationReference",
-          primary: true
+          primary: false
         }),
         expect.objectContaining({
           fromObjectId: "image-support-island-preview",

@@ -781,9 +781,9 @@ Text Agent:
 Image generation:
 
 - The Agent sends structured visual intent, not a final provider prompt. `ImagePromptCompiler` combines current user input, Design Brief, direction revision, user preferences, role/task template, preservation/change boundaries, and a model adapter. Compilation asserts design intent over rendering decoration and grounds scenario roles in scale, action, and human-product relationships.
-- References are resolved deterministically: current explicit references, selected source, branch root/direct parent, target-direction representative, applicable default reference, then other required project references. Duplicates, direction mismatches, default exclusion, unavailable assets, and provider-limit omissions are recorded.
+- References are resolved deterministically within P2A scope: the task's identity parent and required role bindings precede optional explicit/selected references, branch roots, representatives, defaults and project references. Ancestor reference arrays never determine a parent. P4 records roles, exclusions and count/byte/pixel omissions separately from ownership.
 - `1 / 2 / 4 / 6` remain UI shortcuts only. Explicit positive counts such as 3, 5, 9, or 12 and more than three directions are accepted; the Agent must produce one complete plan and execution may use bounded concurrency.
-- The browser calls `/api/ai/image` only after local intent compilation and plan validation. Each success creates a new image object and persists structured intent, compiled prompt, prompt-contract version, resolved references and omissions, model settings, operation/provider IDs, and source relations.
+- The browser submits Image only after local intent compilation, plan validation and required-pixel materialization. Each success creates a new image object and persists frozen lineage, actual input provenance, structured intent, the actual compiled prompt/edit mode, model settings, operation/provider IDs and separate version/reference relations. A+ and confirmed independent Image retain P3 execution/delivery/recovery boundaries.
 - Image progress updates the same Agent Process tool activity. Partial failures and cancellation preserve every completed image and never overwrite a source image.
 
 AI authority boundary:
@@ -1065,3 +1065,70 @@ database migration/grants, cleanup scheduling, real DB concurrency and Provider/
 are unverified. Process termination before full escrow publication can still lose Text/Compaction
 not retrievable from the relay; incomplete escrow is explicitly unavailable. No exactly-once paid
 execution, durable background completion, P2 fulfillment or long-term cloud assets are promised.
+
+## P4 Visual Lineage / Reference / Observation (2026-10-03; accepted)
+
+Execution baseline is `41666d2e678d78fb3d4b561e74dbca0836bb92f5`. The Program Map owns acceptance.
+Workspace schema remains 18; the new optional contracts carry their own `version: 1`. There is no
+DB migration, second Truth authority, task scheduler, read-coverage ledger or Provider runtime.
+
+- Visual Intent separates `identityParentObjectId` from `referenceBindings` (structure, CMF,
+  environment, composition, style or unspecified, with a required flag) and
+  `excludedReferenceObjectIds`. These are task-local roles, not permanent ImageRole changes.
+  An explicit null requests new identity. An omitted parent can resolve only from the sole image
+  in the current task source set; multiple sources require an explicit parent/null. Defaults,
+  reference ordering/count, representatives and a source's old references never resolve a parent.
+- `VisualLineageSnapshot` freezes parent object/incarnation/asset/title, Direction identity/title,
+  Branch ID/label/root and each ownership origin. Direction is an explicit task target or the
+  parent's Direction. Branch is an explicit compatible task branch or the parent's same-direction
+  available branch. Auxiliary references cannot establish ownership. Branch creation still uses
+  existing explicit domain/UI authority. Archiving during generation does not change the frozen
+  result's membership; deletion detaches live membership while retaining historical generation facts.
+- P2A remains the scope/grant owner. An explicit reference/borrow/reuse verb bound to an image,
+  or use-as-reference instruction, may add that auxiliary input without expanding a narrowed
+  source/target set. Attribute descriptions and comparison-only mentions grant no reference
+  authority. Positive and negative predicates share object matching and full clause boundaries;
+  exclusion wins for the same object without suppressing another object's reference. The
+  compiler (`morpho-image-prompt-v4`) binds each image position to its role and preserves the owning
+  activity instruction when recompiling after an optional omission.
+- The existing Image asset-reader boundary materializes references once. Parent and required
+  inputs have priority; missing/unreadable pixels, exclusion or count/byte limits block a required
+  input before submission. Optional omissions retain specific reasons. The prompt, edit mode and
+  actual `referenceObjectIds` are rebuilt from readable pixels, so zero pixels means text-to-image.
+- Planned Operation `plan` stays separate from per-item `materializedItems` and result
+  `generation.providerInputs`. The latter freezes each candidate's source/role/requirement,
+  sent/omitted state, omission reason, payload index and the existing P2B image-representation hash.
+  Here sent identifies the pixels in the exact serialized payload; a pre-submit manifest alone
+  proves no Provider execution. P3 execution observations and delivery receipts remain separate.
+  The raw Image body carries lineage/input facts into exact Recovery. Recovery compares payload
+  IDs/hashes with the frozen manifest and commits original prompt/model/aspect/size settings;
+  it never rereads today's source pixels or changes the original action/body. Restored results
+  remain retrievable if the current Direction/Branch was removed or archived.
+- Successful commit emits exactly one parent version relation regardless of reference count,
+  and reference relations for actual inputs. Derived-state reconciliation preserves this new
+  evidence-backed version. Default-reference review uses the new identity parent, so borrowing
+  an auxiliary image does not turn the result into that image's direct derivative.
+- New generation Trace consumes frozen parent and actual auxiliary snapshots. Direction/Branch
+  edges explain membership and do not traverse today's Direction revision or Branch root as a
+  generation cause. Missing/reused historical identities remain frozen edges; a legacy ancestor
+  without frozen lineage is not expanded into current Workspace facts. Legacy stored relations
+  remain recorded history, with unknown identity/role/pixel interpretation, not repaired parents.
+  Canvas primary edges and Trace use the same parent contract; auxiliary inputs stay secondary,
+  including the first reference of an explicit new identity. Historical canvas chains stop before
+  a legacy ancestor instead of promoting its current Direction or first reference to a cause.
+- P2B still owns image reads, request materialization, required reads and fulfillment. Only its
+  exact observed request's delivered, matching full pixels/contact-sheet receipt appends a result
+  observation link (receipt, object/incarnation/asset, hash, representation, request and step).
+  Read preparation, omitted/metadata-only pixels and Image success cannot create this link.
+  It means pixels were supplied to the Agent, not visual quality or engineering validity.
+  Generate-only gains no critique, compare, read obligation or regeneration. Existing explicit
+  generate-then-review consumes real P2B observation and retains the authorized generation count.
+- Current validation checks frozen contracts, actual ID/order/edit-mode consistency, required
+  pixels and observation identity. Normalization/reload, JSON and Editable Backup preserve them
+  without historical backfill. Legacy fields stay absent/unknown; no parent/role/observation is
+  synthesized from current defaults or ownership. Image details distinguish the intended purpose,
+  identity parent, auxiliary roles/omissions, generation-time ownership and observation state.
+
+Local mocked unit/browser validation establishes these deterministic contracts. Real paid image
+quality, Provider interpretation of roles, production Journal/hosting and billing are unverified;
+P4 does not change the accepted P3 rollout limits or start P5/P6 work.

@@ -25,10 +25,10 @@ describe("Image Prompt Compiler and reference resolver", () => {
       expect.objectContaining({ objectId: "image-night-scenario", omissionReason: "duplicate" })
     );
     expect(resolution.candidates).toContainEqual(
-      expect.objectContaining({ objectId: "image-soft-rail-v2", reason: "directParent", omissionReason: "providerLimit" })
+      expect.objectContaining({ objectId: "image-soft-rail-v2", reason: "directionRepresentative", omissionReason: "providerLimit" })
     );
     expect(resolution.candidates).toContainEqual(
-      expect.objectContaining({ objectId: "image-soft-rail-v2", reason: "directionRepresentative", omissionReason: "duplicate" })
+      expect.objectContaining({ objectId: "image-soft-rail-v2", reason: "defaultReference", omissionReason: "duplicate" })
     );
     expect(resolution.candidates).toContainEqual(
       expect.objectContaining({ objectId: "image-path-reference", reason: "projectReference", omissionReason: "providerLimit" })

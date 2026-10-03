@@ -127,7 +127,6 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
     );
   }
   const visualActivity = getTurnActivityForTool(input.prepared.taskContract, "generate_visuals");
-  const visualContext = visualActivity ? input.prepared.activityContexts[visualActivity.id]! : input.prepared.context;
   const visualSelectedObjects = visualActivity ? visualActivity.sourceObjectIds.map((id) => input.host.readWorkspace().objects[id]).filter((object) => Boolean(object)) : input.turnInput.selectedObjects;
   const selectedDirectionCount = visualSelectedObjects
     .filter((object) => object.type === "conceptDirection").length;
@@ -139,8 +138,9 @@ export async function executeAgentToolBatchAPlus(input: Readonly<{
             workspace: input.host.readWorkspace(),
             kind: entry.parsed.args.kind,
             intents: entry.parsed.args.items,
-            selectedSourceObjectIds: visualContext.objectIds,
+            selectedSourceObjectIds: visualActivity?.sourceObjectIds ?? input.turnInput.selectedObjects.map((object) => object.id),
             allowedReferenceObjectIds: visualActivity?.referenceObjectIds,
+            excludedReferenceObjectIds: visualActivity?.excludedObjectIds,
             projectReferenceObjectIds: Object.values(input.host.readWorkspace().objects)
               .filter((object) => object.type === "image" && object.role === "reference")
               .map((object) => object.id),

@@ -54,11 +54,11 @@ function buildDirectTrace(
   const start = workspace.objects[startObjectId];
   if (start?.type === "image") {
     const refs = start.generation?.referenceObjectIds ?? [];
-    refs.forEach((refId, index) => {
+    refs.forEach((refId) => {
       if (!workspace.objects[refId]) {
         return;
       }
-      if (index === 0) {
+      if (highlightedObjectIds.has(refId) || refId === start.generation?.lineage?.identityParent?.objectId) {
         return;
       }
       secondaryObjectIds.add(refId);
@@ -94,10 +94,15 @@ function buildChainTrace(
   const secondaryEdgeKeys: string[] = [];
   const visited = new Set<MorphoObjectId>([startObjectId]);
   let cursor = startObjectId;
+  const start = workspace.objects[startObjectId];
+  const historicalGeneration = start?.type === "image" && Boolean(start.generation?.lineage);
 
   // Walk upstream along one primary path to a source root.
   for (let guard = 0; guard < 64; guard += 1) {
-    const parents = inbound.get(cursor) ?? [];
+    const object = workspace.objects[cursor];
+    if (historicalGeneration && (object?.type !== "image" || !object.generation?.lineage?.identityParent)) break;
+    const parentId = object?.type === "image" ? object.generation?.lineage?.identityParent?.objectId : undefined;
+    const parents = (inbound.get(cursor) ?? []).filter((edge) => !historicalGeneration || edge.relationKind === "version" && edge.fromObjectId === parentId);
     if (parents.length === 0) {
       break;
     }
@@ -133,8 +138,8 @@ function buildChainTrace(
       continue;
     }
     const refs = object.generation?.referenceObjectIds ?? [];
-    refs.forEach((refId, index) => {
-      if (index === 0 || !workspace.objects[refId] || visited.has(refId)) {
+    refs.forEach((refId) => {
+      if (!workspace.objects[refId] || visited.has(refId) || refId === object.generation?.lineage?.identityParent?.objectId) {
         return;
       }
       secondaryObjectIds.add(refId);
