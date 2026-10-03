@@ -1,7 +1,53 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03）
 
+**当前：P7B-1-D1 closed（bounded real A+B pass，待网页复审）；P7B-1 overall 未 PASS。**
+P7 继续 `validating`；C–G `not_run`；P7B-2/P7B-3/P7C `not_started`；未 merge main。
+
+## D1 bounded fix / post-fix rerun（2026-10-04）
+
+- Fix commit：`1f410e4553d89447cfb934590e0a00979dc75ee6`。
+  产品改动仅为 `requests/handler.ts`、`agentTurnProviderRequest.ts`、`externalResultStore.ts`。
+  将原 client `providerRequest` 的 canonical SHA-256 durable 绑定到既有 result JSONB
+  `requestContentSha256`，在 Text POST 返回或重新 publish escrow 前校验 identity + 内容。
+  Object keys 排序；数组顺序、原文本、continuation、task/capability 与 optional presence 保留。
+  Digest namespace 为 `morpho-a-plus-client-request-content-v1`，不依赖当前 Provider wire/config。
+- Exact replay 直接返回原 manifest，不加载 config，不调用 acquire 或 Provider；config
+  unavailable / changed 的 deterministic regressions 通过，model/cache 不参与内容 digest。
+  Changed/malformed content → `409 request_id_conflict`，无旧 manifest、无 execution grant，
+  原 Journal/effect/result 不变。Legacy/missing proof → `503 request_content_identity_unavailable`，
+  不推定 exact、不回填或重新执行；原 same-effect GET 仍可取回旧结果。
+- 无 migration/Workspace/Journal schema、effect/result identity/version/hash、24h retention、ACK、
+  Provider retry 或 P3S stop-loss 变化。P7A D1/D2、Recovery exact body/durability source 未改。
+- 原 frozen contract SHA-256：
+  `c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f`，保持不变。
+  P7A 五项 frozen hashes 与 contract lock 不变。
+- Clean executed source：`cf01f4880b9767c0704e6c606e5fedfd9f186bbb`（仅追加 harness expiry
+  projection 修正，产品文件与 fix commit 完全相同）。新 run：
+  `2026-10-03T16-06-38.215Z-33192`；build `9zqRzkwOLYFime3aEEdHw`；
+  source-tree SHA-256 `e4d57dec930c6e30c9d65abda998e9d2f6ce61efce9652598c7dc75ffa8f60e9`；
+  artifact SHA-256 `5ac6d694777ac480bcc5640022a1faba53b0a4f8dab44ba9276a790f5be714d6`。
+- Real A **pass**；B first execution / exact completed replay / changed-body conflict **pass**：
+  changed body 返回 `409 request_id_conflict` 且无 result；前后 Journal/effect/result facts
+  完全相同；Provider stub executions **1**；没有下一 product divergence。只执行 A/B。
+  Harness overall 保留 `inconclusive`，`boundedSlice.verdict = pass`，不代填 C–G。
+- Gates：focused **3 files / 67 tests**；P3A/P3B/result/Recovery adjacency **21 files / 439 tests**；
+  P3A SQL **22 checks**、P3B SQL **53 checks**（本地实际 migrations/RPC）；typecheck、lint、
+  clean strict production build、diff check **pass**。Full unit / full Chromium / P7A trajectory
+  本轮未机械重跑；无 client UI 或 frozen trajectory 改动，相邻回归覆盖本次产品边界。
+- Paid Provider calls / cost **0**；production DB/schema/data 写入 **0**。
+  原 D1 failure 的 21 项 raw artifact hashes 全部核对，原 machine receipt 字段逐项保持原值；
+  [machine evidence](./p7b-1-l1b-evidence.json) 的 `postFix` 追加新事实与 12 项 artifact index。
+  所有新增 raw artifacts 仅留 ignored `output/`，服务已停止，55432–55436 无 listener。
+- 首轮 post-fix diagnostic `2026-10-03T16-04-53.595Z-32880` 也保留：新增 assertion 将 RPC
+  manifest 与未附 expiry 的 DB manifest 直接比较而停止，未到 changed-body check。
+  这是 harness representation error，raw verdict 虽写 `product_blocker`，经 SQL 第 343 行确认
+  应归类 `invalid_run`，不是新产品 divergence。`cf01f48…` 比较 DB manifest + 原 expiry column，
+  未改 SQL、冻结 contract 或 expected facts；修正后才形成上述 A/B pass。
+
+## 原始执行记录（2026-10-03，历史事实保留）
+
 **PRODUCT BLOCKER：P7B-1-D1。A pass；B fail；C–G not_run。**
-P7 overall 继续 `validating`，P7A complete / web accepted；本轮未修产品、未 merge main。
+原轮 P7 overall 继续 `validating`，P7A complete / web accepted；未修产品、未 merge main。
 P7B-2 real text、P7B-3 real image、P7C/L4 human handoff 未开始。
 
 ## Identity 与实际环境
@@ -116,10 +162,11 @@ facts/metadata/hashes。本轮服务已停止，55432–55436 无遗留 listener
 4. 在干净的执行 source commit / task tree 上运行：
 
 ```powershell
-node scripts/verify-p7b-l1b.mjs temp/p7b-l1b-tools
+node scripts/verify-p7b-l1b.mjs temp/p7b-l1b-tools --slice=AB
 ```
 
 Harness 自行创建新隔离 cluster、执行真实 SQL、clean build / start、取得真实 Auth session、
-运行冻结 A/B 并 teardown。当前实现应以非零 exit code 保存 `product_blocker`，不是 PASS gate。
-只有 A/B 第一切片已接线；若将来 B 修复，C–G 未接线时返回 inconclusive，不能自动宣称全层通过。
-本次结论是停止并等待网页复审，而非授权继续修复或 cloud rollout。
+运行冻结 A/B 并 teardown。`--slice=AB` 在 A/B 均通过时 exit 0，同时 overall verdict 仍为
+`inconclusive`；失败保留原 first divergence 并非零退出。只有 A/B 第一切片已接线；
+C–G 明确排除，不宣称全层通过。不带该 flag 时，inconclusive 仍非零退出。
+当前 bounded D1 fix 完成后停止并等待网页复审，不继续 acceptance 或 cloud rollout。

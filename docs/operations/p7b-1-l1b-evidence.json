@@ -574,5 +574,231 @@
     "No Kong/hosted Supabase/Vercel path",
     "Local Auth has Windows single-listener compatibility shim"
   ],
-  "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main."
+  "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main.",
+  "receiptScope": "Original pre-fix blocker receipt preserved above; current bounded D1 fix is recorded in postFix.",
+  "currentP7b1Status": "validating / overall not passed: C-G not_run",
+  "postFix": {
+    "id": "P7B-1-D1",
+    "status": "closed / bounded A+B pass; awaiting web review",
+    "date": "2026-10-04",
+    "reviewedBaseline": "800b991710e7f8a94b945a0643b99191d34c156b",
+    "fixCommit": "1f410e4553d89447cfb934590e0a00979dc75ee6",
+    "harnessCorrectionCommit": "cf01f4880b9767c0704e6c606e5fedfd9f186bbb",
+    "contentContract": "SHA-256 of canonical raw client providerRequest with morpho-a-plus-client-request-content-v1 namespace, persisted as requestContentSha256 in immutable result JSONB binding. Object keys sorted; all client content/array order retained. Identity and digest checked before Text POST escrow delivery/publication, without Provider config or execution admission.",
+    "missingProof": "503 request_content_identity_unavailable; no assumption of equality, backfill or execution grant. Existing same-effect GET delivery unchanged.",
+    "schemaMigrationChanges": false,
+    "paidRetryChanges": false,
+    "runIdentity": {
+      "runId": "2026-10-03T16-06-38.215Z-33192",
+      "sourceSha": "cf01f4880b9767c0704e6c606e5fedfd9f186bbb",
+      "build": {
+        "schemaVersion": 2,
+        "sourceSha": "cf01f4880b9767c0704e6c606e5fedfd9f186bbb",
+        "sourceTreeSha256": "e4d57dec930c6e30c9d65abda998e9d2f6ce61efce9652598c7dc75ffa8f60e9",
+        "sourceTreeFileCount": 1076,
+        "buildId": "9zqRzkwOLYFime3aEEdHw",
+        "artifactSha256": "5ac6d694777ac480bcc5640022a1faba53b0a4f8dab44ba9276a790f5be714d6",
+        "artifactFileCount": 790,
+        "isDirty": false,
+        "nodeVersion": "v22.23.2",
+        "builtAt": "2026-10-03T16:06:57.809Z"
+      },
+      "contractVersion": "p7b-l1b-boundary-1",
+      "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f"
+    },
+    "isolatedDatabaseIdentity": "c6afbaf1-85d8-441b-a307-4c7f3e98da08",
+    "repositoryMigrationHashesUnchanged": true,
+    "frozenP7AHashes": "five files and contract lock unchanged (utf8-LF)",
+    "scenarios": [
+      {
+        "id": "A",
+        "verdict": "pass"
+      },
+      {
+        "id": "B",
+        "verdict": "pass"
+      },
+      {
+        "id": "C",
+        "verdict": "not_run",
+        "reason": "Excluded from bounded D1 A/B rerun"
+      },
+      {
+        "id": "D",
+        "verdict": "not_run",
+        "reason": "Excluded from bounded D1 A/B rerun"
+      },
+      {
+        "id": "E",
+        "verdict": "not_run",
+        "reason": "Excluded from bounded D1 A/B rerun"
+      },
+      {
+        "id": "F",
+        "verdict": "not_run",
+        "reason": "Excluded from bounded D1 A/B rerun"
+      },
+      {
+        "id": "G",
+        "verdict": "not_run",
+        "reason": "Excluded from bounded D1 A/B rerun"
+      }
+    ],
+    "boundedSlice": {
+      "scenarios": [
+        "A",
+        "B"
+      ],
+      "verdict": "pass"
+    },
+    "overallVerdict": "inconclusive",
+    "firstDivergence": null,
+    "textFacts": {
+      "serverTurnId": "780e768d-a3e4-4030-98ac-ca155c6d0a99",
+      "localProjectId": "p7b-isolated-project",
+      "requestId": "l1b-text-request",
+      "stepSequence": 1,
+      "serverRequestHash": "44a8bf236605aecd2624c6f994ac28c0962e3162c1663485b37e0ed78fca1f6d",
+      "externalEffectRequestDigest": "10acddf454518016bffe2025afe11d4dec1643a14dc4d519c01f3a7b0b6fab16",
+      "originalBodySha256": "d85df621d9ab3b8d0119e6dc0b7e76e129aa0528489b309dadfc3678dc312b4e",
+      "changedBodySha256": "0b35cd4c83a7b62a9f662d78fb0130382927883f03fa62af08a3d08d96d570ed",
+      "requestContentSha256": "1076311468899e11015b90883d1510446a422f9e97f9ad6e61caead036e58493",
+      "exactReplay": {
+        "httpStatus": 200,
+        "manifest": {
+          "kind": "text",
+          "sha256": "5178cbd3f2b39a2db25e2961cae03d6e38379f7c1c977324114796a99a01aa51",
+          "version": 1,
+          "effectId": "effect:26e57fd65923b346a9e8761ad52e87261e66339f3bed0b889aeeb6d6e165a2f9",
+          "mimeType": "application/json",
+          "resultId": "result:4811ba70412d31698ad06071380e0fe1c999a7414949d7dc1bb83b3830ccca6f",
+          "expiresAt": "2026-10-05T00:07:06.579799+08:00",
+          "byteLength": 175,
+          "chunkCount": 1
+        },
+        "journalEffectResultUnchanged": true
+      },
+      "changedBody": {
+        "status": 409,
+        "data": {
+          "code": "request_id_conflict",
+          "recoverable": false
+        }
+      },
+      "resultReturnedOnConflict": false,
+      "journalEffectResultUnchangedAfterConflict": true,
+      "beforeConflictFactsSha256": "93f4b83a1434beb9b203148a707fdcc6445388ac4070eb188f4c2dd6e87d571d",
+      "afterConflictFactsSha256": "93f4b83a1434beb9b203148a707fdcc6445388ac4070eb188f4c2dd6e87d571d"
+    },
+    "controlledProviderStubExecutions": 1,
+    "paidProviderCalls": 0,
+    "paidCost": 0,
+    "productionDataSchemaMigrationWrites": false,
+    "gates": {
+      "focusedUnit": {
+        "files": 3,
+        "tests": 67,
+        "status": "pass"
+      },
+      "adjacentUnit": {
+        "files": 21,
+        "tests": 439,
+        "status": "pass"
+      },
+      "p3aSql": {
+        "checks": 22,
+        "status": "pass / local PGlite actual migrations"
+      },
+      "p3bSql": {
+        "checks": 53,
+        "status": "pass / local PGlite actual migrations"
+      },
+      "typecheck": "pass",
+      "lint": "pass",
+      "productionBuild": "pass / clean strict build in runIdentity",
+      "diffCheck": "pass",
+      "fullUnit": "not_run / bounded change and sufficient relevant adjacency",
+      "normalChromium": "not_run / no client UI change",
+      "p7aTrajectory": "not_run / frozen inputs and D1/D2 source unchanged"
+    },
+    "diagnosticAttempt": {
+      "runId": "2026-10-03T16-04-53.595Z-32880",
+      "sourceSha": "1f410e4553d89447cfb934590e0a00979dc75ee6",
+      "rawVerdict": "product_blocker",
+      "classification": "invalid_run / newly added harness comparison omitted DB expiry projection; not a product divergence",
+      "assertion": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n  {\n    byteLength: 175,\n    chunkCount: 1,\n    effectId: 'effect:c129d46b41f80453247e3c8148c1d86ca670affef8a7507469b6e4bba3aaaf95',\n+   expiresAt: '2026-10-05T00:05:25.580378+08:00',\n    kind: 'text',\n    mimeType: 'application/json',\n    resultId: 'result:970e1610a1731455965292e53a0f032595a667bce52f637f54816a93dc9d5c03',\n    sha256: '5178cbd3f2b39a2db25e2961cae03d6e38379f7c1c977324114796a99a01aa51',\n    version: 1\n",
+      "changedBodyCheckExecuted": false,
+      "artifactsPreserved": true
+    },
+    "originalFailurePreserved": {
+      "runId": "2026-10-03T14-54-29.089Z-22228",
+      "originalTopLevelFieldsUnchanged": true,
+      "allOriginalArtifactHashesVerified": true
+    },
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-04-53.595Z-32880/environment.json",
+        "sha256": "ef8862960f2a8cedee55b4362df4a40796a8a9ee47112b50ccb9e20f11641f1f",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-04-53.595Z-32880/build.log",
+        "sha256": "a28c0a5facb2775f194a3bbe72dbf101c33ab2a7f6ca2323068b7b3d1f34bf4a",
+        "byteLength": 1476
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-04-53.595Z-32880/server.log",
+        "sha256": "becee27ce638e373d3ff41ae12d53515649539a60825ad50ac7744ceacf97cd7",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-04-53.595Z-32880/scenario-A.json",
+        "sha256": "2bdd329cbff329bf556a272bf13d0b423897b938f9ecd2e5b0feb04654cae70b",
+        "byteLength": 3914
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-04-53.595Z-32880/scenario-B.json",
+        "sha256": "6c7aba0886dbdf278d9405527339ab23530fdff6b755f4a0c40fdb3b9aab5288",
+        "byteLength": 5586
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-04-53.595Z-32880/verdict.json",
+        "sha256": "21c6f2f2cabffae6a889208ed703475b0091a997208c8987953d38b9cd13eeee",
+        "byteLength": 30870
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-06-38.215Z-33192/environment.json",
+        "sha256": "6079aca9af1ddf646ab93ad33ed0fc7c3af2fafecd32ab44f21dd22458bffd45",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-06-38.215Z-33192/build.log",
+        "sha256": "a341f852c2de1e680c576c6abe4d27972c449f7e90c9358c94f2c388b01e66ec",
+        "byteLength": 1474
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-06-38.215Z-33192/server.log",
+        "sha256": "a49f604adc6a6d5ffe0e503ca965ff9aecef7525eec9bc6278e8b1f9c4c1c257",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-06-38.215Z-33192/scenario-A.json",
+        "sha256": "157e704e8047535396c9f0cc2c39bf6f349874310c24013dff6c8dbc89570ca4",
+        "byteLength": 3914
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-06-38.215Z-33192/scenario-B.json",
+        "sha256": "4d89bc5b9dd485316c94493d94c4d4f9d098ba0c99cb035b4cee9b29c9b4345c",
+        "byteLength": 10235
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-03T16-06-38.215Z-33192/verdict.json",
+        "sha256": "109501fb61ddc74b6908ebc254e4d43cf08edf1fc164f3534ef08f408eed193e",
+        "byteLength": 35430
+      }
+    ],
+    "servicesStopped": true,
+    "remainingStages": "C-G not_run; P7B-2/P7B-3/P7C not_started; P7 validating",
+    "stop": "D1 bounded fix complete; awaiting web review. No main merge or acceptance continuation."
+  }
 }
