@@ -81,10 +81,21 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
       create function auth.role() returns text language sql stable as $$
         select coalesce(nullif(current_setting('request.jwt.claim.role',true),''),
           nullif(current_setting('request.jwt.claims',true),'')::jsonb->>'role') $$;`);
-    const auth=launch(resolve(tools,"auth.exe"),[],{
+    // Upstream embedded-FS migration discovery is not Windows portable. Apply the pinned
+    // official Auth SQL once to this fresh cluster; expand only its Namespace template.
+    const authMigrations=[];
+    const authMigrationDir=resolve(tools,"node_modules/.l1b-native-tools/auth/migrations");
+    for(const name of (await readdir(authMigrationDir)).filter(n=>n.endsWith(".up.sql")).sort()) {
+      const source=await readFile(resolve(authMigrationDir,name),"utf8");
+      const sql=source.replaceAll(/\{\{\s*index \.Options "Namespace"\s*\}\}/g,"auth");
+      if(sql.includes("{{")) throw Error("Unexpected official Auth migration template");
+      await db.query(sql);
+      authMigrations.push({name,sha256:sha256(source.replaceAll("\r\n","\n"))});
+    }
+    const auth=launch(resolve(tools,"auth.exe"),["serve"],{
       GOTRUE_API_HOST:"127.0.0.1",PORT:String(ports.auth),GOTRUE_SITE_URL:baseUrl,
       API_EXTERNAL_URL:`${origin}/auth/v1`,GOTRUE_DB_DRIVER:"postgres",GOTRUE_DB_NAMESPACE:"auth",
-      GOTRUE_DB_DATABASE_URL:`postgres://postgres:${password}@127.0.0.1:${ports.db}/postgres?sslmode=disable`,
+      GOTRUE_DB_DATABASE_URL:`postgres://postgres:${password}@127.0.0.1:${ports.db}/postgres?sslmode=disable&search_path=auth,public,extensions`,
       GOTRUE_JWT_SECRET:jwtSecret,GOTRUE_JWT_AUD:"authenticated",GOTRUE_JWT_DEFAULT_GROUP_NAME:"authenticated",
       GOTRUE_JWT_ADMIN_ROLES:"service_role",GOTRUE_MAILER_AUTOCONFIRM:"true",GOTRUE_EXTERNAL_EMAIL_ENABLED:"true",
       GOTRUE_LOG_LEVEL:"warn"
@@ -147,13 +158,14 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
       NEXT_PUBLIC_TLDRAW_LICENSE_KEY:""
     };
     const facts={ environment:"local Windows x64; fresh isolated TCP PostgreSQL + real PostgREST + source-built Supabase Auth",
-      databaseIdentity:randomUUID(),ports,migrations,
+      databaseIdentity:randomUUID(),ports,migrations,authMigrations,
       postgresVersion:(await db.query("select version() as version")).rows[0].version,
       authVersion:"v2.197.0",authSource:"4eee58f296d9698a1c2c0ae14d7a0b379c7622d3",
       authPlatformShim:"cmd/serve_cmd.go: single net.ListenConfig; Unix SO_REUSEPORT only removed, no auth logic changes",
       postgrestVersion:"v16.4",remoteDatabaseAccess:false };
     await writeFile(resolve(output,"environment.json"),JSON.stringify(facts,null,2)+"\n");
-    return { db,keys,origin,appEnv,stub,facts,stop,launch,wait,output };
+    return { db,keys,origin,appEnv,stub,facts,stop,launch,wait,output,
+      serviceDiagnostics:()=>children.map(c=>({executable:c.localExecutable,exitCode:c.exitCode,log:c.safeLog})) };
   } catch(error) {
     await writeFile(resolve(output,"setup-failure.json"),JSON.stringify({verdict:"invalid_run",phase:"isolated setup",error:redact(error.message),
       children:children.map(c=>({executable:c.localExecutable,exitCode:c.exitCode,log:c.safeLog}))},null,2)+"\n");

@@ -43,7 +43,7 @@ try {
     let cookies=[];
     const client=createServerClient(runtime.origin,runtime.keys.anon,{ cookies:{getAll:()=>cookies,setAll:updates=>{cookies=updates;} } });
     const signed=await client.auth.signUp({email:`l1b-${randomUUID()}@example.test`,password:randomUUID()+"Aa1!"});
-    if(signed.error||!signed.data.session) throw Error("Real isolated Auth signup/session failed");
+    if(signed.error||!signed.data.session) throw Error(`Real isolated Auth signup/session failed (status ${signed.error?.status}, code ${signed.error?.code})`);
     actors.push({userId:signed.data.user.id,cookie:cookies.map(c=>`${c.name}=${c.value}`).join("; "),token:signed.data.session.access_token});
     await runtime.db.query("update public.app_user_access set status='active' where user_id=$1",[signed.data.user.id]);
   }
@@ -135,4 +135,5 @@ try {
   await writeFile(resolve(output,"verdict.json"),JSON.stringify(verdict,null,2)+"\n");
 }
 console.log(JSON.stringify({output,verdict:verdict.verdict,firstDivergence:verdict.firstDivergence,sourceSha}));
-if(verdict.verdict!=="pass") process.exitCode=1;
+// Teardown is already awaited; bypass the portable PG beforeExit hook's implicit code 0.
+process.exit(verdict.verdict==="pass"?0:1);
