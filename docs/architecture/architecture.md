@@ -645,7 +645,7 @@ No new runtime dependency or external service was introduced for schema v17.
   unchanged. P4 visual lineage contracts are preserved. Final web review accepted P6H on 2026-10-03;
   combined P4/P6H validation and integration evidence are recorded in the Program Map.
 
-### P6I Interaction Contract (2026-10-03, validating)
+### P6I Interaction Contract (2026-10-03, accepted)
 
 - Actual floating roots declare `data-workspace-surface`; persistent input/detail surfaces declare
   `data-workspace-keyboard-owner`. Workspace shortcuts consume these DOM contracts rather than a

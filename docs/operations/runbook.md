@@ -1524,9 +1524,9 @@ references or creates new paid authority, even if current Direction/Branch state
 These checks do not verify real image quality, Provider role adherence, production migrations,
 hosting, retention or billing. P4 was accepted by final web review on 2026-10-03; later packages are separate work.
 
-## P6I Interaction Contract validation (2026-10-03; validating)
+## P6I Interaction Contract validation (2026-10-03; accepted)
 
-Run from the task branch. Build after the last source/test/document edit; the Chromium server checks
+Run from a Morpho worktree when implementation validation is needed. Build after the last source/test/document edit; the Chromium server checks
 served build provenance. The browser suite uses real production UI, native Canvas gestures, Runner,
 localStorage and IndexedDB with deterministic external-service fixtures; no paid Provider is called.
 
@@ -1551,4 +1551,7 @@ image/import attention handoff, removed/restored chapter targets and stale text 
 
 These checks establish deterministic interaction correctness, not real model quality, paid execution,
 production Journal/hosting, physical-device behavior or large-project real-user usability.
-Keep P6I validating until the separate web review; do not infer acceptance or begin P7.
+Final web review accepted P6I on 2026-10-03 at implementation `7508cd5da3cf16bac0020473710766386c32b61a`,
+with reviewed documentation head `7f0c46509646d0d56b75a27dd3a930a3410b5c25`.
+The accepted closeout changes only docs and checks `git diff --check` / Git state; it does not repeat
+unit, Chromium or build. Deferred capabilities and the above verification limits remain; P7 is not started.

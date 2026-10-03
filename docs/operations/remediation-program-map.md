@@ -295,7 +295,7 @@ P0 普通叶子修复、P3、P7 无需把七份原审计作为日常输入。P3 
 | P4 | accepted | Codex | `41666d2e678d78fb3d4b561e74dbca0836bb92f5`（execution-time origin/main）；Workspace 18 / P1B / P2A / P2B / P3 已 accepted | `temp/prompts/p4-implementation-plan.md`（一次性 ignored execution Plan；accepted closeout 清理） | `53a4d29b49b522c0fb31d96a432c7591c4d9a85c`（final accepted implementation head） | 2026-10-03 网页最终复审 ACCEPTED；主体及两轮 bounded auxiliary-reference authority / object-bound negation correction 均关闭。用户授权 docs-only closeout、ff-only 合入 main，保留原 4 个 P4 commits；accepted scope、final validation 和 rollout limits 见下方。 |
 | P6H | accepted | Codex | `41666d2e678d78fb3d4b561e74dbca0836bb92f5`（原始 execution base；开工时 P4 未合入） | `temp/prompts/p6h-manual-history.md`（一次性 ignored execution material，accepted closeout 清理） | `6831e985b25396dae4ccd76c95d6fe4b1b8f1aa7`（final accepted implementation/review head；主体 `e51bba1658a77cd24d107c4bce9f4f5dde5fc472`）；`codex/p6h-manual-history`（独立 worktree `D:\Morpho-Worktrees\p6h-manual-history`） | Contract: session-local operation-owned field / keyed lifecycle / membership-order delta；全量 currentness/identity/revision/关系校验后原子 inverse；冲突保留 entry，Undo/Redo 对称；独立 AI/runtime/messages/assets/Provider/history stores 保留；deterministic Continuity occurrence withdrawal/reactivation、Current Focus occurrence ownership；P1B compensating Decision/lifecycle 与 current Memory/Stage reconciliation；manual import/create/delete/hide/restore、状态/Definition/reference、Research/Conclusion、Delivery section/reference/editorial 等明确人工写入接入统一历史；导航 Alt+Left 与 mutation shortcuts 分离。主体 Evidence: targeted 17 files / 273 tests（history core 26、controllers、P1A/P1B、Delivery、Canvas）；full unit 236 files / 2418 tests；Chromium 19 项（P6H 6 + adjacent Canvas / P1B / persistence / backup 13）；real Ctrl+Z / Shift+Z / Ctrl+Y、单次拖拽、独立 Agent write、retained conflict、source navigation return、Delivery editorial 与 Editable Backup/reload；current-schema validation / JSON / backup round-trip；typecheck / lint / production build / git diff --check 全部通过。Limits: schema 18 / migration / backup 不变；无 paid Provider；无 persistent history / CRDT；async parse、Agent/Proposal/external/runtime writes 不入栈，changed owned records 安全阻止；P4 lineage 合同保留；2026-10-03 网页最终复审 ACCEPTED，组合验证与集成记录见下方。 |
 | P5 | accepted | Codex | `b254a951cd7a0cd0297074e88cb55b0fbcbf03ac`（开工时最新 origin/main）；schema 18 additive / generation baseline v1 | `temp/prompts/p5-delivery-handoff.md`（一次性 ignored execution material，非 canonical Plan；accepted closeout 清理） | `41c002d70aefb94c2f5a16f34f6bd969c9630fd3`（final reviewed implementation head） | 2026-10-03 网页最终复审 ACCEPTED，含 bounded Archive / P6H compensation correction；reviewed head Vercel success（用户提供的网页复审事实）。Branch `codex/p5-delivery-handoff`；主工作树；generation-time delivered dependencies、copy conflicts/review、shared inspection、single reference order、honest Output/Archive。用户授权 docs-only closeout、ff-only 合入 main，完整保留原 5 个 P5 commits；验证证据与真实 Provider / production / real-user handoff limits 见下文。 |
-| P6I | validating | Codex | `39593a560f81e35d77b47d2afe784d6d76aae99e`（fetch 后实际 origin/main）；schema 18 | 当前用户有界执行要求；无额外 worktree | `7508cd5da3cf16bac0020473710766386c32b61a`（implementation head）；`codex/p6i-interaction-contract` | DOM keyboard / Escape ownership、可见 Delivery target lifecycle、Proposal visibility-only hide、Reader/selection/focus 交接、推荐/显式保留分离、显式 Region movement scope、async attention、按需关系/历史正文和最小文本编辑。Targeted 21 files / 292 tests、full unit 240 files / 2531 tests、Chromium 55 trajectories、typecheck / lint / production build / diff check 通过；详见下方。等待网页复审，无 main merge。 |
+| P6I | accepted | Codex | `39593a560f81e35d77b47d2afe784d6d76aae99e`（fetch 后实际 origin/main）；schema 18 | 当前用户有界执行要求；无额外 worktree | `7508cd5da3cf16bac0020473710766386c32b61a`（accepted implementation head）；`codex/p6i-interaction-contract`（accepted task branch） | DOM keyboard / Escape ownership、可见 Delivery target lifecycle、Proposal visibility-only hide、Reader/selection/focus 交接、推荐/显式保留分离、显式 Region movement scope、async attention、按需关系/历史正文和最小文本编辑。Targeted 21 files / 292 tests、full unit 240 files / 2531 tests、Chromium 55 trajectories、typecheck / lint / production build / diff check 通过；详见下方。2026-10-03 网页最终复审 ACCEPTED；reviewed head `7f0c46509646d0d56b75a27dd3a930a3410b5c25` Vercel success（用户提供的网页复审事实）。Accepted closeout 与保留的 deferred / limits 见下方。 |
 | P7 | not_started | 未分配 | `0c04ec8`（planning code baseline，待开工绑定新 main） | — | — | 未由 P6I 启动 |
 | P3-Facts | not_started（D） | 未分配 | EXT 中明确的未知项 | — | — | 不阻止止损 |
 | O1（CI enforcement / branch protection） | optional_process_decision | — | 见第 7.3 节 | — | — | 可选流程加固；不阻塞任何 remediation package |
@@ -635,19 +635,19 @@ P5 implementation / validation evidence（2026-10-03；网页最终复审 `accep
   Accepted closeout 仅修改 canonical docs，保留原 5 个 P5 commits，用户授权 ff-only 合入 main、
   push main、删除任务分支并清理本任务一次性材料；不重跑完整 unit / Chromium / build。
 
-P6I implementation / validation evidence（2026-10-03；`validating`，等待网页复审）：
+P6I implementation / validation evidence（2026-10-03；验收前状态为 `validating`，现已网页最终复审 `accepted`）：
 
 - Actual base: `39593a560f81e35d77b47d2afe784d6d76aae99e`，开工 fetch 后真实
   `origin/main` 与网页给定 baseline 相同。主工作树 `D:\Morpho`，task branch
   `codex/p6i-interaction-contract`；无额外 worktree。Implementation head:
-  `7508cd5da3cf16bac0020473710766386c32b61a`。本包不 merge main、不启动 P7。
+  `7508cd5da3cf16bac0020473710766386c32b61a`。实现阶段未 merge main、未启动 P7。
 - 定点旧审计 `06-workspace-canvas-audit.md` 基于 `2e801ed`，仅作问题来源。
   当前 main 已由 accepted P6H 关闭旧 finding 1 的 snapshot Undo/Redo、恢复/研究/
   Delivery 人工入口漏记及导航抢占 Ctrl+Z；保留 operation-owned inverse 与 Alt+Left。
   P5 已提供 generation-time Draft baseline、applicability/inspection 和 caption/note
   明确复核；不重新实现。P1B Truth/evidence、P2 authority/actual reads、P3 recovery/
   result delivery、P4 frozen lineage 作为现有合同消费，不把历史审计重新当需求实现。
-- 旧 findings 2/3/5/6 在 main 仍存在交互接线缺口：真实浮层 DOM 使用 surface/
+- 旧 findings 2/3/5/6 在开工 main 仍存在交互接线缺口：真实浮层 DOM 使用 surface/
   keyboard-owner 属性，Escape 消费视觉 stacking 与 DOM order，关闭后交还焦点；
   输入旁可见且可解除 Delivery chapter target，关闭/切用途/换目标/移除目标即失效，
   Undo 不复活绑定；通用 Proposal hide/混选只隐藏并可恢复，明确 discard/reject 独立；
@@ -682,4 +682,21 @@ P6I implementation / validation evidence（2026-10-03；`validating`，等待网
   stale body/incarnation。未调用 paid Provider 或生产 migration。
 - 未验证：真实模型/图像质量、paid execution/计费、production Journal/hosting、
   大项目与真实用户的交互接受度。此证据不代签网页复审或人工 UX acceptance。
-  P6I 保持 `validating`；P7 保持 `not_started`。
+  实现阶段 P6I 保持 `validating`；网页最终复审后正式 `accepted`，P7 保持 `not_started`。
+
+P6I 正式验收 / accepted closeout（2026-10-03）：
+
+- 用户提供的网页最终复审结论为 **ACCEPTED**。Accepted implementation head:
+  `7508cd5da3cf16bac0020473710766386c32b61a`；current reviewed head:
+  `7f0c46509646d0d56b75a27dd3a930a3410b5c25`，其 Vercel success 来自用户网页复审事实。
+  此记录不扩展为真实 paid Provider、production Journal/hosting 或 real-user UX acceptance。
+- Closeout fetch 后真实 `origin/main` 仍为 `39593a560f81e35d77b47d2afe784d6d76aae99e`，
+  task branch 相对 main ahead 2 / behind 0，主工作树 clean，无额外 worktree。
+  保留上述两个已审阅 commits 与 implementation / validation evidence；独立 docs-only
+  closeout，不 squash / amend / rebase，不修改 source/test/config，不重跑 full unit / Chromium / build。
+  检查 `git diff --check` 与 Git 状态；按用户授权 ff-only 合入并 push main、核对远端后清理 P6I 分支及一次性材料。
+- Deferred 保留：更完整的 Collection 整理、普通 Canvas instance lock/copy/group、
+  拖入 Delivery 直接创建 stable reference、完整 Reader 阅读位置恢复。
+  它们不属于本包未完成 blocker，不以本次 acceptance 宣称已实现。
+- No paid Provider / production migration / real-user UX acceptance 等既有验证限制全部保留。
+  P6I = `accepted`；P7 = `not_started`，本 closeout 不开始新实现。
