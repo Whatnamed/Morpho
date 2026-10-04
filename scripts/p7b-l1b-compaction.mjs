@@ -120,12 +120,13 @@ export async function runCompactionScenario({runtime,actor,row,output,setTurn,jo
       const summary=JSON.parse(bytes);assert.equal(summary.summary.threadGoal,"P7B controlled original Summary");
       assert.equal(summary.sourceBoundary.expectedPreviousRevisionId,seed.previousRevisionId);
       await writeFile(resolve(output,"G-original-summary-result.json"),bytes);
-      const replay=await request(new URL(proof.url).pathname,body);assert.equal(replay.status,200);assert.deepEqual(replay.data.result,result.delivery_manifest);
+      const actionPath=new URL(proof.url,baseUrl).pathname;
+      const replay=await request(actionPath,body);assert.equal(replay.status,200);assert.deepEqual(replay.data.result,result.delivery_manifest);
       assert.deepEqual(await actionJournal(),original.journal,"Exact Summary replay cannot mutate execution/result");assert.equal(runtime.stub.calls.length-start,1);
       c.preDelivery={intentDurableBeforePost:true,exactBodyDurable:true,originalSummaryHashVerified:true,exactReplayNoExecution:true};
       if(name==="original-summary") {
         const changed={...body,messages:body.messages.map((m,i)=>i?m:{...m,body:m.body+" changed source content"})};
-        const conflict=await request(new URL(proof.url).pathname,changed);
+        const conflict=await request(actionPath,changed);
         c.changedSourceReplay={originalBody:body,changedBody:changed,originalSha256:sha256(JSON.stringify(body)),changedSha256:sha256(JSON.stringify(changed)),
           outcome:conflict,journalUnchanged:JSON.stringify(await actionJournal())===JSON.stringify(original.journal),providerExecutions:runtime.stub.calls.length-start};
         await checkpoint("changed-content-replay");
