@@ -112,11 +112,16 @@ export async function runAmbiguousClientScenario({ runtime, actor, row, output, 
     await page.evaluate(() => sessionStorage.setItem("l1b-D-phase", "reload")); await page.reload();
     await page.waitForFunction(() => JSON.parse(sessionStorage.getItem("l1b-D-responses") ?? "[]")
       .some(r => r.phase === "reload" && r.method === "GET" && r.url.includes("/turns/")), null, { timeout: 30_000 });
+    if (mode === "unknown") await page.waitForFunction(workspaceKey =>
+      JSON.parse(localStorage.getItem(workspaceKey)).ai.messages.some(m => m.role === "assistant" && m.status === "failed"),
+    seed.workspaceKey, { timeout: 30_000 });
     const reloaded = await checkpoint("query-original");
     assert.equal(reloaded.client.posts.length, 1, "Reload cannot generate a replacement Request");
     assert.equal(runtime.stub.calls.length - start, 1);
     const effect = reloaded.journal.effects.find(e => e.effect_id === `effect:${sha256(JSON.stringify(["a-plus", proof.serverTurnId, seed.projectId, "text", proof.body.requestId, proof.body.stepSequence]))}`);
     assert.ok(effect); assert.equal(effect.execution_state, "unknown", "Transport uncertainty is not Provider failure");
+    row.effectObservation = await request(`/api/ai/effects/${effect.effect_id}?kind=text`);
+    assert.equal(row.effectObservation.status, 200); assert.equal(row.effectObservation.data.effect.executionState, "unknown");
     row.ambiguousJournal = reloaded.journal;
     const path = `/api/ai/agent/turns/${proof.serverTurnId}/requests`;
     const replay = await request(path, proof.body);
@@ -126,8 +131,19 @@ export async function runAmbiguousClientScenario({ runtime, actor, row, output, 
     row.exactReplay = replay;
     if (mode === "unknown") {
       assert.equal(reloaded.journal.turn[0].bounded_failure_code, "external_execution_state_unknown");
-      assert.notEqual(reloaded.journal.turn[0].server_execution_status, "externally_failed",
-        "Accepted upstream request with lost response must not be terminalized as externallyFailed solely from transport ambiguity");
+      const observed = reloaded.client.responses.find(r => r.method === "GET" && r.url.includes("/turns/"));
+      assert.equal(observed.data.failureCode, "external_execution_state_unknown");
+      // Accepted A+ semantics permit administrative Turn closure with this bounded code.
+      // Provider truth stays unknown; the client must not discard that distinction on reload.
+      const durableUnknown = reloaded.client.workspace.ai.messages.some(m =>
+        m.agentTurnOutcomeSummary?.includes("external_execution_state_unknown") || m.body.includes("无法确认外部请求是否已经执行"));
+      const recoveryUnknown = reloaded.client.recovery.some(r =>
+        r.coordinator.lifecycle.fault?.error?.code === "external_execution_state_unknown");
+      row.clientUnknownPreserved = { durableUnknown, recoveryUnknown,
+        outcomes: reloaded.client.workspace.ai.messages.map(m => ({ id: m.id, role: m.role, body: m.body,
+          status: m.status, outcome: m.agentTurnOutcome, summary: m.agentTurnOutcomeSummary })) };
+      assert.ok(durableUnknown || recoveryUnknown,
+        "Reload must preserve Journal external_execution_state_unknown in canonical local facts or durable failure detail; generic externalExecutionFailed loses execution uncertainty");
     } else {
       assert.equal(reloaded.journal.turn[0].server_execution_status, "provider_running");
       const saved = reloaded.client.recovery.find(r => r.serverTurnId === proof.serverTurnId);
