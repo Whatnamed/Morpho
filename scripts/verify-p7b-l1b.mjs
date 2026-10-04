@@ -11,6 +11,7 @@ import { runDurableClientScenario } from "./p7b-l1b-browser.mjs";
 import { runAmbiguousClientScenario } from "./p7b-l1b-ambiguity.mjs";
 import { runCancellationScenario } from "./p7b-l1b-cancellation.mjs";
 import { runResultScenario } from "./p7b-l1b-result.mjs";
+import { runCompactionScenario } from "./p7b-l1b-compaction.mjs";
 
 const root=process.cwd();
 const boundedD1=process.argv.includes("--slice=AB");
@@ -18,6 +19,7 @@ const clientSlice=process.argv.includes("--slice=C");
 const ambiguitySlice=process.argv.includes("--slice=D");
 const cancellationSlice=process.argv.includes("--slice=E");
 const resultSlice=process.argv.includes("--slice=F");
+const compactionSlice=process.argv.includes("--slice=G");
 const git=(args)=>execFileSync("git",args,{encoding:"utf8"}).trim();
 if(git(["status","--porcelain","--untracked-files=no"])) throw Error("Clean tracked source required");
 const sourceSha=git(["rev-parse","HEAD"]);
@@ -91,7 +93,10 @@ try {
     return row.verdict==="pass";
   };
   let A;
-  if(resultSlice) {
+  if(compactionSlice) {
+    sliceComplete=await scenario("G",row=>runCompactionScenario({runtime,actor:actors[0],row,output,setTurn:value=>{turn=value;},journal,request}));
+    verdict.scenarios.unshift(...contract.scenarios.filter(s=>["A","B","C","D","E","F"].includes(s.id)).map(s=>({id:s.id,expected:s.expected,verdict:"not_run",reason:"Accepted A-E and clean F receipts retained; no re-audit"})));
+  } else if(resultSlice) {
     sliceComplete=await scenario("F",row=>runResultScenario({runtime,actors,row,output,setTurn:value=>{turn=value;},journal,request}));
     verdict.scenarios.unshift(...contract.scenarios.filter(s=>["A","B","C","D","E"].includes(s.id)).map(s=>({id:s.id,expected:s.expected,verdict:"not_run",reason:"Accepted A-E receipts retained; no re-audit"})));
   } else if(cancellationSlice) {

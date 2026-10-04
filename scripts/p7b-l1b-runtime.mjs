@@ -141,7 +141,10 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
         if(call.providerOutcome==="cancelled") return;
         call.providerOutcome="succeeded";
       }
-      const text="P7B controlled result";
+      const text=mode==="compaction" ? "```morphoConversationSummary\n"+JSON.stringify({
+        threadGoal:"P7B controlled original Summary",establishedContext:["Continuous conversation"],
+        decisionsAndReasons:[],activeWork:[],unresolvedQuestions:[],referencedObjects:[]
+      })+"\n```" : "P7B controlled result";
       if(payload.stream) {
         if(!response.headersSent) response.writeHead(200,{"Content-Type":"text/event-stream"});
         response.end(`event: response.completed\ndata: ${JSON.stringify({type:"response.completed",response:responseObject(text)})}\n\n`);
