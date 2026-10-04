@@ -6,14 +6,14 @@ import { chromium } from "playwright";
 import { createServer } from "vite";
 import { baseUrl, sha256, controlledCompactionSummary, controlledCompactionText } from "./p7b-l1b-runtime.mjs";
 
-async function seedCompaction(name) {
+export async function seedCompaction(name) {
   const vite=await createServer({appType:"custom",configFile:resolve("vitest.config.ts"),server:{middlewareMode:true}});
   try {
     const {createBlankWorkspace,serializeWorkspace}=await vite.ssrLoadModule("/src/domain/morpho/workspace.ts");
     const {applyConversationSummaryRevision,buildConversationCompactionPlan,parseConversationSummaryPayload}=await vite.ssrLoadModule("/src/domain/morpho/conversationCompaction.ts");
     const controlled=parseConversationSummaryPayload(controlledCompactionText);
     if(controlled.status!=="ok")throw Error(`Invalid controlled Summary fixture: ${controlled.reason}`);
-    assert.deepEqual(controlled.summary,controlledCompactionSummary);
+    assert.deepEqual(JSON.parse(JSON.stringify(controlled.summary)),controlledCompactionSummary);
     const {createCatalog,summarizeProject,CATALOG_STORAGE_KEY,getProjectWorkspaceStorageKey}=await vite.ssrLoadModule("/src/infrastructure/persistence/localProjectStore.ts");
     let workspace=createBlankWorkspace(`p7b-G-${name}`);
     workspace.project.title="L1b original Compaction boundary";
@@ -85,8 +85,11 @@ export async function runCompactionScenario({runtime,actor,row,output,setTurn,jo
       acks:JSON.parse(sessionStorage.getItem("l1b-G-acks")??"[]"),http:JSON.parse(sessionStorage.getItem("l1b-G-http")??"[]"),
       responses:JSON.parse(sessionStorage.getItem("l1b-G-responses")??"[]"),clears:JSON.parse(sessionStorage.getItem("l1b-G-clears")??"[]"),
       recoveries:Object.entries(localStorage).filter(([k])=>k.startsWith("morpho.agent-runtime-a-plus.recovery.v2")).map(([,v])=>JSON.parse(v))}),seed.workspaceKey);
+    let currentTurn;
+    const actionJournal=async()=>({...await journal(),actions:currentTurn?(await runtime.db.query(
+      "select server_turn_id,request_id,step_sequence,action_id,action_kind,action_hash,execution_status,bounded_failure_code,execution_started_at,terminal_at from private.agent_turn_external_action_journal where server_turn_id=$1",[currentTurn])).rows:[]});
     const checkpoint=async label=>{c.checkpoint=label;const client=await facts();const turn=client.posts[0]?.record?.serverTurnId??client.recoveries[0]?.serverTurnId;
-      if(turn)setTurn(turn);const value={client,journal:await journal(),stub:runtime.stub.calls.slice(start)};
+      if(turn){currentTurn=turn;setTurn(turn);}const value={client,journal:await actionJournal(),stub:runtime.stub.calls.slice(start)};
       await writeFile(resolve(output,`G-${name}-${label}.json`),JSON.stringify(value,null,2)+"\n");return value;};
     try {
       await page.goto(`${baseUrl}/projects/${seed.projectId}`);await page.locator(".ai-panel textarea").fill("/compact");await page.locator('[aria-label="发送"]').click();
@@ -118,13 +121,13 @@ export async function runCompactionScenario({runtime,actor,row,output,setTurn,jo
       assert.equal(summary.sourceBoundary.expectedPreviousRevisionId,seed.previousRevisionId);
       await writeFile(resolve(output,"G-original-summary-result.json"),bytes);
       const replay=await request(new URL(proof.url).pathname,body);assert.equal(replay.status,200);assert.deepEqual(replay.data.result,result.delivery_manifest);
-      assert.deepEqual(await journal(),original.journal,"Exact Summary replay cannot mutate execution/result");assert.equal(runtime.stub.calls.length-start,1);
+      assert.deepEqual(await actionJournal(),original.journal,"Exact Summary replay cannot mutate execution/result");assert.equal(runtime.stub.calls.length-start,1);
       c.preDelivery={intentDurableBeforePost:true,exactBodyDurable:true,originalSummaryHashVerified:true,exactReplayNoExecution:true};
       if(name==="original-summary") {
         const changed={...body,messages:body.messages.map((m,i)=>i?m:{...m,body:m.body+" changed source content"})};
         const conflict=await request(new URL(proof.url).pathname,changed);
         c.changedSourceReplay={originalBody:body,changedBody:changed,originalSha256:sha256(JSON.stringify(body)),changedSha256:sha256(JSON.stringify(changed)),
-          outcome:conflict,journalUnchanged:JSON.stringify(await journal())===JSON.stringify(original.journal),providerExecutions:runtime.stub.calls.length-start};
+          outcome:conflict,journalUnchanged:JSON.stringify(await actionJournal())===JSON.stringify(original.journal),providerExecutions:runtime.stub.calls.length-start};
         await checkpoint("changed-content-replay");
         assert.equal(conflict.status,409,"Same Compaction action identity with changed source/body must conflict even after immutable Summary publication");
         assert.ok(!conflict.data.result,"A conflicting Compaction replay cannot return the original Summary as valid for changed content");
