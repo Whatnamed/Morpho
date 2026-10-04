@@ -524,39 +524,41 @@ export async function runManualCompactionTurn(
         ...(result.status === "applied" ? { appliedRevisionId: result.revisionId } : {})
       }
     }));
-    host.commitWorkspace((current) => ({
-      workspace: {
-        ...current,
-        ai: {
-          ...current.ai,
-          messages: current.ai.messages.map((message) =>
-            message.id === assistantMessageId
-              ? {
-                  ...message,
-                  body: result.status === "cancelled"
-                    ? "上下文压缩已取消，旧 Summary Revision 保持不变。"
-                    : getManualCompactionStatusText(
-                        result.status === "applied"
-                          ? "completed"
-                          : result.status === "notNeeded"
-                            ? "notNeeded"
-                            : "failed"
-                      )
-                }
-              : message
-          )
-        }
-      },
-      value: undefined
-    }));
-    const lifecycle = coordinator.getLifecycleSnapshot();
-    if (lifecycle && lifecycle.phase !== "terminal") requireCoordinatorOk(coordinator.finalizeTurn());
-    await finalizeSession(session);
+    await finalizeManualCompactionSession(session, result.status === "cancelled"
+      ? "cancelled" : result.status === "applied" ? "completed" : result.status === "notNeeded" ? "notNeeded" : "failed");
   } catch (error) {
     await terminateUnexpectedSession(session, error);
   } finally {
     if (!keepSessionForRecovery) releaseActiveSession(localProjectId, coordinator);
   }
+}
+
+async function finalizeManualCompactionSession(
+  session: APlusSession,
+  status: "completed" | "notNeeded" | "failed" | "cancelled"
+): Promise<void> {
+  session.host.commitWorkspace((current) => ({
+    workspace: {
+      ...current,
+      ai: {
+        ...current.ai,
+        messages: current.ai.messages.map((message) =>
+          message.id === session.prepared.assistantMessageId
+            ? {
+                ...message,
+                body: status === "cancelled"
+                  ? "上下文压缩已取消，旧 Summary Revision 保持不变。"
+                  : getManualCompactionStatusText(status)
+              }
+            : message
+        )
+      }
+    },
+    value: undefined
+  }));
+  const lifecycle = session.coordinator.getLifecycleSnapshot();
+  if (lifecycle && lifecycle.phase !== "terminal") requireCoordinatorOk(session.coordinator.finalizeTurn());
+  await finalizeSession(session);
 }
 
 function driveSessionSerialized(session: APlusSession): Promise<void> {
@@ -573,6 +575,20 @@ async function driveSession(session: APlusSession): Promise<void> {
     }
     const lifecycle = session.coordinator.getLifecycleSnapshot();
     if (!lifecycle) return;
+    const compaction = session.recovery.metadata.compaction;
+    if (compaction?.mode === "manual" && lifecycle.phase !== "compacting") {
+      // Manual-only runtime has no Text input. Resume its original finalization,
+      // never the normal Provider phase restored by completeCompaction.
+      const completed = lifecycle.compactions.find(fact => fact.actionId === compaction.actionId);
+      if (lifecycle.phase === "terminal" || completed || compaction.summaryApplyState === "applied") {
+        await finalizeManualCompactionSession(session, lifecycle.fault.kind === "present" ? "failed"
+          : completed?.completion.kind === "notNeeded" ? "notNeeded" : "completed");
+      } else {
+        session.host.ui.setStreaming(false);
+        showAgentTurnRecoveryPending(session.host.ui);
+      }
+      return;
+    }
     if (lifecycle.phase === "terminal") {
       await finalizeSession(session);
       return;
@@ -1025,7 +1041,9 @@ async function recordCompactionResult(
           : {}),
         lastObservedAt: new Date(session.host.now()).toISOString()
       }
-    } : { pendingExternalAction: undefined })
+    } : result.status === "applied" && metadata.mode === "manual"
+      ? {} // Retain the original delivery for manual finalization / lost-ACK recovery.
+      : { pendingExternalAction: undefined })
   }));
   if (result.status === "applied") {
     const runtime = session.recovery.metadata.runtime;
@@ -1269,11 +1287,15 @@ async function finalizeSession(session: APlusSession): Promise<void> {
   const compactionDelivery = session.recovery.metadata.pendingExternalAction?.actionKind === "compaction"
     ? session.recovery.metadata.pendingExternalAction.delivery : undefined;
   if (compactionDelivery && session.recovery.metadata.compaction?.summaryApplyState === "applied") {
-    await acknowledgePersistedExternalResult(session.localProjectId, compactionDelivery, session.host.fetch);
+    const acknowledged = await acknowledgePersistedExternalResult(session.localProjectId, compactionDelivery, session.host.fetch);
+    if (!acknowledged && session.recovery.metadata.compaction.mode === "manual") return;
   }
   const output = session.coordinator.getProviderOutputSnapshot();
   if (output?.delivery) await acknowledgePersistedExternalResult(session.localProjectId, output.delivery, session.host.fetch);
-  if (typeof window !== "undefined") await flushPendingExternalResultAcks(session.localProjectId, session.host.fetch);
+  if (typeof window !== "undefined") {
+    const acknowledged = await flushPendingExternalResultAcks(session.localProjectId, session.host.fetch);
+    if (!acknowledged && session.recovery.metadata.compaction?.mode === "manual") return;
+  }
   if (!session.recovery.metadata.pendingConfirmation) {
     await session.recovery.clear();
   }

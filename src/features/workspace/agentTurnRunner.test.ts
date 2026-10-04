@@ -32,6 +32,7 @@ import {
   recoverMorphoAgentTurn,
   resumeMorphoAgentTurn,
   runMorphoAgentTurn,
+  runManualCompactionTurn,
   type AgentTurnRunnerAPlusDependencies
 } from "./agentTurnRunner";
 import type { RunMorphoAgentTurnAPlusInput } from "./agentTurnProductPreparationAPlus";
@@ -42,6 +43,7 @@ import type {
 import type { WorkspacePersistenceState } from "./workspacePersistence";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import type { ExternalResultManifest } from "@/shared/externalResultProtocol";
+import { hashAPlusExternalActionBody } from "./agentExternalActionClientAPlus";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const LOCAL_PROJECT_ID = createTestWorkspace().project.id;
@@ -53,6 +55,90 @@ afterEach(() => {
 });
 
 describe("A+ Agent turn runner", () => {
+  it("manual response loss reload applies the original Summary once without any Text identity", async () => {
+    const f = await manualCompactionFixture(); f.loseResponse = true;
+    await runManualCompactionTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    const action = structuredClone(f.fixture.store.record!.metadata.pendingExternalAction);
+    expect(f.fixture.store.record?.coordinator.lifecycle.phase).toBe("compacting");
+    expect(f.acks).toHaveLength(0);
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, f.fixture.host, f.fixture.dependencies)).toBe("recovered");
+    expect(f.bodies).toHaveLength(2); expect(f.bodies[1]).toBe(f.bodies[0]);
+    expect(action?.requestBody).toBe(f.bodies[0]);
+    expect(Object.keys(f.durable.ai.conversationSummaryRevisions)).toHaveLength(1);
+    expect(latestAssistant(f.durable)).toMatchObject({ body: expect.stringContaining("上下文压缩完成"), status: "done", agentTurnOutcome: "success" });
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(0); expect(f.fixture.store.record).toBeUndefined();
+  });
+  it("already applied durable manual Summary reload finalizes and ACKs without replaying Compaction", async () => {
+    const f = await manualCompactionFixture();
+    await runManualCompactionTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    const revision = f.durable.ai.conversationCompaction.summaryRevisionId;
+    f.fixture.store.record = structuredClone(f.appliedRecord!);
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    const posts = f.bodies.length;
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, f.fixture.host, f.fixture.dependencies)).toBe("recovered");
+    expect(f.bodies).toHaveLength(posts); expect(f.durable.ai.conversationCompaction.summaryRevisionId).toBe(revision);
+    expect(Object.keys(f.durable.ai.conversationSummaryRevisions)).toHaveLength(1);
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(0); expect(f.fixture.store.record).toBeUndefined();
+  });
+  it("manual Summary persistence failure reload saves the same revision before ACK and cleanup", async () => {
+    const f = await manualCompactionFixture(); f.failSummarySave = true;
+    await runManualCompactionTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    expect(f.acks).toHaveLength(0); expect(f.durable.ai.conversationCompaction.summaryRevisionId).toBeUndefined();
+    const revision = f.fixture.fake.getWorkspace().ai.conversationCompaction.summaryRevisionId;
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID); f.failSummarySave = false;
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, f.fixture.host, f.fixture.dependencies)).toBe("recovered");
+    expect(f.durable.ai.conversationCompaction.summaryRevisionId).toBe(revision);
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(0); expect(f.fixture.store.record).toBeUndefined();
+  });
+  it("manual lost ACK keeps applied Recovery and reload retries only the same ACK", async () => {
+    const f = await manualCompactionFixture(); f.loseAck = true;
+    await runManualCompactionTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    expect(f.fixture.store.record).toMatchObject({ coordinator: { lifecycle: { phase: "terminal", outcome: { kind: "completed" } } },
+      metadata: { compaction: { mode: "manual", summaryApplyState: "applied" }, pendingExternalAction: { delivery: f.manifest } } });
+    const revision = f.durable.ai.conversationCompaction.summaryRevisionId,posts = f.bodies.length;
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID); f.loseAck = false;
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, f.fixture.host, f.fixture.dependencies)).toBe("recovered");
+    expect(f.bodies).toHaveLength(posts); expect(f.durable.ai.conversationCompaction.summaryRevisionId).toBe(revision);
+    expect(f.acks.length).toBeGreaterThan(1); expect(f.fixture.store.record).toBeUndefined();
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(0);
+  });
+  it("manual applied Recovery flush failure cannot ACK the Summary", async () => {
+    const f = await manualCompactionFixture(); const save = f.fixture.store.save.bind(f.fixture.store);
+    f.fixture.store.save = async record => {
+      if (record.metadata.compaction?.summaryApplyState === "applied") throw new Error("Recovery storage failed");
+      await save(record);
+    };
+    await runManualCompactionTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    expect(f.acks).toHaveLength(0); expect(f.fixture.store.record).toBeDefined();
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(0);
+  });
+  it.each(["automatic", "preContinuation"] as const)("applied %s recovery continues the normal Provider phase", async mode => {
+    const f = await manualCompactionFixture();
+    await runManualCompactionTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    const record = structuredClone(f.appliedRecord!);
+    if (record.coordinator.lifecycle.phase !== "compacting") throw new Error("Expected durable applied Compaction checkpoint");
+    const base = { ...record.metadata.runtime.providerBaseRequest, input: [{ role: "user" as const,
+      content: [{ type: "input_text" as const, text: "Continue the original Agent task" }] }] };
+    const previous = { requestId: "previous-request", stepSequence: 1 };
+    f.fixture.store.record = { ...record, coordinator: { ...record.coordinator,
+      lifecycle: { ...record.coordinator.lifecycle, mode, resumePhase: mode === "automatic" ? "requestingProvider" : "continuing",
+        ...(mode === "preContinuation" ? { serverExecutionStatus: "awaitingNextRequest" as const,
+          externalRequest: { kind: "settled" as const, ...previous }, providerOutput: { kind: "consumed" as const, ...previous } } : {}) },
+      ...(mode === "preContinuation" ? { lastRequest: previous, serverSnapshot: { ...record.coordinator.serverSnapshot,
+        status: "awaitingNextRequest" as const, latestRequestId: previous.requestId, latestStepSequence: 1 } } : {}) },
+      metadata: { ...record.metadata, compaction: { ...record.metadata.compaction!, mode }, runtime: { ...record.metadata.runtime,
+        providerBaseRequest: base, continuationItems: mode === "preContinuation" ? [{ type: "function_call_output", callId: "previous-tool", output: "already delivered" }] : [] } } };
+    const savedRecords: APlusTurnRecoveryRecord[] = [];
+    f.fixture.store.save = record => { savedRecords.push(structuredClone(record)); return MemoryRecoveryStore.prototype.save.call(f.fixture.store, record); };
+    f.fixture.coordinatorHost.appendScripts([{ status: "externallyCompleted", outputText: "normal continuation" }]);
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, f.fixture.host, f.fixture.dependencies)).toBe("recovered");
+    expect(savedRecords.at(-1)?.coordinator.lifecycle.fault).toEqual({ kind: "none" });
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(f.fixture.coordinatorHost.executions[0]?.stepSequence).toBe(mode === "automatic" ? 1 : 2);
+    expect(Object.keys(f.durable.ai.conversationSummaryRevisions)).toHaveLength(1);
+  });
   it.each([false, true])("late cancellation Text with tools=%s saves cancelled conversation before exact ACK", async tools => {
     const f = finalTextFixture({ late: true, tools });
     await runMorphoAgentTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
@@ -1747,6 +1833,50 @@ function createFixture(
     readConversationTokenLimits: () => undefined
   };
   return { fake, host, input, coordinatorHost, store, dependencies };
+}
+
+async function manualCompactionFixture() {
+  const fixture = createFixture([]); fixture.input.draft = "/compact";
+  fixture.fake.commitWorkspace(current => ({ workspace: { ...current, ai: { ...current.ai,
+    messages: Array.from({ length: 8 }, (_, i) => ({ id: `manual-history-${i}`, role: i % 2 ? "assistant" as const : "user" as const,
+      body: `discussion ${i}`, createdAt: new Date(1_700_000_000_000 + i).toISOString(), ...(i % 2 ? { status: "done" as const } : {}) }))
+  } }, value: undefined }));
+  const payload = JSON.stringify({ summary: { threadGoal: "original manual Summary", establishedContext: [], decisionsAndReasons: [],
+    activeWork: [], unresolvedQuestions: [], referencedObjects: [] } });
+  const manifest: ExternalResultManifest = { kind: "compaction", effectId: `effect:${"c".repeat(64)}`, resultId: `result:${"d".repeat(64)}`,
+    version: 1, sha256: await hashAPlusExternalActionBody(payload), byteLength: new TextEncoder().encode(payload).length,
+    chunkCount: 1, mimeType: "application/json", expiresAt: "2099-01-01T00:00:00Z" };
+  const values = new Map<string, string>();
+  vi.stubGlobal("window", { localStorage: { getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) } });
+  const state = { fixture, manifest, loseResponse: false, loseAck: false, failSummarySave: false,
+    durable: structuredClone(fixture.fake.getWorkspace()), appliedRecord: undefined as APlusTurnRecoveryRecord | undefined,
+    bodies: [] as string[], acks: [] as unknown[] };
+  fixture.host.persistWorkspace = () => {
+    if (state.failSummarySave && fixture.fake.getWorkspace().ai.conversationCompaction.summaryRevisionId) return failedPersistence();
+    state.durable = structuredClone(fixture.fake.getWorkspace()); return savedPersistence();
+  };
+  const save = fixture.store.save.bind(fixture.store);
+  fixture.store.save = async record => {
+    if (record.metadata.compaction?.summaryApplyState === "applied" && record.coordinator.lifecycle.phase === "compacting") state.appliedRecord = structuredClone(record);
+    expect(record.coordinator.activeRequest).toBeUndefined(); await save(record);
+  };
+  fixture.fake.setFetchRoute(`/api/ai/agent/turns/${TURN_ID}/actions/compaction`, async request => {
+    const body = await request.text(); state.bodies.push(body);
+    expect(fixture.store.record?.metadata.pendingExternalAction?.requestBody).toBe(body);
+    if (state.loseResponse) { state.loseResponse = false; throw new TypeError("original response lost"); }
+    return Response.json({ result: manifest });
+  });
+  fixture.fake.setFetchRoute(`/api/ai/effects/${encodeURIComponent(manifest.effectId)}/result`, async request => {
+    if (request.method === "GET") return new Response(payload);
+    const ack = await request.json(); state.acks.push(ack);
+    expect(ack).toEqual({ resultId: manifest.resultId, version: 1, sha256: manifest.sha256 });
+    expect(state.durable.ai.conversationSummaryRevisions[state.durable.ai.conversationCompaction.summaryRevisionId!]?.summary.threadGoal).toBe("original manual Summary");
+    expect(fixture.store.record?.metadata.compaction).toMatchObject({ summaryApplyState: "applied", appliedRevisionId: state.durable.ai.conversationCompaction.summaryRevisionId });
+    if (state.loseAck) throw new TypeError("ACK response lost");
+    return Response.json({ acknowledged: true });
+  });
+  return state;
 }
 
 const finalTextDelivery: ExternalResultManifest = {

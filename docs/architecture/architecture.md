@@ -1121,7 +1121,12 @@ Workspace schema version, scheduler, cloud Workspace, Provider guarantee or Proj
   absent/null previous Summary do not create false conflicts. Original effect GET remains available;
   no legacy proof is fabricated, and Journal actionHash/acquire semantics stay unchanged.
   original frozen local source/apply checks remain authoritative. Existing identical revisions
-  survive crashes between Workspace and Recovery writes. Save failures preserve a pending same-
+  survive crashes between Workspace and Recovery writes. Manual-only Compaction reload uses the
+  same manual finalization as the fresh path after its original action converges; it cannot create
+  a Text request from the deliberately empty manual Provider input. Applied manual Recovery retains
+  the original delivery identity through durable Summary/Workspace and Recovery writes, and stays
+  until the existing same-result ACK outbox converges. Automatic/preContinuation resume phases
+  retain their ordinary Agent continuation behavior. Save failures preserve a pending same-
   result action; they do not start another paid compaction. Edited source/base still blocks apply.
 - Administrative terminal absorption is unchanged. Late result publication never reopens a Turn
   or grants new Tool claims after closure. A failed administrative Text request with observed
