@@ -1438,6 +1438,10 @@ Operational interpretation:
 - Result identity/version/hash binds redelivery. ACK POST takes exactly resultId/version/hash and
   represents the client's durable save claim. It does not update Provider observation, Tool outcome,
   Project Truth, P2 fulfillment, quota/refund or local Overall Outcome. Repeated ACK is idempotent.
+  Completed Compaction POST replay additionally requires its original canonical client-content
+  proof in result binding, before config/model loading or staged publication. Exact content returns
+  the same manifest without execution; changed content is 409 external_action_hash_conflict;
+  missing/invalid proof is 503 request_content_identity_unavailable. Legacy result GET is unchanged.
 - Local Image transaction/Workspace failures keep the same action/result recoverable. Text saves
   the complete envelope in verified IndexedDB Recovery and flushes conversation before ACK.
   Final Text Workspace save failure retains a non-terminal local recovery with failed persistence;

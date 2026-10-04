@@ -1113,6 +1113,13 @@ Workspace schema version, scheduler, cloud Workspace, Provider guarantee or Proj
   publishes using the stored Journal binding. Conflicting chunks fail closed. Delivery pending
   retains the A+ Action across reload; it is separate from generation failure.
 - Compaction escrows a validated Summary and original source digest/endpoints/previous revision;
+  Compaction POST stores a domain-separated canonical client request-content SHA-256 in the
+  existing result JSONB binding. Before returning or republishing escrow, it verifies that proof
+  plus Turn/project/request/sequence/action identity. Exact historical replay is independent of
+  current model/config/cache; changed content returns `409 external_action_hash_conflict`, while
+  missing/invalid proof returns `503 request_content_identity_unavailable`. Object key order and
+  absent/null previous Summary do not create false conflicts. Original effect GET remains available;
+  no legacy proof is fabricated, and Journal actionHash/acquire semantics stay unchanged.
   original frozen local source/apply checks remain authoritative. Existing identical revisions
   survive crashes between Workspace and Recovery writes. Save failures preserve a pending same-
   result action; they do not start another paid compaction. Edited source/base still blocks apply.

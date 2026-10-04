@@ -107,11 +107,13 @@ export function jsonResult(value: unknown): Blob {
 export async function externalResultResponse(
   identity: EffectIdentity, store: ExternalResultPort = externalResultStore,
   retrieveImage?: () => Promise<Blob | undefined>,
-  expectedTextBinding?: Pick<ResultBinding, "serverTurnId" | "localProjectId" | "requestId" | "stepSequence"> & { requestContentSha256: string }
+  expectedContentBinding?: Pick<ResultBinding, "serverTurnId" | "localProjectId" | "requestId" | "stepSequence"> & {
+    requestContentSha256: string; actionId?: string
+  }
 ): Promise<Response | undefined> {
   let row = await store.call("read", identity);
   if (row.state === "absent") return undefined;
-  if (expectedTextBinding && row.state !== "expired") {
+  if (expectedContentBinding && row.state !== "expired") {
     // Check before delivery AND staged publication. Missing legacy proof is not an exact replay.
     const binding = await store.readBinding?.(identity);
     if (!binding || typeof binding !== "object" || !("requestContentSha256" in binding) ||
@@ -119,8 +121,8 @@ export async function externalResultResponse(
       throw new ExternalResultError("request_content_identity_unavailable");
     }
     const stored = binding as Record<string, unknown>;
-    if (Object.entries(expectedTextBinding).some(([key, value]) => stored[key] !== value)) {
-      throw new ExternalResultError("request_id_conflict");
+    if (Object.entries(expectedContentBinding).some(([key, value]) => stored[key] !== value)) {
+      throw new ExternalResultError(identity.kind === "compaction" ? "external_action_hash_conflict" : "request_id_conflict");
     }
   }
   if (row.state === "unavailable" && isExternalResultManifest(row.manifest)) {

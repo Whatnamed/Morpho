@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createExternalResultFake } from "@/test/externalResultFake";
 
 import { executeOpenAiCompatibleResponse } from "@/server/ai/openaiCompatibleProvider";
 import type { ConversationSummary } from "@/domain/morpho/types";
@@ -21,6 +22,83 @@ const SUMMARY: ConversationSummary = {
 };
 
 describe("A+ compaction action route", () => {
+  async function completedEscrow(overrides: Record<string, unknown> = {}) {
+    const results = createExternalResultFake();
+    const acquire = vi.fn(async () => ({ status: "ok" as const, executionGranted: true, replayed: false, snapshot: actionSnapshot("running") }));
+    const settle = vi.fn(async () => ({ status: "ok" as const, replayed: false, snapshot: actionSnapshot("externallyCompleted") }));
+    const loadConfig = vi.fn(() => validConfig());
+    const execute = vi.fn<AgentTurnCompactionActionDependencies["execute"]>(async () => ({ responseId: "original-response",
+      outputText: `\`\`\`json\n${JSON.stringify({ morphoConversationSummary: SUMMARY })}\n\`\`\``,
+      functionCalls: [], citations: [], webSearchCallCount: 0, outputItems: [] }));
+    const handler = createAgentTurnCompactionActionPostHandler({ authenticate: async () => ({ status: "allowed", userId: "user-a" }),
+      results: results.port, acquire, settle, loadConfig, execute });
+    const body = { ...await compactionRequest().json(), ...overrides };
+    const original = await handler(requestBody(body), routeContext());
+    expect(original.status).toBe(200);
+    const manifest = (await original.json()).result;
+    const record = [...results.records.values()][0];
+    expect(record.binding).toMatchObject({ serverTurnId: TURN_ID, actionId: ACTION_ID, requestContentSha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    return { results, acquire, settle, loadConfig, execute, handler, body, manifest, record };
+  }
+  function requestBody(body: unknown) {
+    return new Request("http://morpho.test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  }
+  it.each(["changed", "unavailable"])("completed exact replay is independent of %s current config", async config => {
+    const f = await completedEscrow();
+    f.loadConfig.mockImplementation(() => config === "unavailable" ? loadOpenAiCompatibleConfig({}) : loadOpenAiCompatibleConfig({
+      MORPHO_AI_API_KEY: "new-key", MORPHO_AI_BASE_URL: "https://different.test/v1", MORPHO_AI_MODEL: "new-model" }));
+    const response = await f.handler(compactionRequest(), routeContext());
+    expect(response.status).toBe(200); expect(await response.json()).toEqual({ result: f.manifest });
+    expect(f.loadConfig).toHaveBeenCalledOnce(); expect(f.acquire).toHaveBeenCalledOnce(); expect(f.execute).toHaveBeenCalledOnce();
+  });
+  it.each(["body", "sourceStart", "sourceEnd", "order", "membership", "previousSummary", "previousRevision", "mode", "requestId", "sequence"])(
+    "completed replay rejects changed %s before result delivery or execution", async field => {
+      const f = await completedEscrow(), changed = structuredClone(f.body);
+      switch (field) {
+        case "body": changed.messages[0].body += " changed"; break;
+        case "sourceStart": changed.sourceStartMessageId = "other-start"; break;
+        case "sourceEnd": changed.sourceEndMessageId = "other-end"; break;
+        case "order": changed.messages.reverse(); break;
+        case "membership": changed.messages.pop(); break;
+        case "previousSummary": changed.previousSummary = SUMMARY; break;
+        case "previousRevision": changed.expectedPreviousRevisionId = "other-revision"; break;
+        case "mode": changed.mode = "automatic"; break;
+        case "requestId": changed.requestId = "other-request"; break;
+        case "sequence": changed.stepSequence = 2; break;
+      }
+      const before = structuredClone(f.record);
+      const response = await f.handler(requestBody(changed), routeContext());
+      expect(response.status).toBe(409); expect(await response.json()).toEqual({ code: "external_action_hash_conflict", recoverable: false });
+      expect(structuredClone(f.record)).toEqual(before); expect(f.acquire).toHaveBeenCalledOnce(); expect(f.execute).toHaveBeenCalledOnce(); expect(f.loadConfig).toHaveBeenCalledOnce();
+    });
+  it("canonical object key order and null/absent optional bases retain exact replay", async () => {
+    const f = await completedEscrow();
+    const reordered = Object.fromEntries(Object.entries({ ...f.body, previousSummary: null }).reverse());
+    reordered.messages = f.body.messages.map((message: Record<string, unknown>) => Object.fromEntries(Object.entries(message).reverse()));
+    const response = await f.handler(requestBody(reordered), routeContext());
+    expect(response.status).toBe(200); expect(await response.json()).toEqual({ result: f.manifest }); expect(f.execute).toHaveBeenCalledOnce();
+  });
+  it("canonical nested previous Summary key order retains exact replay", async () => {
+    const f = await completedEscrow({ previousSummary: SUMMARY, expectedPreviousRevisionId: "previous-revision" });
+    const response = await f.handler(requestBody({ ...f.body, previousSummary: Object.fromEntries(Object.entries(SUMMARY).reverse()) }), routeContext());
+    expect(response.status).toBe(200); expect(await response.json()).toEqual({ result: f.manifest }); expect(f.execute).toHaveBeenCalledOnce();
+  });
+  it.each([true, false].flatMap(published => [undefined, null, "invalid", "A".repeat(64)].map(proof => ({ published, proof }))))("missing/invalid proof $proof published=$published fails closed", async ({ published, proof }) => {
+    const f = await completedEscrow(); f.record.published = published;
+    f.record.binding = { ...(f.record.binding as Record<string, unknown>), requestContentSha256: proof };
+    const beforePublishes = f.results.calls.filter(c => c.operation === "publish").length;
+    const response = await f.handler(compactionRequest(), routeContext());
+    expect(response.status).toBe(503); expect(await response.json()).toEqual({ code: "request_content_identity_unavailable", recoverable: false });
+    expect(f.record.published).toBe(published); expect(f.results.calls.filter(c => c.operation === "publish")).toHaveLength(beforePublishes);
+    expect(f.loadConfig).toHaveBeenCalledOnce(); expect(f.execute).toHaveBeenCalledOnce();
+  });
+  it("verified staged Summary can publish on exact replay without current config or execution", async () => {
+    const f = await completedEscrow(); f.record.published = false;
+    f.loadConfig.mockImplementation(() => loadOpenAiCompatibleConfig({}));
+    const response = await f.handler(compactionRequest(), routeContext());
+    expect(response.status).toBe(200); expect(await response.json()).toEqual({ result: f.manifest });
+    expect(f.record.published).toBe(true); expect(f.loadConfig).toHaveBeenCalledOnce(); expect(f.execute).toHaveBeenCalledOnce();
+  });
   it("authenticates before reserving Provider quota", async () => {
     const acquire = vi.fn();
     const handler = createAgentTurnCompactionActionPostHandler({

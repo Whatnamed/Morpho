@@ -71,14 +71,28 @@ export function createAgentTurnCompactionActionPostHandler(
     if (parsed.status === "failed") return parsed.response;
     const body = parseCompactionBody(parsed.value);
     if (!body) return invalidRequestResponse("Compaction Action 合同无效。", "invalid_compaction_request");
+    // Client content proof remains independent of current model/config/cache and Journal actionHash.
+    const requestContentSha256 = hashAgentTurnExternalActionContract({
+      contract: "morpho-a-plus-compaction-request-content-v1",
+      request: { ...body, previousSummary: body.previousSummary ?? null,
+        expectedPreviousRevisionId: body.expectedPreviousRevisionId ?? null }
+    });
     const effectIdentity: EffectIdentity = { actorUserId: auth.userId,
       effectId: externalEffectId("a-plus", turnId, body.localProjectId, "compaction", body.actionId), kind: "compaction" };
     if (dependencies.results) {
       try {
-        const existing = await externalResultResponse(effectIdentity, dependencies.results);
+        const existing = await externalResultResponse(effectIdentity, dependencies.results, undefined, {
+          serverTurnId: turnId, localProjectId: body.localProjectId, requestId: body.requestId,
+          stepSequence: body.stepSequence, actionId: body.actionId, requestContentSha256
+        });
         if (existing) return existing;
         await dependencies.results.call("probe", effectIdentity);
-      } catch { return NextResponse.json({ code: "result_store_unavailable", recoverable: false }, { status: 503 }); }
+      } catch (error) {
+        const code = error instanceof ExternalResultError &&
+          ["external_action_hash_conflict", "request_content_identity_unavailable"].includes(error.code)
+          ? error.code : "result_store_unavailable";
+        return NextResponse.json({ code, recoverable: false }, { status: code === "external_action_hash_conflict" ? 409 : 503 });
+      }
     }
     const config = dependencies.loadConfig();
     if (config.status === "failed") {
@@ -159,7 +173,7 @@ export function createAgentTurnCompactionActionPostHandler(
           sourceStartMessageId: body.sourceStartMessageId, sourceEndMessageId: body.sourceEndMessageId,
           sourceDigest: hashAgentTurnExternalActionContract(body.messages),
           expectedPreviousRevisionId: body.expectedPreviousRevisionId ?? null
-        } }), { ...identity, actionHash }) : undefined;
+        } }), { ...identity, actionHash, requestContentSha256 }) : undefined;
       const settled = await settleWithRetry(dependencies, {
         ...identity,
         actionHash,

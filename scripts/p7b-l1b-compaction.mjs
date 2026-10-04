@@ -31,7 +31,7 @@ export async function seedCompaction(name) {
 
 export async function runCompactionScenario({runtime,actor,row,output,setTurn,journal,request}) {
   row.cases=[];row.remainingTrajectories="not_run until original identity/content checks pass";
-  for(const name of ["intent-failure","original-summary","source-changed","base-changed"]) {
+  for(const name of ["original-summary","source-changed","base-changed","intent-failure"]) {
     const fault=name==="intent-failure",c={name};row.cases.push(c);
     const seed=await seedCompaction(name),start=runtime.stub.calls.length;runtime.stub.next="compaction";
     c.seed={projectId:seed.projectId,sha256:sha256(seed.workspaceValue),previousRevisionId:seed.previousRevisionId,expectedSourceIds:seed.expectedSourceIds};
@@ -125,6 +125,13 @@ export async function runCompactionScenario({runtime,actor,row,output,setTurn,jo
       assert.deepEqual(await actionJournal(),original.journal,"Exact Summary replay cannot mutate execution/result");assert.equal(runtime.stub.calls.length-start,1);
       c.preDelivery={intentDurableBeforePost:true,exactBodyDurable:true,originalSummaryHashVerified:true,exactReplayNoExecution:true};
       if(name==="original-summary") {
+        const equivalent=Object.fromEntries(Object.entries(body).reverse());
+        equivalent.messages=body.messages.map(m=>Object.fromEntries(Object.entries(m).reverse()));
+        equivalent.previousSummary=Object.fromEntries(Object.entries(body.previousSummary).reverse());
+        const canonicalReplay=await request(actionPath,equivalent);
+        assert.equal(canonicalReplay.status,200);assert.deepEqual(canonicalReplay.data.result,result.delivery_manifest);
+        assert.deepEqual(await actionJournal(),original.journal,"Canonical equivalent replay cannot mutate original action/result");
+        c.canonicalReplay={verdict:"pass",manifestUnchanged:true,noNewExecution:true};
         const changed={...body,messages:body.messages.map((m,i)=>i?m:{...m,body:m.body+" changed source content"})};
         const conflict=await request(actionPath,changed);
         c.changedSourceReplay={originalBody:body,changedBody:changed,originalSha256:sha256(JSON.stringify(body)),changedSha256:sha256(JSON.stringify(changed)),
