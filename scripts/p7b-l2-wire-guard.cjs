@@ -61,10 +61,10 @@ globalThis.fetch=async(input,init)=>{
   if(body.prompt_cache_key||body.prompt_cache_retention)return hard("Cache configuration drift");
   if((body.tools??[]).some(t=>t.type!=="function"))return hard("Unexpected built-in paid Provider tool");
   const cap=Math.min(manifest.provider.budgetTransportMaxOutputTokens,manifest.budget.outputTokensIncludingReasoning-ledger.outputTokens);
-  if(cap<256)return hard("Output token budget exhausted");
+  if(cap<1)return hard("Actual output token budget exhausted",{id:"P7B-2-BUDGET",stopKind:"actual_budget_limit"});
   const wire={...body,max_output_tokens:cap},inputEstimate=estimateInput(wire);
   const costProjection=(inputEstimate*manifest.pricing.cnyPerMillion.cacheWrite+cap*manifest.pricing.cnyPerMillion.output)/1e6;
-  if(ledger.requests>=manifest.budget.textRequests||ledger.inputTokens>=manifest.budget.inputTokens||ledger.estimatedCny>=manifest.budget.costCny)return hard("Actual cumulative budget reached; next upstream action blocked",{inputEstimate,outputAllocation:cap});
+  if(ledger.requests>=manifest.budget.textRequests||ledger.inputTokens>=manifest.budget.inputTokens||ledger.estimatedCny>=manifest.budget.costCny)return hard("Actual cumulative budget reached; next upstream action blocked",{id:"P7B-2-BUDGET",stopKind:"actual_budget_limit",inputEstimate,outputAllocation:cap});
   const number=++ledger.requests,prefix=`wire-${String(number).padStart(3,"0")}`;
   ledger.runRequests++;
   const wireBytes=JSON.stringify(wire),started=Date.now();

@@ -87,3 +87,9 @@ test("D1 exact zero-paid wire with Research grant captures without a hard blocke
   const h=harness({slice:"L2-1",noPaid:true});await assert.rejects(h.fetch([{type:"function",name:"create_research_analysis"}]),/No-paid preflight egress blocked after capture/);
   assert.equal(h.calls.length,0);assert.equal(h.json("no-paid-server-wire.json").productionBody.tools[0].name,"create_research_analysis");assert.equal([...h.files.keys()].some(p=>p.endsWith("hard-blocker.json")),false);
 });
+test("a positive final output remainder is allocated, not called exhausted by an arbitrary floor",async()=>{
+  const carry={requests:1,inputTokens:37777,outputTokens:49999,cachedInputTokens:0,estimatedCny:0.0122421};
+  const h=harness({carry,reply:{usage:{input_tokens:10,output_tokens:1}}});await h.fetch();await h.settled();
+  assert.equal(h.json("request.json").finalWire.max_output_tokens,1);assert.equal(h.json("ledger.json").outputTokens,50000);
+  await assert.rejects(h.fetch(),/Actual output token budget exhausted/);assert.equal(h.json("hard-blocker.json").stopKind,"actual_budget_limit");assert.equal(h.calls.length,1);
+});
