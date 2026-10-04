@@ -576,7 +576,7 @@
   ],
   "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main.",
   "receiptScope": "Original pre-fix blocker receipt preserved above; current bounded D1 fix is recorded in postFix.",
-  "currentP7b1Status": "validating / D1-D3 web accepted; A-D accepted receipts retained; D4 bounded fix complete awaiting web review; E pass, F-G not_run; P7B-1 overall not passed",
+  "currentP7b1Status": "validating / D1-D4 web accepted and closed; A-E accepted receipts retained; F pass; G fail at P7B-1-D5; remaining G trajectories not_run; awaiting bounded web review",
   "postFix": {
     "id": "P7B-1-D1",
     "status": "closed / bounded A+B pass; awaiting web review",
@@ -3034,5 +3034,906 @@
       "Local Auth has Windows single-listener compatibility shim"
     ],
     "stop": "P7 validating; D4 awaiting web review; E pass; F/G not_run; P7B-1 overall not passed; no main merge."
+  },
+  "fgContinuation": {
+    "date": "2026-10-04",
+    "reviewedBaseline": "73173b8dab5e48bdbbceb8a36cb70672a5fe62e6",
+    "mainAtFetch": "f852578f0d1303ff074f66db1e3919c3218a5561",
+    "acceptedReviews": {
+      "source": "User web review instruction",
+      "D1": "accepted / closed",
+      "D2": "accepted / closed",
+      "D3": "accepted / closed",
+      "D4": "accepted / closed",
+      "A": "pass / retained",
+      "B": "pass / retained",
+      "C": "pass / retained",
+      "D": "pass / retained",
+      "E": "pass / retained"
+    },
+    "productSourceChanged": false,
+    "sqlMigrationSchemaConfigChanged": false,
+    "frozenExpectationsChanged": false,
+    "F": {
+      "verdict": "pass",
+      "runIdentity": {
+        "runId": "2026-10-04T11-13-33.951Z-27352",
+        "sourceSha": "20c6a46aab633c3b686441f50966f7247137486d",
+        "build": {
+          "schemaVersion": 2,
+          "sourceSha": "20c6a46aab633c3b686441f50966f7247137486d",
+          "sourceTreeSha256": "8b51e73fb3bd076974eb45b8666471107c5691fe111bdecc3329fb5c7275a0ac",
+          "sourceTreeFileCount": 1080,
+          "buildId": "aGwg_5kwdrU0Qx7hzjW_t",
+          "artifactSha256": "6791d49c28c1c96f177e24aa6186ff7989f5b08bf30f88e980844cbd7c76ee2f",
+          "artifactFileCount": 864,
+          "isDirty": false,
+          "nodeVersion": "v22.23.2",
+          "builtAt": "2026-10-04T11:14:01.116Z"
+        },
+        "contractVersion": "p7b-l1b-boundary-1",
+        "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f",
+        "databaseIdentity": "8dddce1a-10c5-439e-ada6-01dfdf0bc7da",
+        "postgresVersion": "PostgreSQL 17.10 on x86_64-windows, compiled by msvc-19.44.35226, 64-bit",
+        "authVersion": "v2.197.0",
+        "postgrestVersion": "v16.4"
+      },
+      "identity": {
+        "serverTurnId": "753eb0b1-8edb-4bbb-96a7-d82d9e4c4406",
+        "localProjectId": "p7b-F-result-delivery",
+        "requestId": "ced3ebd6-d508-4714-82ed-c5e4821ba008",
+        "stepSequence": 1,
+        "effectId": "effect:e6e142f71267e727af3949587b02ee3248ed72b64bec86b274599fe3b8dff6f0",
+        "manifest": {
+          "kind": "text",
+          "sha256": "b19d311e3a0965cd2a007ebb3f40c79565056702bcb16a72ca63b86592135344",
+          "version": 1,
+          "effectId": "effect:e6e142f71267e727af3949587b02ee3248ed72b64bec86b274599fe3b8dff6f0",
+          "mimeType": "application/json",
+          "resultId": "result:c98411d515c161d7d92620936dbf91b166a919f20bb5433a9ef8428f4e90904a",
+          "expiresAt": "2026-10-05T19:14:31.546491+08:00",
+          "byteLength": 195,
+          "chunkCount": 1
+        },
+        "binding": {
+          "claims": [],
+          "status": "externallyCompleted",
+          "requestId": "ced3ebd6-d508-4714-82ed-c5e4821ba008",
+          "actorUserId": "b16f4b35-affc-4199-885a-594b4af6487a",
+          "serverTurnId": "753eb0b1-8edb-4bbb-96a7-d82d9e4c4406",
+          "stepSequence": 1,
+          "localProjectId": "p7b-F-result-delivery",
+          "requestContentSha256": "ba8ec3367317295971eebbcc1833d7eb3122d40e137fedc2ca10cf4ec8af5e85"
+        }
+      },
+      "steps": [
+        {
+          "name": "chunk",
+          "resultId": "result:c98411d515c161d7d92620936dbf91b166a919f20bb5433a9ef8428f4e90904a",
+          "index": 0,
+          "status": 200,
+          "byteLength": 195,
+          "sha256": "b19d311e3a0965cd2a007ebb3f40c79565056702bcb16a72ca63b86592135344"
+        },
+        {
+          "name": "chunk",
+          "resultId": "result:c98411d515c161d7d92620936dbf91b166a919f20bb5433a9ef8428f4e90904a",
+          "index": 0,
+          "status": 200,
+          "byteLength": 195,
+          "sha256": "b19d311e3a0965cd2a007ebb3f40c79565056702bcb16a72ca63b86592135344"
+        },
+        {
+          "name": "F1-F2-F5-F8",
+          "verdict": "pass",
+          "immutablePublication": true,
+          "originalBytesHash": "b19d311e3a0965cd2a007ebb3f40c79565056702bcb16a72ca63b86592135344",
+          "wrongAckUnacknowledged": true
+        },
+        {
+          "name": "chunk",
+          "resultId": "result:56f6386da23fe766579b6c0680383c031065051c81ae17c71e432b84bcecc1c9",
+          "index": 0,
+          "status": 200,
+          "byteLength": 524288,
+          "sha256": "f0faba3889d7c31e56b0687bc98b654411449739a00ac93ab58d602200833663"
+        },
+        {
+          "name": "chunk",
+          "resultId": "result:56f6386da23fe766579b6c0680383c031065051c81ae17c71e432b84bcecc1c9",
+          "index": 1,
+          "status": 200,
+          "byteLength": 63,
+          "sha256": "c1c1a3a3f07ecbe2ca3b73ba5f7f27a483b81e193aa283da05daf3ec38e20dc7"
+        },
+        {
+          "name": "F3-F4-F6-F7",
+          "verdict": "pass"
+        }
+      ],
+      "clientDelivery": {
+        "saveFailureAckPosts": 0,
+        "verifiedEnvelopeBeforeAck": true,
+        "finalWorkspaceBeforeAck": true,
+        "recoveryBeforeAck": true,
+        "sameResultAfterReload": true,
+        "ackResponseLoss": true,
+        "duplicateAckIdempotent": true,
+        "requestPosts": 1,
+        "providerExecutions": 1,
+        "ackPostCount": 3,
+        "recoveryCleared": true
+      },
+      "staged": {
+        "effectId": "effect:90b83084c6b780a69484964050cd2a0b22187d85ad9cc43498151b734dcd4f3b",
+        "manifest": {
+          "kind": "text",
+          "sha256": "e71a74a4f151b19e5b88955cd8d7aeba6a45cdc91ef5171f080460bb1ae6ef78",
+          "version": 1,
+          "effectId": "effect:90b83084c6b780a69484964050cd2a0b22187d85ad9cc43498151b734dcd4f3b",
+          "mimeType": "application/json",
+          "resultId": "result:56f6386da23fe766579b6c0680383c031065051c81ae17c71e432b84bcecc1c9",
+          "expiresAt": "2026-10-05T19:14:38.261972+08:00",
+          "byteLength": 524351,
+          "chunkCount": 2
+        },
+        "fixtureAuthority": "test-owned privileged real RPC; cancellation tombstone, no execution grant",
+        "verdict": "pass"
+      },
+      "expired": {
+        "status": 410,
+        "identityRetained": true,
+        "manifestRetained": true,
+        "chunksRemoved": true,
+        "replacementResult": false,
+        "providerRetry": false
+      },
+      "exactAckCountSemantics": "Native client repeats the same ACK identity after lost response; explicit duplicate ACKs leave acknowledged timestamp/Journal unchanged.",
+      "conflictingAckScope": "Wrong result/hash/effect/user rejected; unsupported version and extra project/request fields rejected by bounded ACK parser. ACK carries no independent project/request authority.",
+      "stagedFixtureScope": "Privileged real RPC uses an independent service-owned cancellation tombstone and multi-chunk staging. No Provider execution or grant. Not a fabricated delivered Provider response.",
+      "expiryFixtureScope": "Test-owned expires_at clock advance only; actual cleanup RPC/result routes enforce 410 and preserve identity/manifest tombstones. No schema changes."
+    },
+    "G": {
+      "verdict": "fail",
+      "runIdentity": {
+        "runId": "2026-10-04T11-32-20.442Z-27396",
+        "sourceSha": "0c5ba9b25782670df32ab4f673f93036d2dc096c",
+        "build": {
+          "schemaVersion": 2,
+          "sourceSha": "0c5ba9b25782670df32ab4f673f93036d2dc096c",
+          "sourceTreeSha256": "581b83ddc9493f2cf67a91adf9c37865c95192af366da742da3f91bcc9f285a8",
+          "sourceTreeFileCount": 1081,
+          "buildId": "V3pUizLCEsW9sqezXfLcZ",
+          "artifactSha256": "42fb7de09f75e93eb9dda4a4f492124f90ef8e9d0b2c1e6db59e93d959874f2f",
+          "artifactFileCount": 872,
+          "isDirty": false,
+          "nodeVersion": "v22.23.2",
+          "builtAt": "2026-10-04T11:32:43.267Z"
+        },
+        "contractVersion": "p7b-l1b-boundary-1",
+        "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f",
+        "databaseIdentity": "6d328b0f-e8b8-4783-a6ac-9a7d3ff78887",
+        "postgresVersion": "PostgreSQL 17.10 on x86_64-windows, compiled by msvc-19.44.35226, 64-bit",
+        "authVersion": "v2.197.0",
+        "postgrestVersion": "v16.4"
+      },
+      "intentFailure": {
+        "providerPosts": 0,
+        "compactionPosts": 0
+      },
+      "preDelivery": {
+        "intentDurableBeforePost": true,
+        "exactBodyDurable": true,
+        "originalSummaryHashVerified": true,
+        "exactReplayNoExecution": true
+      },
+      "identity": {
+        "serverTurnId": "d9011fb5-5d21-4d3f-b08e-519fde95a154",
+        "localProjectId": "p7b-G-original-summary",
+        "requestId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+        "stepSequence": 1,
+        "actionId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+        "clientRequestSha256": "8eb15f5bc68689c3c3f395ccd1995c5096dc19907cc07c42fe73bde3c48186a2",
+        "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+        "effectId": "effect:6b40ffb42d111af637a953698496fd489f1bd47d24e797e10494238c88c658d2",
+        "attemptId": "2a0dec3f-fc15-4523-8108-0082b1598cff",
+        "providerRequestDigest": "7ecccd98607cd2913af7109f3c03164daab4863f68ef9308a25744a90a52fc34",
+        "manifest": {
+          "kind": "compaction",
+          "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+          "version": 1,
+          "effectId": "effect:6b40ffb42d111af637a953698496fd489f1bd47d24e797e10494238c88c658d2",
+          "mimeType": "application/json",
+          "resultId": "result:033a0e5665f39ce822fc956d4c22a0ff360414dcad4d015589c75b469f91525f",
+          "expiresAt": "2026-10-05T19:33:50.916943+08:00",
+          "byteLength": 491,
+          "chunkCount": 1
+        },
+        "binding": {
+          "actionId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+          "requestId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+          "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+          "actionKind": "compaction",
+          "serverTurnId": "d9011fb5-5d21-4d3f-b08e-519fde95a154",
+          "stepSequence": 1,
+          "localProjectId": "p7b-G-original-summary"
+        }
+      },
+      "firstDivergence": "P7B-1-D5",
+      "changedSourceReplay": {
+        "originalBody": {
+          "localProjectId": "p7b-G-original-summary",
+          "requestId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+          "stepSequence": 1,
+          "actionId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+          "mode": "manual",
+          "expectedPreviousRevisionId": "conversation-summary-v3-cbe00b45410544355c031918561e8a299b8f3c2ae42e7eb612b66e23de6f098e",
+          "previousSummary": {
+            "threadGoal": "Previous valid Summary",
+            "establishedContext": [],
+            "decisionsAndReasons": [],
+            "activeWork": [],
+            "unresolvedQuestions": [],
+            "referencedObjects": []
+          },
+          "sourceStartMessageId": "G-history-2",
+          "sourceEndMessageId": "G-history-3",
+          "messages": [
+            {
+              "id": "G-history-2",
+              "role": "user",
+              "body": "Continuous design discussion 2"
+            },
+            {
+              "id": "G-history-3",
+              "role": "assistant",
+              "body": "Continuous design discussion 3"
+            }
+          ]
+        },
+        "changedBody": {
+          "localProjectId": "p7b-G-original-summary",
+          "requestId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+          "stepSequence": 1,
+          "actionId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+          "mode": "manual",
+          "expectedPreviousRevisionId": "conversation-summary-v3-cbe00b45410544355c031918561e8a299b8f3c2ae42e7eb612b66e23de6f098e",
+          "previousSummary": {
+            "threadGoal": "Previous valid Summary",
+            "establishedContext": [],
+            "decisionsAndReasons": [],
+            "activeWork": [],
+            "unresolvedQuestions": [],
+            "referencedObjects": []
+          },
+          "sourceStartMessageId": "G-history-2",
+          "sourceEndMessageId": "G-history-3",
+          "messages": [
+            {
+              "id": "G-history-2",
+              "role": "user",
+              "body": "Continuous design discussion 2 changed source content"
+            },
+            {
+              "id": "G-history-3",
+              "role": "assistant",
+              "body": "Continuous design discussion 3"
+            }
+          ]
+        },
+        "originalSha256": "8eb15f5bc68689c3c3f395ccd1995c5096dc19907cc07c42fe73bde3c48186a2",
+        "changedSha256": "1c587c36152ef4b15c0903fb23a4c5fa1ff11a7253ecae6e6424c496dc70a851",
+        "outcome": {
+          "status": 200,
+          "data": {
+            "result": {
+              "kind": "compaction",
+              "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+              "version": 1,
+              "effectId": "effect:6b40ffb42d111af637a953698496fd489f1bd47d24e797e10494238c88c658d2",
+              "mimeType": "application/json",
+              "resultId": "result:033a0e5665f39ce822fc956d4c22a0ff360414dcad4d015589c75b469f91525f",
+              "expiresAt": "2026-10-05T19:33:50.916943+08:00",
+              "byteLength": 491,
+              "chunkCount": 1
+            }
+          }
+        },
+        "journalUnchanged": true,
+        "providerExecutions": 1
+      },
+      "authoritativeAction": {
+        "server_turn_id": "d9011fb5-5d21-4d3f-b08e-519fde95a154",
+        "request_id": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+        "step_sequence": 1,
+        "action_id": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+        "action_kind": "compaction",
+        "action_hash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+        "execution_status": "externally_completed",
+        "bounded_failure_code": null,
+        "execution_started_at": "2026-10-04T11:33:50.779Z",
+        "terminal_at": "2026-10-04T11:33:50.978Z"
+      },
+      "authoritativeEffect": {
+        "effect_id": "effect:6b40ffb42d111af637a953698496fd489f1bd47d24e797e10494238c88c658d2",
+        "kind": "compaction",
+        "request_digest": "7ecccd98607cd2913af7109f3c03164daab4863f68ef9308a25744a90a52fc34",
+        "execution_state": "succeeded",
+        "latest_attempt_id": "2a0dec3f-fc15-4523-8108-0082b1598cff",
+        "cancel_requested_at": null,
+        "local_abort_observed_at": null
+      },
+      "originalResult": {
+        "manifest": {
+          "kind": "compaction",
+          "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+          "version": 1,
+          "effectId": "effect:6b40ffb42d111af637a953698496fd489f1bd47d24e797e10494238c88c658d2",
+          "mimeType": "application/json",
+          "resultId": "result:033a0e5665f39ce822fc956d4c22a0ff360414dcad4d015589c75b469f91525f",
+          "byteLength": 491,
+          "chunkCount": 1
+        },
+        "binding": {
+          "actionId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+          "requestId": "compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3",
+          "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+          "actionKind": "compaction",
+          "serverTurnId": "d9011fb5-5d21-4d3f-b08e-519fde95a154",
+          "stepSequence": 1,
+          "localProjectId": "p7b-G-original-summary"
+        },
+        "publishedAt": "2026-10-04T11:33:50.978Z",
+        "acknowledgedAt": null
+      },
+      "ackPosts": 0,
+      "nativeCompactionPosts": 1,
+      "providerExecutions": 1,
+      "localSummaryNotApplied": true,
+      "coverage": {
+        "G1": "pass / failed durability 0 POST; successful descriptor/body/source/base durable before POST",
+        "G2": "original execution and exact completed replay pass; crash/reload convergence not_run",
+        "G3": "original immutable Summary/chunks/hash verified; full reload delivery not_run",
+        "G4": "not_run after G6 divergence",
+        "G5": "not_run after G6 divergence",
+        "G6": "fail / changed source under same action returned original result with HTTP 200",
+        "G7": "remaining recovery/dedupe trajectories not_run"
+      }
+    },
+    "firstDivergence": {
+      "id": "P7B-1-D5",
+      "scenario": "G6",
+      "title": "Completed Compaction escrow replay bypasses action/source content conflict validation",
+      "expected": "Same immutable Compaction identity with changed source/body fails closed, does not return old Summary as valid for changed content.",
+      "actual": "HTTP 200 and identical original manifest; changed POST body SHA differs; original Journal/action/effect/result unchanged, original execution count 1, ACK0.",
+      "minimalBoundary": [
+        "actions/compaction/handler.ts:78-79 returns existing escrow before current action/source content proof",
+        "actions/compaction/handler.ts:129 computes actionHash only after the early return",
+        "actions/compaction/handler.ts:140 acquire/hash conflict guard is bypassed"
+      ],
+      "noObservedDuplicateExecution": true,
+      "noObservedResultOverwrite": true,
+      "productNotFixed": true
+    },
+    "invalidRuns": [
+      {
+        "runId": "2026-10-04T09-37-07.087Z-33172",
+        "classification": {
+          "classification": "invalid_run",
+          "reason": "Execution interrupted before a finalized harness verdict. Only environment/build logs exist; no F checkpoint or scenario receipt. Isolated listeners and processes verified stopped before rerun.",
+          "sourceSha": "20c6a46aab633c3b686441f50966f7247137486d",
+          "scenario": "F",
+          "scenarioVerdict": "unavailable",
+          "providerStubExecutionCount": "not recorded; no finalized receipt",
+          "productDivergence": "not established"
+        },
+        "rawVerdict": "unfinalized / no verdict file",
+        "providerStubExecutions": "not recorded"
+      },
+      {
+        "runId": "2026-10-04T11-20-12.981Z-3040",
+        "sourceSha": "ca4dcc4759adff3ece9187b91ec0641c77ed86e1",
+        "build": {
+          "schemaVersion": 2,
+          "sourceSha": "ca4dcc4759adff3ece9187b91ec0641c77ed86e1",
+          "sourceTreeSha256": "6f88a111e541b4294c9facf2a3ead325c16e3dc8099eff9dce0238520ccee86f",
+          "sourceTreeFileCount": 1081,
+          "buildId": "bVoli_ZuYVXKmWPJt5xSJ",
+          "artifactSha256": "3412eb07f28041102eaf9c8bb0581f1f52a0aa8df4381d795affbf198854d8b9",
+          "artifactFileCount": 872,
+          "isDirty": false,
+          "nodeVersion": "v22.23.2",
+          "builtAt": "2026-10-04T11:20:36.811Z"
+        },
+        "rawVerdict": "product_blocker",
+        "classification": {
+          "classification": "diagnostic invalid_run / harness assertion error",
+          "rawVerdictPreserved": "product_blocker",
+          "reason": "Harness read descriptor.requestPayload.ref, which is not a persisted field. Recovery Store persists metadata.pendingExternalActionPayload.ref; its recorded SHA equals the exact POST body SHA. Null evidence was produced by harness, not absent product durability.",
+          "correction": "Read metadata.pendingExternalActionPayload.ref without changing product or expectation.",
+          "originalBodySha256": "9ecb94425c442561a46bf0cccbb63392276b9e7a1f4024adf6bd624ad5e842ba",
+          "rawArtifactsReclassifiedOrOverwritten": false
+        },
+        "providerStubExecutions": 1
+      },
+      {
+        "runId": "2026-10-04T11-22-33.929Z-21304",
+        "sourceSha": "ac4d8a45bd7c1df68f7dfd7d5af560086a0c97d2",
+        "build": {
+          "schemaVersion": 2,
+          "sourceSha": "ac4d8a45bd7c1df68f7dfd7d5af560086a0c97d2",
+          "sourceTreeSha256": "86a985e84e26482413fc07ebae4cf4149bb539b586bf7688c4e437cac264c7a9",
+          "sourceTreeFileCount": 1081,
+          "buildId": "jgEdXE5p9y65Tx-5z2u67",
+          "artifactSha256": "0536b55dccd6696277323ffff90f69c58c2e032a2df3a5ec52dec76814074bb8",
+          "artifactFileCount": 880,
+          "isDirty": false,
+          "nodeVersion": "v22.23.2",
+          "builtAt": "2026-10-04T11:22:56.273Z"
+        },
+        "rawVerdict": "product_blocker",
+        "classification": {
+          "classification": "diagnostic invalid_run / controlled Provider fixture format error",
+          "rawVerdictPreserved": "product_blocker",
+          "reason": "Stub supplied flat fields; current parser requires a top-level morphoConversationSummary object. Product correctly rejects it before escrow; succeeded Provider observation is separate from invalid application payload.",
+          "parserRejection": {
+            "status": "failed",
+            "reason": "Conversation summary block is not valid JSON."
+          },
+          "correction": "Use canonical marker wrapper and preflight stub text with actual parser before execution.",
+          "rawArtifactsReclassifiedOrOverwritten": false
+        },
+        "providerStubExecutions": 1
+      },
+      {
+        "runId": "2026-10-04T11-26-28.420Z-26568",
+        "sourceSha": "460fc7cedccb4d2709486b7ec07f6ef092e83998",
+        "build": {
+          "schemaVersion": 2,
+          "sourceSha": "460fc7cedccb4d2709486b7ec07f6ef092e83998",
+          "sourceTreeSha256": "86aa21ed446a42c698e3ac83a427274c0fb8243ff6a1ba0e06e4262521a4ebdd",
+          "sourceTreeFileCount": 1081,
+          "buildId": "BsB79bAPVKsE3fjNa0DhM",
+          "artifactSha256": "033744ba8674abfcfdd32ab36b1714108f06b811907ba91ea30a8c26f2e9f5bf",
+          "artifactFileCount": 888,
+          "isDirty": false,
+          "nodeVersion": "v22.23.2",
+          "builtAt": "2026-10-04T11:26:50.553Z"
+        },
+        "rawVerdict": "product_blocker",
+        "classification": {
+          "classification": "diagnostic invalid_run / preflight assertion calibration",
+          "rawVerdictPreserved": "product_blocker",
+          "reason": "Parser normalizes optional nextTurnAnchor to undefined; wire JSON omits it. Strict JS object equality incorrectly rejected semantically identical fixture during preflight, before browser or Provider execution.",
+          "controlledProviderExecutions": 0,
+          "correction": "Normalize parsed Summary to wire JSON before preflight equivalence comparison.",
+          "rawArtifactsReclassifiedOrOverwritten": false
+        },
+        "providerStubExecutions": 0
+      },
+      {
+        "runId": "2026-10-04T11-29-20.432Z-5668",
+        "sourceSha": "52e2eb54c96f6d8b75a365aca440be3554a79cbf",
+        "build": {
+          "schemaVersion": 2,
+          "sourceSha": "52e2eb54c96f6d8b75a365aca440be3554a79cbf",
+          "sourceTreeSha256": "7845e5bfc24440581acde5231559a9efd0185e519f4f256cf54bbe563fdf78e0",
+          "sourceTreeFileCount": 1081,
+          "buildId": "euxWFsrFEJWnJ9UhOcw4L",
+          "artifactSha256": "9d50361efac1889d545a06ab1f44b6ccbb3f1d7c04e42ea0aceefc0616fb5519",
+          "artifactFileCount": 896,
+          "isDirty": false,
+          "nodeVersion": "v22.23.2",
+          "builtAt": "2026-10-04T11:29:41.886Z"
+        },
+        "rawVerdict": "invalid_run",
+        "classification": {
+          "classification": "invalid_run / harness URL setup error",
+          "rawVerdictPreserved": "invalid_run",
+          "reason": "Recorded native fetch URL is relative. Harness used new URL(path) without baseUrl before replay requests; throws Invalid URL. Original real Summary already published and downloaded; conflict assertion not executed.",
+          "correction": "Resolve recorded native path against the existing local baseUrl.",
+          "controlledProviderExecutions": 1,
+          "countSource": "original per-case final stub receipt; invalid verdict omits aggregate",
+          "rawArtifactsReclassifiedOrOverwritten": false
+        },
+        "providerStubExecutions": 1
+      }
+    ],
+    "controlledProviderStubExecutions": {
+      "meaningfulF": 1,
+      "meaningfulG": 1,
+      "diagnosticG": 3,
+      "interruptedF": "not recorded; interrupted before any scenario receipt",
+      "totalRecorded": 5
+    },
+    "paidProviderSearchImageCalls": 0,
+    "paidCost": 0,
+    "productionDataSchemaWrites": 0,
+    "gates": {
+      "modifiedHarnessSyntaxLint": "pass",
+      "standaloneCanonicalSummaryFixturePreflight": "pass",
+      "cleanProductionBuild": "pass / meaningful F and G executed sources",
+      "diffCheck": "pass",
+      "productSqlSchemaConfig": "unchanged",
+      "frozenL1bAndP7AFilesAndLock": "unchanged",
+      "expandedUnitSqlFullChromiumP7A": "not_run / no product change; stop at first genuine divergence"
+    },
+    "historicalEvidence": {
+      "priorFieldsExceptCurrentStatus": "unchanged",
+      "verifiedPriorArtifactHashesAndSizes": 176,
+      "rawDiagnosticVerdictsOverwritten": false
+    },
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-37-07.087Z-33172/build.log",
+        "sha256": "3ac72129b285bc22214daef14ee95283fa8f2ad67977da2741f0aea2d4b04b81",
+        "byteLength": 1475
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-37-07.087Z-33172/environment.json",
+        "sha256": "7f4b5ca40b395ad87da6c77fcd3b0e465914fcd9c1f77f15c6f29b9a4d31bec6",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-37-07.087Z-33172/interruption.json",
+        "sha256": "0da681dd7c79131b30c5c49163c040a45c0ef36cecbfb544418aa9ca317a459d",
+        "byteLength": 482
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/F-after-ack-reload.json",
+        "sha256": "26ebe5cbfb32b21ba3606defb9a09ca25f7906419c5b9bc27c0579909f9cfb20",
+        "byteLength": 144960
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/F-durable-delivery-and-ack-loss.json",
+        "sha256": "26ebe5cbfb32b21ba3606defb9a09ca25f7906419c5b9bc27c0579909f9cfb20",
+        "byteLength": 144960
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/F-expired-tombstone.json",
+        "sha256": "02036e66239788337feb8b3c042b56b1f322dc56b87e34f40258ee8285dc3cf3",
+        "byteLength": 144509
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/F-final.json",
+        "sha256": "02036e66239788337feb8b3c042b56b1f322dc56b87e34f40258ee8285dc3cf3",
+        "byteLength": 144509
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/F-final.png",
+        "sha256": "b58aaf75fbb84c7715fef1334c40860c703d09b334401d76912b54afc6b4f5a2",
+        "byteLength": 76323
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/F-local-save-failed.json",
+        "sha256": "cc62abd1144f70872533930889537e5dec33cf7f551a29db0d62ef8b10c1a512",
+        "byteLength": 41956
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/F-original-envelope.json",
+        "sha256": "b19d311e3a0965cd2a007ebb3f40c79565056702bcb16a72ca63b86592135344",
+        "byteLength": 195
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/F-original-published-before-delivery.json",
+        "sha256": "64977567a998d686d344cc61840ba03e92833e1c2d9f5788262e18434154c3f1",
+        "byteLength": 37498
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/build.log",
+        "sha256": "8d5c56c5f3fb5bbe02cd3cf40f0c931115275df87b935d23cba9af008fe94b78",
+        "byteLength": 1476
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/environment.json",
+        "sha256": "065d8981c13bbef8285c78759b7fb95be28a81b156f18d97f9044dc759048b9b",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/scenario-F.json",
+        "sha256": "f66839c0c34802d06fec49fbc2a6fa3252bc3a68b5a4868814a775e1352f7e6e",
+        "byteLength": 22815
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/server.log",
+        "sha256": "37e579a7854ecb1b72e5dd187a2eb64a508f3b3c3809483cdf47b2956f57b336",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-13-33.951Z-27352/verdict.json",
+        "sha256": "e8929393174d80a047afb99bc3dca3d71ccbe1810d26718abaf9555ccc6cc894",
+        "byteLength": 45224
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/G-intent-failure-durability-failed.json",
+        "sha256": "7ec41651418df83c579d87e85566a2e6251474ac67ff603186b1f9166f701b03",
+        "byteLength": 16911
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/G-intent-failure-final.json",
+        "sha256": "7ec41651418df83c579d87e85566a2e6251474ac67ff603186b1f9166f701b03",
+        "byteLength": 16911
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/G-intent-failure-final.png",
+        "sha256": "69983858bc62dab19028b9e46ca0babd1d988f4a4fbf1f090c0bd353778aa197",
+        "byteLength": 116085
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/G-original-summary-final.json",
+        "sha256": "5bc8315b21b38acda82e0d7dde3c837709598071b4b1211c830c5ed1e918d783",
+        "byteLength": 25220
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/G-original-summary-final.png",
+        "sha256": "802a7820fed42881f9dbf85aeb0f5627072119ac37083567e82df458839ae02e",
+        "byteLength": 106783
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/G-original-summary-published-before-local-delivery.json",
+        "sha256": "5bc8315b21b38acda82e0d7dde3c837709598071b4b1211c830c5ed1e918d783",
+        "byteLength": 25220
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/build.log",
+        "sha256": "9a2c0e6e866193f55b0dc4a5c3f8b5041e918df91b3543f89177091e0c0df128",
+        "byteLength": 1476
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/calibration.json",
+        "sha256": "0981da8c2a53497a856c2cd47d84706bafacf78ef19931fac0e416deb6a7c87c",
+        "byteLength": 645
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/environment.json",
+        "sha256": "9463d7ddbce0b8e280ad895f4b2be336c7ad771622f77b56292415cba274b539",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/scenario-G.json",
+        "sha256": "42ac519e41428c2d5b9aa55f19c9c63e73db79633fef2f6a0492888833f91259",
+        "byteLength": 3279
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/server.log",
+        "sha256": "8606f1c371e38695d512c040082fce11d29dca3999f7f9afb3fb2020d5254155",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-20-12.981Z-3040/verdict.json",
+        "sha256": "302b2a875f2331354db5fb1f9567bc4fb49febfa4afcbd141e1bf46df02ad41e",
+        "byteLength": 24739
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/G-intent-failure-durability-failed.json",
+        "sha256": "97de3a503ac5c5dbbe37d91541dc417e8e246356fc903bf855e64ad2e750ac26",
+        "byteLength": 16911
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/G-intent-failure-final.json",
+        "sha256": "97de3a503ac5c5dbbe37d91541dc417e8e246356fc903bf855e64ad2e750ac26",
+        "byteLength": 16911
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/G-intent-failure-final.png",
+        "sha256": "69983858bc62dab19028b9e46ca0babd1d988f4a4fbf1f090c0bd353778aa197",
+        "byteLength": 116085
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/G-original-summary-final.json",
+        "sha256": "3259544bdc26df1e346ab630405b8597445936de290d462d2418887c30552e38",
+        "byteLength": 26028
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/G-original-summary-final.png",
+        "sha256": "17af5da0dcf6c8be0766f357c140bae8f5fa780bb40e33dbeb7322fb3b55a942",
+        "byteLength": 106713
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/G-original-summary-published-before-local-delivery.json",
+        "sha256": "3259544bdc26df1e346ab630405b8597445936de290d462d2418887c30552e38",
+        "byteLength": 26028
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/build.log",
+        "sha256": "aee19e4aa5c3774f1d427259c3bb35cbfc80d71a26f56705f939e2ee73ed7a02",
+        "byteLength": 1474
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/calibration.json",
+        "sha256": "f98b4740b9a82166401faefc2c038e8b61686545dd4b2c72df1fec0d7e2bfdc7",
+        "byteLength": 642
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/environment.json",
+        "sha256": "d12167353e843db98b5fbb414722c45382bc410ef605c44e73dd137ccaba322d",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/scenario-G.json",
+        "sha256": "e1a11c83399c4e9d0845435f4ba2ca7d40ed4e46fb75b8d870b11275a3f885b1",
+        "byteLength": 2474
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/server.log",
+        "sha256": "a519c7d4e35d4f1d05afc1bf40da1d46bea596bbe7c151367f2e7781a29cb951",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-22-33.929Z-21304/verdict.json",
+        "sha256": "a464657c017bbf362e3a94fc3d426ce8ff00dcdd062be2827b9fab2e92ac1bab",
+        "byteLength": 23130
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-26-28.420Z-26568/build.log",
+        "sha256": "7ce51119fc0746b2656dba0824348b541e8f2de37ef21e462dcbf46b54275e2e",
+        "byteLength": 1474
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-26-28.420Z-26568/calibration.json",
+        "sha256": "c7a8a268d9aba01085de179cabc96fcf7fc072f6c69308ecec0a122abb91822c",
+        "byteLength": 537
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-26-28.420Z-26568/environment.json",
+        "sha256": "b93cede91a773646e9e51f5a4a94642720f7b9819b383f5d88e673fe8e4a57e6",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-26-28.420Z-26568/scenario-G.json",
+        "sha256": "e29e7ded9ab8e3a4d3db68d4846545134010bea68bd7f74ffd0e3a5f002dbb45",
+        "byteLength": 738
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-26-28.420Z-26568/server.log",
+        "sha256": "5c955c851783f1b6b2f417b829f9b10dd9d82e89411603d060c42e9c136c903c",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-26-28.420Z-26568/verdict.json",
+        "sha256": "ae4e1589e7919de1d1bf2664f3c4c3e2786215620b3fd387a5af487a29d60228",
+        "byteLength": 21195
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/G-intent-failure-durability-failed.json",
+        "sha256": "09d79ad1bad1b80c8cdc31ffbf57f141e51c5ca8d687a170b861831163f3ba02",
+        "byteLength": 16928
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/G-intent-failure-final.json",
+        "sha256": "09d79ad1bad1b80c8cdc31ffbf57f141e51c5ca8d687a170b861831163f3ba02",
+        "byteLength": 16928
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/G-intent-failure-final.png",
+        "sha256": "63390ee597f988c296761400840564bea2c883ae1d60860f099a69b611cb5b1a",
+        "byteLength": 116077
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/G-original-summary-final.json",
+        "sha256": "92dfc982d43490197e17c8bd63d158915fdd8113806eddbc944da459546a8840",
+        "byteLength": 28160
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/G-original-summary-final.png",
+        "sha256": "2c5cce797930c5c48d4fcf43a3666505f27a65c6237e3465e96849f10e239839",
+        "byteLength": 106473
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/G-original-summary-published-before-local-delivery.json",
+        "sha256": "92dfc982d43490197e17c8bd63d158915fdd8113806eddbc944da459546a8840",
+        "byteLength": 28160
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/G-original-summary-result.json",
+        "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+        "byteLength": 491
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/build.log",
+        "sha256": "168cb5b121ff09b851ce1bf64b3eb2608d881df747f452312c697dfbcc02b70e",
+        "byteLength": 1474
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/calibration.json",
+        "sha256": "47ce432f178bc07895d99f2faf628634de1726a445b3c3ac3bc2ae12582b98e6",
+        "byteLength": 595
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/environment.json",
+        "sha256": "72cb4b3a40eb661c4c7df109f14572e5a885894c236d4be7d5d21dcb6c0b30fb",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/scenario-G.json",
+        "sha256": "e53347c127eb0568916c5926800d1b01bcc7e6a76589b9972a87189ab5d97760",
+        "byteLength": 3243
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/server.log",
+        "sha256": "98f99eda87632bb12f03e3e9e85a8d57a23e0efb77178ff260199e9d1115d1fe",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-29-20.432Z-5668/verdict.json",
+        "sha256": "14f48772e2eac44d389cbd86bf2bd6af1bbe132f6050ddfbd6b493e36584be37",
+        "byteLength": 23326
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/G-intent-failure-durability-failed.json",
+        "sha256": "de245a6dfe1bdd99c01c8186faf06a06f98310d3782dae271a324d87816e7df4",
+        "byteLength": 16930
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/G-intent-failure-final.json",
+        "sha256": "de245a6dfe1bdd99c01c8186faf06a06f98310d3782dae271a324d87816e7df4",
+        "byteLength": 16930
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/G-intent-failure-final.png",
+        "sha256": "63390ee597f988c296761400840564bea2c883ae1d60860f099a69b611cb5b1a",
+        "byteLength": 116077
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/G-original-summary-changed-content-replay.json",
+        "sha256": "4a7ab9521a60c551a9c320588eed44f3ff6aac321959f1c169b4ff44bd5460cd",
+        "byteLength": 28160
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/G-original-summary-final.json",
+        "sha256": "4a7ab9521a60c551a9c320588eed44f3ff6aac321959f1c169b4ff44bd5460cd",
+        "byteLength": 28160
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/G-original-summary-final.png",
+        "sha256": "aa5cc210435803473fec9b369de393a57faa951bb27f05cb6d4ac2d73c79cbb1",
+        "byteLength": 106362
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/G-original-summary-published-before-local-delivery.json",
+        "sha256": "4a7ab9521a60c551a9c320588eed44f3ff6aac321959f1c169b4ff44bd5460cd",
+        "byteLength": 28160
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/G-original-summary-result.json",
+        "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+        "byteLength": 491
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/build.log",
+        "sha256": "4d3365e4b3848a2623998875714bee3a3769f0b38e727976aa04beaf70c1996b",
+        "byteLength": 1474
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/environment.json",
+        "sha256": "9755b0c1b7ebba1f6df29b30e8cdde7cf98c00746338416ea4d4cb2aa1ebb8e5",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/scenario-G.json",
+        "sha256": "207a6b60c7e7fac16b8f7c1de2d759f846e46198293adaba4f7d5f1988617cf3",
+        "byteLength": 11837
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/server.log",
+        "sha256": "4323ac21388c53041b778650da56048cd5bff6829281e37535e63fca8155e1cb",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-32-20.442Z-27396/verdict.json",
+        "sha256": "ea4fb2d929dcaf714f01685d619728d0529918a8f7b2c93522e7f47be638ef92",
+        "byteLength": 33400
+      }
+    ],
+    "rawArtifactsLocation": "output/playwright/p7b-l1b/",
+    "servicesStopped": true,
+    "limits": [
+      "Remote migration/schema state unverified: authentication failures",
+      "No production Journal fault injection",
+      "No L2/L3 or L4",
+      "No Kong/hosted Supabase/Vercel path",
+      "Local Auth has Windows single-listener compatibility shim"
+    ],
+    "stop": "P7 validating; P7B-1 overall not passed; D5 awaiting bounded web review; remaining G trajectories not_run; no P7B-2/P7B-3/P7C/L4; no main merge."
   }
 }

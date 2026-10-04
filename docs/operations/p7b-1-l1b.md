@@ -1,8 +1,87 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：P7B-1-D1 / D2 / D3 web ACCEPTED / closed；A–D accepted pass；D4 bounded fix complete / awaiting web review；E pass。**
-P7 继续 `validating`；F/G `not_run`；P7B-1 overall 未 PASS；
+**当前：P7B-1-D1–D4 web ACCEPTED / closed；A–E accepted pass；F pass；G 首个 PRODUCT BLOCKER P7B-1-D5。**
+P7 继续 `validating`；G 剩余轨迹 `not_run`；P7B-1 overall 未 PASS；
 P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main；以下原 D4 blocker / diagnostic receipts 保持历史事实。
+
+## F/G continuation / first divergence（2026-10-04）
+
+Fetch 后 reviewed branch head `73173b8dab5e48bdbbceb8a36cb70672a5fe62e6`、main
+`f852578f0d1303ff074f66db1e3919c3218a5561`、工作树 clean。用户确认 D1–D4 closed 与 A–E
+accepted；本轮没有重审/重跑 A–E，只增加 Eval F/G harness，产品/SQL/schema/config 不变。
+
+**F = pass**：run `2026-10-04T11-13-33.951Z-27352`，clean source
+`20c6a46aab633c3b686441f50966f7247137486d` / build `aGwg_5kwdrU0Qx7hzjW_t`；DB identity
+`8dddce1a-10c5-439e-ada6-01dfdf0bc7da`。Actual native client → production Text/result routes →
+real Auth/PostgREST/PostgreSQL/RPC；original Text execution **1**、client request POST **1**。
+
+- Immutable original manifest/binding、195-byte envelope、chunk count/hash 和 repeated GET 均一致。
+  Published conflicting chunk/manifest/source binding fail closed，原 Journal/result 不变。
+- Wrong result/hash/effect/user ACK 拒绝；version≠1 和额外 project/request 字段由当前 bounded parser
+  拒绝。ACK 只承载 resultId/version/hash，没有独立 project/request authority。
+- 实际客户端最终保存失败时 ACK **0**，原 verified IndexedDB envelope 留在 Recovery；reload 后
+  durable final conversation / canonical persistence / Recovery 均在 ACK 前。Lost ACK response 导致
+  **3 次同身份 client ACK**，没有新的 request/result/execution；显式 exact duplicate ACK 亦保持
+ 同一 acknowledged timestamp 与 Journal，无第二次语义 mutation。
+- 独立 service-owned staging fixture 通过真实 privileged RPC：cancellation tombstone 不发 execution
+  grant；524,351 bytes / 2 chunks，缺 chunk 时不可 publish/GET/ACK，完整后只发布同一结果。
+- 仅 test-owned retention clock 提前 `expires_at`；真实 cleanup / routes 返回 **410**，清理 chunks/
+  binding，原 manifest / execution tombstone 保留，不能 prepare replacement 或重新生成。
+
+**G = fail / D5**：run `2026-10-04T11-32-20.442Z-27396`，clean source
+`0c5ba9b25782670df32ab4f673f93036d2dc096c` / build `V3pUizLCEsW9sqezXfLcZ`；DB identity
+`6d328b0f-e8b8-4783-a6ac-9a7d3ff78887`。G1 durability failure 的 actual client Compaction POST /
+Provider POST 均 **0**。正常原请求的 action descriptor、exact IndexedDB body/hash、source range/hash、
+expected previous revision 在 POST 前真实 durable；Provider execution **1**，Summary escrow 为
+491 bytes / 1 chunk，validated payload/hash 与同身份 completed replay 均正确。
+
+**P7B-1-D5 — completed Compaction escrow replay bypasses action/source content conflict validation**：
+
+- Turn `d9011fb5-5d21-4d3f-b08e-519fde95a154` / project `p7b-G-original-summary`；request/action
+  `compact:manual:d5494a85-bc5d-4bd1-b39c-04293dc2cfb3` / sequence `1`。
+- 原 request body SHA `8eb15f5bc68689c3c3f395ccd1995c5096dc19907cc07c42fe73bde3c48186a2`。
+  只改变 `G-history-2.body`，身份与 base/source endpoints 不变，changed body SHA 为
+  `1c587c36152ef4b15c0903fb23a4c5fa1ff11a7253ecae6e6424c496dc70a851`。
+- Expected **409 / conflict**，actual **200** 并返回 original result
+  `result:033a0e5665f39ce822fc956d4c22a0ff360414dcad4d015589c75b469f91525f` /
+  version `1` / SHA `02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37`。
+- 原 action Journal **externally_completed** / effect **succeeded**，原 action hash、attempt、Provider
+  digest、result binding/manifest 全部不变。没有 duplicate execution 或 payload overwrite：Provider
+  execution/counter **1**，native action POST **1**，ACK **0**，旧 local Summary pointer 未改。
+- 最小 boundary：`actions/compaction/handler.ts:78–79` 在 current content proof 前返回 existing escrow；
+  `:129` 的 actionHash 计算和 `:140` 的 acquire/hash conflict guard 均未执行。
+  这是完成后 replay 的 content validation 缺口，不把它写成 Provider 生成失败或已发生 stale apply。
+
+在 G6 的首个 genuine divergence 停止，**未修产品**。G2 完整 crash/reload、G3 完整 redelivery、
+G4 source/base currentness、G5 failed save/durable-before-ACK、G7 dedupe 剩余轨迹均 `not_run`。
+没有收集或修复第二个 blocker。D5 等待网页 bounded review；P7B-1 overall 未 PASS。
+
+Invalid/diagnostic runs 全部保留，原 raw verdict 未覆盖：
+
+| Run | Exact reason | Recorded stub executions |
+|---|---|---|
+| `2026-10-04T09-37-07.087Z-33172` | 执行被中断，仅 environment/build logs；无 finalized verdict / F checkpoint | not recorded |
+| `2026-10-04T11-20-12.981Z-3040` | harness 读取不存在的 descriptor.requestPayload；实际 metadata.pendingExternalActionPayload SHA 已与 POST 一致 | 1 |
+| `2026-10-04T11-22-33.929Z-21304` | controlled Summary fence/顶层包装不符合当前 parser，产品正确拒绝，未发布 | 1 |
+| `2026-10-04T11-26-28.420Z-26568` | preflight 严格 JS 比较把 optional undefined 与 wire omitted 判为不同，尚未启动 Provider | 0 |
+| `2026-10-04T11-29-20.432Z-5668` | harness 对 native relative URL 未提供 baseUrl，replay 前 Invalid URL | 1 |
+
+前三项 G diagnostic 的 raw `product_blocker` 是 harness assertion 分类，附 `calibration.json` 说明为何
+不能计为 genuine product divergence；raw verdict/artifacts 不修改。所有修正仅限 harness/setup/fixture
+校准，未改变 frozen expectation。最终 Summary fixture 已通过 standalone actual parser/domain preflight。
+有效 F/G 各 **1** 次 controlled Provider，G diagnostic 记录 **3** 次；interrupted F aggregate 未记录，
+不虚报完整 aggregate。Paid Provider/Search/Image calls / cost / production writes 均 **0**。
+
+Modified harness syntax/lint、meaningful F/G strict clean production builds、diff check pass；
+176 项 prior artifact hashes/sizes 不变，新增 72 项 index 保存在
+[machine-readable receipt](./p7b-1-l1b-evidence.json) 的 `fgContinuation`。Frozen P7A files/lock 与 L1b
+contract hash、20 项 migration hashes 不变。没有机械重跑 full unit/Chromium/P7A 或扩大 SQL 验证。
+Raw artifacts 只在 ignored `output/playwright/p7b-l1b/` / `temp/`；所有隔离服务已停止。
+
+Limits 保留：remote hosted migration/schema independently unverified；无 production Journal fault
+injection、hosted Kong/Supabase/Vercel boundary；local Windows Auth single-listener shim；controlled
+Provider only，无真实 billing/quality 或 L2/L3/L4 evidence。P7 validating；P7B-2/3、P7C/L4
+not_started；未 merge main，停止等待 D5 网页复审。
 
 ## D4 bounded client fix（2026-10-04）
 
