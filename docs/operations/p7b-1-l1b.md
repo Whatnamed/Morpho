@@ -1,10 +1,78 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：P7B-1-D1 web ACCEPTED / closed；D2 bounded fix closed，post-fix C pass，待网页复审。**
-P7 继续 `validating`；D–G `not_run`；P7B-1 overall 未 PASS；
-P7B-2/P7B-3/P7C `not_started`；未 merge main，未继续 D–G；原 D2 blocker / invalid run 完整保留。
+**当前：P7B-1-D1 / D2 web ACCEPTED / closed；A/B/C accepted pass；D 首个 PRODUCT BLOCKER P7B-1-D3。**
+P7 继续 `validating`；E/F/G `not_run`；P7B-1 overall 未 PASS；
+P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main，未修 D3，等待网页复审 / bounded scope。
 
-## D2 bounded fix / post-fix C（2026-10-04，待网页复审）
+## D continuation / first divergence（2026-10-04）
+
+Fetch 后 branch / remote reviewed head 均为 `b311464285acc80b1300c2dcd953906e7776e647`；main 仍为
+`f852578f0d1303ff074f66db1e3919c3218a5561`，主工作树 clean。用户本轮网页复审确认 D1、D2 accepted / closed，
+fix 分别为 `1f410e4553d89447cfb934590e0a00979dc75ee6`、`573a83b9b76a8d1e26b57970909ef1fd9cd0f0ef`。
+A/B/C 的 accepted real receipts 保留，本轮未重审或重跑。
+
+本轮只接线 Eval Scenario D，沿用 native Chromium / actual client → clean Next production routes →
+real Auth / privileged server → PostgREST → fresh isolated PostgreSQL / repository migrations/RPC → local Provider stub。
+Stub `held` 在接收 body 后等待；`unknown` 在接收 body 后直接断开 socket，没有返回 deterministic 500。
+Client-only receive detach / reload 不修改 server Journal 或 effect。每个 case 另有一个显式 exact-body replay
+probe，测试 replay 不再授予执行权；这些 probe 不属于 client automatic retry。
+
+| D subcase | Verdict | Evidence |
+|---|---|---|
+| admitted execution / client detach / reload / late success | pass | intent/body before POST、reload query original Journal、running request query-only、same-body replay 无新 grant；原执行随后 success，原 escrow redelivery、conversation durable、ACK；Provider execution 1 |
+| upstream accepted / response socket loss / reload | fail: P7B-1-D3 | Journal unknown code 与 effect unknown 正确，但客户端丢失 bounded uncertainty，持久化 generic externalExecutionFailed / failedDuringProvider；Recovery 随终态清理 |
+| E / F / G | not_run | 首个产品 divergence 后停止；不把 D 中局部 ACK 检查写成 full F coverage |
+
+**P7B-1-D3 — reload drops bounded unknown-execution truth into generic external failure**：
+
+- Turn `c4708092-6158-49f8-8326-46681e3850d4` / project `p7b-ambiguity-unknown` / request
+  `8f1bb344-d7da-4dde-bba5-f4cc3155a48f` / sequence `1`。
+- Client exact-body SHA-256 `8bff5ec3a64a4768755abe1ac0224383717ae79d5cdc1c9f85819c38ff29adb4`；
+  durable Provider body SHA-256 `0cc4f6a90fc6af064b7022e2fc1d79a1c3d6ddb095237a3e65ed71818795a57b`。
+  Pre-send Recovery / IndexedDB body 正确；reload 没有创建 replacement Request。
+- Real Journal GET 向 client 返回 `status = externallyFailed`、`failureCode = external_execution_state_unknown`，
+  effect `effect:17008d0d151ce894091d1aa2f1978d52d279b01709922fdfed823cb0c1b36d31` 保持 `unknown`；
+  real effect GET 也确认相同事实。Attempt `e3cefbad-8d30-4969-9b85-d0a3b2755bc1`。
+- Reload 后 durable user/assistant 的 `agentTurnOutcome = failedDuringProvider`、
+  `agentTurnOutcomeSummary = externalExecutionFailed`；assistant body 为“当前 Agent 回合未能完成。”，没有 unknown
+  detail。终态 Recovery 随后清理。Client unknown fact 没有保留在 canonical fault 或 durable failure detail。
+- 原 request Provider counter / stub execution 仍为 **1**；显式 exact replay 返回原 snapshot，未获得新 grant。
+  此 effect 没有 published result，ACK **0**。没有观察到重复付费、effect registry 假造 Provider failed。
+
+最小 boundary：Coordinator 保存完整 snapshot（`agentTurnCoordinator.ts:701`），但 reconciliation 只把
+`snapshot.status` 传入 `observeServerStatus`（735–739），丢失 bounded `failureCode`；随后对 failed 行政状态
+`TURN_FINALIZED`（791）。Lifecycle 生成 generic `externalExecutionFailed`（`agentTurnLifecycle.ts:743`），
+Runner 只保存 outcome reasons（`agentTurnRunner.ts:1206`）并清理 Recovery（1273）。**本轮未改产品。**
+
+归因边界必须区分：accepted A+ 文档允许以 `externallyFailed` + bounded unknown code 关闭行政 Turn，
+这本身不等于真实 Provider failed。Frozen D 的要求是 uncertainty remains explicit。
+确认的 D3 是 **client reload 丢失了已经明确返回的 unknown fact**，不能仅凭行政 status 字符串归因。
+
+Meaningful run：**`2026-10-04T08-05-06.244Z-7940`**，clean executed source
+`5fc603fe987f45af3b0a02e872415ad5fba9dc56`，build `cuaIy5fESPcJfyK4bzPDU`；
+source-tree SHA-256 `55154f510b046122ca4e55fd2edbb8dfdd1dbef21544ebd175415ee73da0f9fc`；
+artifact SHA-256 `e2f1333fab3fe0345a3c4dcd892c5b97363d09c1a111f681f53cd775447a8c21`。
+Fresh DB identity `a9e45141-4802-4b94-9fa3-b8c76330407e`，PostgreSQL 17.10 / Auth v2.197.0 /
+PostgREST 16.4，20 项 actual repository migration hashes 不变。
+
+保留本轮 invalid runs：`2026-10-04T08-01-46.994Z-23244` 在 PostgREST 启动时 exit 3，未执行 scenario / stub；
+`2026-10-04T08-02-10.954Z-32388` 的初始 assertion 过严地拒绝行政 `externallyFailed` 字符串。
+后者 raw verdict 写 `product_blocker`，保留原文件并在 machine receipt 明确归类为 assertion/representation
+`invalid_run`；校准后新 run 在实际 client unknown-code loss 处失败，未靠改 frozen expectation 通过。
+
+Meaningful run controlled stub executions **2**（独立 requests 各 1）；diagnostic run **2**；本轮合计 **4**。
+Paid Provider/Search/Image calls / cost **0**；production DB/schema/data writes **0**。
+Modified harness syntax / targeted ESLint、两次 real run 的 strict clean production build、diff check **pass**。
+`src/`、SQL/schema、既有配置与 frozen L1b/P7A files + lock 无改动；80 项历史 artifact hashes/sizes
+核验通过，新三次 runs 追加 30 项 index。原 D1/D2 blocker、D2 selector invalid_run、accepted A/B/C receipts 保持原值。
+First divergence 后不扩大 unit/SQL/full Chromium/P7A gate。
+
+[Machine receipt](./p7b-1-l1b-evidence.json) 的 `remainingEvaluation` 保留独立 run 与归因；raw artifacts 仅位于
+ignored `output/playwright/p7b-l1b/`，服务已停止，55432–55436 无 listener。
+Remote hosted schema/migration state 未独立验证；无 production fault injection、hosted Kong/Vercel boundary，
+local Windows Auth shim 保持；无 real Provider quality/billing、L2/L3/L4 evidence。P7 `validating`，停止等待网页复审。
+
+## D2 bounded fix / post-fix C（2026-10-04，现已网页接受；以下保留原执行 receipt）
 
 - Fetch / reviewed baseline：`afe2a1a3b15394a563c211c23ac874ce31c86c02`，main 仍为
   `f852578f0d1303ff074f66db1e3919c3218a5561`。Fix / clean executed source：
