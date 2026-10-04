@@ -7,9 +7,11 @@ import { randomUUID } from "node:crypto";
 import { createServerClient } from "@supabase/ssr";
 import { startIsolatedBoundary, sha256, baseUrl, ports } from "./p7b-l1b-runtime.mjs";
 import { readBuildProvenance } from "./build-provenance.mjs";
+import { runDurableClientScenario } from "./p7b-l1b-browser.mjs";
 
 const root=process.cwd();
 const boundedD1=process.argv.includes("--slice=AB");
+const clientSlice=process.argv.includes("--slice=C");
 const git=(args)=>execFileSync("git",args,{encoding:"utf8"}).trim();
 if(git(["status","--porcelain","--untracked-files=no"])) throw Error("Clean tracked source required");
 const sourceSha=git(["rev-parse","HEAD"]);
@@ -70,14 +72,22 @@ try {
     const row={id,expected:contract.scenarios.find(s=>s.id===id).expected,before:turn?await journal():null};
     verdict.scenarios.push(row);
     try { await fn(row); row.verdict="pass"; }
-    catch(error) { row.verdict="fail"; row.assertion=error.message; verdict.firstDivergence={scenario:id,layer:"route/runtime or DB contract; attribution requires review",assertion:error.message}; }
+    catch(error) {
+      row.assertion=error.message;
+      if(error.name!=="AssertionError") { row.verdict="invalid_run"; await writeFile(resolve(output,`scenario-${id}.json`),JSON.stringify(row,null,2)+"\n"); throw error; }
+      row.verdict="fail"; verdict.firstDivergence={scenario:id,layer:"route/runtime or DB contract; attribution requires review",assertion:error.message};
+    }
     row.after=turn?await journal():null;
     row.http=http.slice(start);
     row.providerStubExecutions=runtime.stub.calls.length;
     await writeFile(resolve(output,`scenario-${id}.json`),JSON.stringify(row,null,2)+"\n");
     return row.verdict==="pass";
   };
-  const A=await scenario("A",async(row)=>{
+  let A;
+  if(clientSlice) {
+    await scenario("C",row=>runDurableClientScenario({runtime,actor:actors[0],row,output,setTurn:value=>{turn=value;}}));
+    verdict.scenarios.unshift(...contract.scenarios.filter(s=>["A","B"].includes(s.id)).map(s=>({id:s.id,expected:s.expected,verdict:"not_run",reason:"Accepted A/B receipt retained; no D1 re-audit"})));
+  } else A=await scenario("A",async(row)=>{
     const body={localProjectId:project,creationIdempotencyKey:"l1b-create-A"};
     assert.equal((await request("/api/ai/agent/turns",body,null)).status,401);
     const created=await request("/api/ai/agent/turns",body);
@@ -130,9 +140,9 @@ try {
   }
   verdict.verdict=verdict.firstDivergence?"product_blocker":"inconclusive";
   verdict.providerStubCalls=runtime.stub.calls;
-  for(const s of contract.scenarios.filter(s=>!["A","B"].includes(s.id))) verdict.scenarios.push({id:s.id,expected:s.expected,verdict:"not_run",
+  for(const s of contract.scenarios.filter(s=>!["A","B",...(clientSlice?["C"]:[])].includes(s.id))) verdict.scenarios.push({id:s.id,expected:s.expected,verdict:"not_run",
     reason:verdict.firstDivergence?"Stopped at first product divergence":boundedD1?"Excluded from bounded D1 A/B rerun":"Not implemented in first slice; no full L1b pass claimed"});
-  if(!A) verdict.scenarios.push({id:"B",verdict:"not_run",reason:"Stopped at A divergence"});
+  if(!A&&!clientSlice) verdict.scenarios.push({id:"B",verdict:"not_run",reason:"Stopped at A divergence"});
   await writeFile(resolve(output,"server.log"),server.safeLog);
 } catch(error) {
   verdict.setupError=error.message; verdict.verdict="invalid_run";
