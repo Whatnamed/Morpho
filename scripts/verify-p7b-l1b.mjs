@@ -8,10 +8,12 @@ import { createServerClient } from "@supabase/ssr";
 import { startIsolatedBoundary, sha256, baseUrl, ports } from "./p7b-l1b-runtime.mjs";
 import { readBuildProvenance } from "./build-provenance.mjs";
 import { runDurableClientScenario } from "./p7b-l1b-browser.mjs";
+import { runAmbiguousClientScenario } from "./p7b-l1b-ambiguity.mjs";
 
 const root=process.cwd();
 const boundedD1=process.argv.includes("--slice=AB");
 const clientSlice=process.argv.includes("--slice=C");
+const ambiguitySlice=process.argv.includes("--slice=D");
 const git=(args)=>execFileSync("git",args,{encoding:"utf8"}).trim();
 if(git(["status","--porcelain","--untracked-files=no"])) throw Error("Clean tracked source required");
 const sourceSha=git(["rev-parse","HEAD"]);
@@ -85,7 +87,16 @@ try {
     return row.verdict==="pass";
   };
   let A;
-  if(clientSlice) {
+  if(ambiguitySlice) {
+    await scenario("D",async row=>{
+      row.cases=[];
+      for(const mode of ["held","unknown"]) {
+        const subcase={name:mode==="held"?"client_detach_running_late_success":"upstream_accepted_response_unknown"}; row.cases.push(subcase);
+        await runAmbiguousClientScenario({runtime,actor:actors[0],row:subcase,output,setTurn:value=>{turn=value;},mode,journal,request});
+      }
+    });
+    verdict.scenarios.unshift(...contract.scenarios.filter(s=>["A","B","C"].includes(s.id)).map(s=>({id:s.id,expected:s.expected,verdict:"not_run",reason:"Accepted A/B/C receipts retained; no re-audit"})));
+  } else if(clientSlice) {
     await scenario("C",async row=>{
       row.cases=[];
       for(const fault of [false,true]) {
@@ -147,9 +158,9 @@ try {
   }
   verdict.verdict=verdict.firstDivergence?"product_blocker":"inconclusive";
   verdict.providerStubCalls=runtime.stub.calls;
-  for(const s of contract.scenarios.filter(s=>!["A","B",...(clientSlice?["C"]:[])].includes(s.id))) verdict.scenarios.push({id:s.id,expected:s.expected,verdict:"not_run",
+  for(const s of contract.scenarios.filter(s=>!["A","B",...(clientSlice?["C"]:[]),...(ambiguitySlice?["C","D"]:[])].includes(s.id))) verdict.scenarios.push({id:s.id,expected:s.expected,verdict:"not_run",
     reason:verdict.firstDivergence?"Stopped at first product divergence":boundedD1?"Excluded from bounded D1 A/B rerun":"Not implemented in first slice; no full L1b pass claimed"});
-  if(!A&&!clientSlice) verdict.scenarios.push({id:"B",verdict:"not_run",reason:"Stopped at A divergence"});
+  if(!A&&!clientSlice&&!ambiguitySlice) verdict.scenarios.push({id:"B",verdict:"not_run",reason:"Stopped at A divergence"});
   await writeFile(resolve(output,"server.log"),server.safeLog);
 } catch(error) {
   verdict.setupError=error.message; verdict.verdict="invalid_run";
