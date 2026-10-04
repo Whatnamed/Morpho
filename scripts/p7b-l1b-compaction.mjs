@@ -63,7 +63,7 @@ export async function runCompactionScenario({runtime,actor,row,output,setTurn,jo
         const url=typeof input==="string"?input:input instanceof URL?input.href:input.url,method=init?.method??"GET";
         if(!url.includes("/api/ai/"))return native(input,init);push("http",{url,method});
         if(method==="POST"&&url.endsWith("/actions/compaction")){
-          const record=recovery(),descriptor=record?.metadata.pendingExternalAction,requestBody=await blob(descriptor?.requestPayload?.ref);
+          const record=recovery(),requestBody=await blob(record?.metadata.pendingExternalActionPayload?.ref);
           push("posts",{url,body:String(init.body),record,durableBody:requestBody});
           const response=await native(input,init);const data=await response.clone().json();push("responses",{url,method,status:response.status,data});
           sessionStorage.setItem(prefix+"responseLost","true");throw new TypeError("G test-owned loss after original production compaction response");
