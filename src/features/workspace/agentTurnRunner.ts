@@ -35,7 +35,7 @@ import {
   showAgentTurnRecoveryPending,
   type AgentTurnHost
 } from "./agentTurnHost";
-import type { AgentTurnLifecycleState } from "./agentTurnLifecycle";
+import { reduceAgentTurnLifecycle, type AgentTurnLifecycleState } from "./agentTurnLifecycle";
 import { finalizeAgentTurn } from "./agentTurnMessages";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
 import { createAgentTrace } from "./agentMessageTrace";
@@ -577,6 +577,11 @@ async function driveSession(session: APlusSession): Promise<void> {
       await finalizeSession(session);
       return;
     }
+    if (lifecycle.serverExecutionStatus === "externallyCompleted" && lifecycle.persistence === "pending" &&
+      lifecycle.fault.kind === "none" && session.coordinator.getProviderOutputSnapshot()?.producedUserVisibleEffect) {
+      await finalizeSession(session);
+      return;
+    }
     if (lifecycle.phase === "awaitingConfirmation") {
       requireCoordinatorOk(session.coordinator.finalizeTurn());
       await finalizeSession(session);
@@ -886,10 +891,17 @@ async function reconcileRequestResult(
     return "failed";
   }
   syncRecoveryRuntimeFacts(session);
-  await session.recovery.flush();
+  const currentLifecycle = session.coordinator.getLifecycleSnapshot();
+  const waitingForFinalTextSave = currentLifecycle?.phase !== "terminal" &&
+    currentLifecycle?.serverExecutionStatus === "externallyCompleted" && currentLifecycle.persistence === "pending";
+  if (waitingForFinalTextSave) session.recovery.updateMetadata(metadata => ({ ...metadata, localPersistence: "required" }));
+  if (!await session.recovery.flush() && waitingForFinalTextSave) {
+    await failRecoveryPersistence(session);
+    return "failed";
+  }
   if (result.status === "ok") {
     const output = session.coordinator.getProviderOutputSnapshot();
-    if (output?.delivery) {
+    if (output?.delivery && !waitingForFinalTextSave) {
       const saved = session.host.persistWorkspace?.();
       if (saved?.phase !== "saved" || saved.isDirty || !await session.recovery.flush()) {
         session.host.ui.setStreaming(false);
@@ -1147,12 +1159,28 @@ async function persistInitialWorkspace(session: APlusSession): Promise<void> {
 async function finalizeSession(session: APlusSession): Promise<void> {
   let lifecycle = session.coordinator.getLifecycleSnapshot();
   if (!lifecycle) return;
-  if (lifecycle.phase !== "terminal") {
-    requireCoordinatorOk(session.coordinator.finalizeTurn());
-    lifecycle = session.coordinator.getLifecycleSnapshot();
+  const finalTextSave = lifecycle.phase !== "terminal" && lifecycle.serverExecutionStatus === "externallyCompleted" &&
+    lifecycle.persistence === "pending" && lifecycle.fault.kind === "none" &&
+    session.coordinator.getProviderOutputSnapshot()?.producedUserVisibleEffect;
+  let terminal: Extract<AgentTurnLifecycleState, { phase: "terminal" }>;
+  if (finalTextSave) {
+    // Prepare the final Workspace from the same pure reducer, without publishing completion.
+    const succeeded = reduceAgentTurnLifecycle(lifecycle, { type: "LOCAL_PERSISTENCE_SUCCEEDED", turnId: lifecycle.turnId });
+    if (!succeeded.ok) throw new Error(succeeded.error.message);
+    const preview = reduceAgentTurnLifecycle(succeeded.state, { type: "TURN_FINALIZED", turnId: lifecycle.turnId });
+    if (!preview.ok) throw new Error(preview.error.message);
+    if (preview.state.phase !== "terminal") return;
+    terminal = preview.state;
+  } else {
+    if (lifecycle.phase !== "terminal") {
+      requireCoordinatorOk(session.coordinator.finalizeTurn());
+      lifecycle = session.coordinator.getLifecycleSnapshot();
+    }
+    if (!lifecycle || lifecycle.phase !== "terminal") return;
+    terminal = lifecycle;
   }
-  if (!lifecycle || lifecycle.phase !== "terminal") return;
-  const terminal = lifecycle;
+  const previousMessages = session.host.readWorkspace().ai.messages.filter(message =>
+    message.id === session.prepared.userMessageId || message.id === session.prepared.assistantMessageId);
   markDeliveredReads(session);
   const outcome = mapOverallOutcome(terminal.outcome.kind);
   const completedAt = new Date(session.host.now()).toISOString();
@@ -1164,7 +1192,8 @@ async function finalizeSession(session: APlusSession): Promise<void> {
       workspace: current, reads: session.prepared.runtimeState.readReceipts, effects: session.prepared.runtimeState.effectReceipts,
       providerCompleted: terminal.serverExecutionStatus === "externallyCompleted" && Boolean(session.coordinator.getProviderOutputSnapshot()?.outputText.trim() || assistant?.body.trim()) });
     const notice = terminal.serverExecutionStatus === "externallyCompleted" ? taskFulfillmentNotice(fulfillment) : "";
-    const originalBody = terminalAssistantBody(assistant, terminal);
+    const originalBody = finalTextSave && !assistant?.body.trim()
+      ? session.coordinator.getProviderOutputSnapshot()!.outputText : terminalAssistantBody(assistant, terminal);
     const body = notice && !originalBody.includes(notice) ? `${originalBody}\n\n${notice}`.trim() : originalBody;
     let workspace = finalizeAgentTurn(current, {
       agentTurnId: session.prepared.localAgentTurnId,
@@ -1189,6 +1218,25 @@ async function finalizeSession(session: APlusSession): Promise<void> {
   });
   const persisted = session.host.persistWorkspace?.();
   const saved = persisted?.phase === "saved" && !persisted.isDirty;
+  if (finalTextSave) {
+    if (!saved) {
+      // Remove the uncommitted completion draft; other Workspace content is untouched.
+      session.host.commitWorkspace(current => ({ workspace: { ...current, ai: { ...current.ai,
+        messages: current.ai.messages.map(message => previousMessages.find(previous => previous.id === message.id) ?? message)
+      } }, value: undefined }));
+      requireCoordinatorOk(session.coordinator.markLocalPersistenceFailed(`${lifecycle.turnId}:final-text-persistence`, {
+        kind: "retryable", code: "final_text_persistence_failed", message: "最终对话尚未保存；只能恢复同一结果并重试本地保存。", recoverable: true
+      }));
+      session.recovery.updateMetadata(metadata => ({ ...metadata, localPersistence: "failed" }));
+      await session.recovery.flush();
+      session.host.ui.setStreaming(false);
+      session.host.ui.showFailure();
+      return;
+    }
+    requireCoordinatorOk(session.coordinator.markLocalPersistenceSucceeded());
+    requireCoordinatorOk(session.coordinator.finalizeTurn());
+    session.recovery.updateMetadata(metadata => ({ ...metadata, localPersistence: "succeeded" }));
+  }
   const priorPersistenceFailure =
     terminal.persistence === "failed" ||
     session.recovery.metadata.localPersistence === "failed";

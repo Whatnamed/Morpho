@@ -304,12 +304,16 @@ export class AgentTurnCoordinator {
     faultId: string,
     error: Exclude<AgentTurnError, { kind: "cancelled" }>
   ): AgentTurnCoordinatorActionResult {
-    return this.dispatch({
+    const recorded = this.dispatch({
       type: "LOCAL_PERSISTENCE_FAILED",
       turnId: this.requireTurnId(),
       faultId,
       error
     });
+    if (recorded.status === "ok" && error.kind === "retryable") {
+      return this.dispatch({ type: "RECOVERY_STARTED", turnId: this.requireTurnId(), faultId });
+    }
+    return recorded;
   }
 
   recordUnresolvedWork(workId: string): AgentTurnCoordinatorActionResult {
@@ -768,6 +772,14 @@ export class AgentTurnCoordinator {
     });
     if (observed.status === "denied") return observed;
     if (status === "awaitingNextRequest") {
+      this.settleLocalRequest(requestId, stepSequence);
+      return this.ok(this.lastRequest);
+    }
+    if (status === "externallyCompleted" && this.latestProviderOutput?.producedUserVisibleEffect &&
+      this.lifecycle?.fault.kind === "none" && this.lifecycle.phase !== "cancelling") {
+      // The earlier Workspace checkpoint does not certify the final Text conversation.
+      const required = this.markLocalPersistenceRequired();
+      if (required.status === "denied") return required;
       this.settleLocalRequest(requestId, stepSequence);
       return this.ok(this.lastRequest);
     }

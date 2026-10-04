@@ -44,7 +44,8 @@ export async function runDurableClientScenario({ runtime, actor, row, output, se
     if (fault) {
       const nativeSet = Storage.prototype.setItem;
       Storage.prototype.setItem = function(key, value) {
-        if (key === seed.workspaceKey && sessionStorage.getItem(prefix + "phase") === "reload" && value.includes("P7B controlled result")) {
+        if (key === seed.workspaceKey && sessionStorage.getItem(prefix + "phase") === "reload" &&
+          !sessionStorage.getItem(prefix + "faultRemoved") && value.includes("P7B controlled result")) {
           sessionStorage.setItem(prefix + "saveFailed", "true");
           throw new DOMException("L1b test-owned local Workspace persistence failure", "QuotaExceededError");
         }
@@ -151,6 +152,39 @@ export async function runDurableClientScenario({ runtime, actor, row, output, se
         savedAssistantBodies: after.workspace.ai.messages.filter(m => m.role === "assistant").map(m => m.body) };
       assert.notEqual(record.coordinator.lifecycle.outcome?.kind, "completed",
         "Failed final conversation persistence must not retain completed Overall Local Turn Outcome / succeeded local persistence");
+      assert.equal(record.coordinator.lifecycle.phase, "recovering");
+      assert.equal(record.coordinator.lifecycle.serverExecutionStatus, "externallyCompleted");
+      assert.equal(record.coordinator.lifecycle.persistence, "failed");
+      assert.equal(record.metadata.localPersistence, "failed");
+      const originalOutputReference = record.coordinator.latestProviderOutputPayload;
+      assert.ok(originalOutputReference, "Verified original Text envelope is retained for local recovery");
+      await page.evaluate(() => { sessionStorage.setItem("l1b-C-faultRemoved", "true"); sessionStorage.setItem("l1b-C-phase", "recovered"); });
+      await page.reload();
+      await page.waitForFunction(() => JSON.parse(sessionStorage.getItem("l1b-C-responses") ?? "[]")
+        .some(r => r.method === "POST" && r.url.includes("/effects/") && r.status === 200), null, { timeout: 30_000 });
+      const restored = await checkpoint("successful-recovery");
+      assert.equal(restored.postProofs.length, 1, "Restoring storage cannot create a replacement Request");
+      assert.equal(runtime.stub.calls.length - startingSubmissions, 1);
+      assert.equal(restored.ackProofs.length, 1, "ACK is sent only once after successful final save");
+      assert.ok(restored.http.some(h => h.phase === "recovered" && h.method === "GET" && h.url.includes(`/turns/${proof.serverTurnId}?`)));
+      const acknowledged = restored.ackProofs[0];
+      const envelope = JSON.parse(acknowledged.durableEnvelope);
+      assert.equal(envelope.requestId, proof.requestId); assert.equal(envelope.stepSequence, proof.stepSequence);
+      assert.equal(acknowledged.envelopeSha256, acknowledged.outputReference.sha256);
+      assert.equal(acknowledged.outputReference.sha256, originalOutputReference.sha256);
+      assert.deepEqual(acknowledged.ack, { resultId: envelope.delivery.resultId, version: envelope.delivery.version, sha256: envelope.delivery.sha256 });
+      assert.equal(acknowledged.recoveryAtAck.coordinator.lifecycle.phase, "terminal");
+      assert.equal(acknowledged.recoveryAtAck.coordinator.lifecycle.outcome.kind, "completed");
+      assert.equal(acknowledged.recoveryAtAck.coordinator.lifecycle.persistence, "succeeded");
+      assert.equal(acknowledged.recoveryAtAck.metadata.localPersistence, "succeeded");
+      assert.ok(acknowledged.durableWorkspace.ai.messages.some(m => m.role === "assistant" &&
+        m.body.includes("P7B controlled result") && m.status === "done" && m.agentTurnOutcome === "success"));
+      await page.waitForFunction(projectId => !Object.entries(localStorage).some(([key, value]) =>
+        key.startsWith("morpho.agent-runtime-a-plus.recovery.v2") && JSON.parse(value).localProjectId === projectId), seed.projectId, { timeout: 30_000 });
+      row.successfulLocalRecovery = { originalRequestId: proof.requestId, originalStepSequence: proof.stepSequence,
+        envelopeSha256: acknowledged.envelopeSha256, ack: acknowledged.ack, ackPosts: 1, journalQueried: true,
+        durableConversationBeforeAck: true, canonicalOutcomeAtAck: "completed", persistenceAtAck: "succeeded",
+        providerSubmissions: 1, requestPosts: 1, recoveryCleared: true };
     } else for (const ack of after.ackProofs) {
       assert.equal(ack.outputReference?.sha256, ack.envelopeSha256, "Verified envelope must be durable before ACK");
       assert.equal(JSON.parse(ack.durableEnvelope).requestId, proof.requestId);

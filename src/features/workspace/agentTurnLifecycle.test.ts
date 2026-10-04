@@ -632,6 +632,17 @@ describe("Tool Batch aggregation", () => {
 });
 
 describe("Overall Local Agent Turn Outcome", () => {
+  it("keeps failed final Text save recoverable despite external completion, then completes only after local success", () => {
+    let state = apply(withProviderOutput(), { type: "LOCAL_PERSISTENCE_REQUIRED" });
+    expect(reduceAgentTurnLifecycle(state, { type: "TURN_FINALIZED", turnId })).toMatchObject({ ok: false });
+    state = apply(state, { type: "LOCAL_PERSISTENCE_FAILED", faultId: "final-save", error: retryableError });
+    state = apply(state, { type: "RECOVERY_STARTED", faultId: "final-save" });
+    state = apply(state, { type: "RECOVERY_RESOLVED", faultId: "final-save" });
+    expect(state).toMatchObject({ phase: "continuing", serverExecutionStatus: "externallyCompleted", persistence: "failed", fault: { kind: "none" } });
+    state = apply(state, { type: "LOCAL_PERSISTENCE_REQUIRED" });
+    state = apply(state, { type: "LOCAL_PERSISTENCE_SUCCEEDED" });
+    expect(finalizeTurn(state)).toMatchObject({ phase: "terminal", persistence: "succeeded", outcome: { kind: "completed" } });
+  });
   it("keeps a successful tool effect when the Provider later fails", () => {
     let state = finalizeBatch(withToolCallingOutput(), ["a"], [executed("a")]);
     state = startProviderRequest(state, request2);

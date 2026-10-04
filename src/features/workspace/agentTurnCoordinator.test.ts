@@ -236,7 +236,7 @@ describe("A+ AgentTurnCoordinator", () => {
       status: "ok",
       requestId: "request-1",
       stepSequence: 1,
-      lifecycle: { phase: "terminal", outcome: { kind: "completed" } }
+      lifecycle: { phase: "continuing", serverExecutionStatus: "externallyCompleted", persistence: "pending" }
     });
     expect(host.executions).toHaveLength(2);
     expect(host.executions.map(({ requestId, stepSequence }) => [requestId, stepSequence])).toEqual([
@@ -273,6 +273,13 @@ describe("A+ AgentTurnCoordinator", () => {
       "STREAM_ACTIVITY_OBSERVED",
       "PROVIDER_OUTPUT_RECEIVED",
       "SERVER_EXECUTION_STATUS_OBSERVED",
+      "LOCAL_PERSISTENCE_REQUIRED"
+    ]);
+    expect(coordinator.finalizeTurn()).toMatchObject({ status: "denied", code: "insufficientTerminalFacts" });
+    coordinator.markLocalPersistenceSucceeded();
+    coordinator.finalizeTurn();
+    expect(events.slice(-3).map(event => event.type)).toEqual([
+      "TURN_FINALIZED", "LOCAL_PERSISTENCE_SUCCEEDED",
       "TURN_FINALIZED"
     ]);
   });
@@ -283,6 +290,10 @@ describe("A+ AgentTurnCoordinator", () => {
     const coordinator = await initializedCoordinator(host, ["request-1"]);
     await coordinator.startInitialRequest(providerRequest());
     expect("setOverallOutcome" in coordinator).toBe(false);
+    expect(coordinator.getLifecycleSnapshot()).toMatchObject({ persistence: "pending", serverExecutionStatus: "externallyCompleted" });
+    expect(coordinator.finalizeTurn().status).toBe("denied");
+    coordinator.markLocalPersistenceSucceeded();
+    coordinator.finalizeTurn();
     expect(coordinator.getLifecycleSnapshot()).toMatchObject({
       phase: "terminal",
       outcome: { kind: "completed" }
@@ -359,8 +370,7 @@ describe("A+ AgentTurnCoordinator", () => {
       requestId: "request-1"
     }));
     expect(coordinator.getLifecycleSnapshot()).toMatchObject({
-      phase: "terminal",
-      outcome: { kind: "completed" }
+      phase: "continuing", persistence: "pending", serverExecutionStatus: "externallyCompleted"
     });
   });
 
@@ -395,6 +405,9 @@ describe("A+ AgentTurnCoordinator", () => {
     host.queueStarted({ status: "externallyCompleted", output: true });
     const coordinator = await initializedCoordinator(host, ["request-1"]);
     await coordinator.startInitialRequest(providerRequest());
+    expect(coordinator.getLifecycleSnapshot()).toMatchObject({ phase: "continuing", persistence: "pending" });
+    coordinator.markLocalPersistenceSucceeded();
+    coordinator.finalizeTurn();
     expect(coordinator.getLifecycleSnapshot()).toMatchObject({
       phase: "terminal",
       serverExecutionStatus: "externallyCompleted",
@@ -436,8 +449,7 @@ describe("A+ AgentTurnCoordinator", () => {
     const coordinator = await initializedCoordinator(host, ["request-1"]);
     await coordinator.startInitialRequest(providerRequest());
     expect(coordinator.getLifecycleSnapshot()).toMatchObject({
-      phase: "terminal",
-      outcome: { kind: "completed" }
+      phase: "continuing", persistence: "pending", serverExecutionStatus: "externallyCompleted"
     });
   });
 
@@ -540,7 +552,7 @@ describe("A+ AgentTurnCoordinator", () => {
     });
     await expect(coordinator.retryActiveRequest()).resolves.toMatchObject({
       status: "ok",
-      lifecycle: { phase: "terminal", outcome: { kind: "completed" } }
+      lifecycle: { phase: "continuing", persistence: "pending", serverExecutionStatus: "externallyCompleted" }
     });
     expect(host.executions.map(({ requestId, stepSequence }) => [requestId, stepSequence])).toEqual([
       ["request-1", 1],
@@ -764,7 +776,9 @@ describe("A+ AgentTurnCoordinator", () => {
     });
     await expect(coordinator.recoverServerExecutionStatus()).resolves.toMatchObject({
       status: "ok",
-      lifecycle: { phase: "terminal", serverExecutionStatus: status, outcome: { kind: outcomeKind } }
+      lifecycle: status === "externallyCompleted"
+        ? { phase: "continuing", serverExecutionStatus: status, persistence: "pending" }
+        : { phase: "terminal", serverExecutionStatus: status, outcome: { kind: outcomeKind } }
     });
     expect(host.externalExecutionCount).toBe(1);
   });

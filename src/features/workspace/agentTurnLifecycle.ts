@@ -1061,6 +1061,11 @@ function resolveRecovery(
     );
   }
   const recovered = { ...state, fault: { kind: "none" } as const };
+  if (state.serverExecutionStatus === "externallyCompleted" && state.providerEffectProduced &&
+    state.providerOutput.kind === "received" && state.persistence !== "succeeded") {
+    // Querying external success cannot resolve a failed/pending local Text save.
+    return success({ ...recovered, phase: state.resumePhase });
+  }
   if (
     state.serverExecutionStatus === "externallyCompleted" ||
     state.serverExecutionStatus === "externallyCancelled" ||

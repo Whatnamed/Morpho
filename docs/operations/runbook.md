@@ -1440,6 +1440,10 @@ Operational interpretation:
   Project Truth, P2 fulfillment, quota/refund or local Overall Outcome. Repeated ACK is idempotent.
 - Local Image transaction/Workspace failures keep the same action/result recoverable. Text saves
   the complete envelope in verified IndexedDB Recovery and flushes conversation before ACK.
+  Final Text Workspace save failure retains a non-terminal local recovery with failed persistence;
+  Provider/Journal success stays intact. After storage recovers, reload/resume queries the original
+  Journal and saves the same envelope/conversation before local completion and ACK; it never
+  creates a new Provider request identity. An earlier Workspace save is not final save evidence.
   Summary applies only to its frozen source/base; an existing same revision survives reload.
   A durable local ACK outbox repeats only the same ACK when its response is lost.
 - Confirmed independent Image intents keep the original request/local commit draft in IndexedDB;

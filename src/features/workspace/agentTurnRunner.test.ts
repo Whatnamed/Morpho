@@ -41,6 +41,7 @@ import type {
 } from "./agentTurnRecoveryStore";
 import type { WorkspacePersistenceState } from "./workspacePersistence";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
+import type { ExternalResultManifest } from "@/shared/externalResultProtocol";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 const LOCAL_PROJECT_ID = createTestWorkspace().project.id;
@@ -52,6 +53,60 @@ afterEach(() => {
 });
 
 describe("A+ Agent turn runner", () => {
+  it.each([false, true])("Text final-save failure=%s preserves local authority and ACK ordering", async (failSave) => {
+    const f = finalTextFixture(); f.failWorkspace = failSave;
+    await runMorphoAgentTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(1);
+    if (failSave) {
+      expect(f.acks).toHaveLength(0);
+      expect(f.fixture.store.record).toMatchObject({ coordinator: { lifecycle: {
+        phase: "recovering", serverExecutionStatus: "externallyCompleted", persistence: "failed",
+        fault: { error: { code: "final_text_persistence_failed", recoverable: true } }
+      } }, metadata: { localPersistence: "failed" } });
+      expect(f.fixture.store.record?.coordinator.latestProviderOutput?.delivery).toEqual(finalTextDelivery);
+      expect(latestAssistant(f.durable)?.body).not.toContain("durable final Text");
+      expect(latestAssistant(f.fixture.fake.getWorkspace())?.agentTurnOutcome).not.toBe("success");
+    } else {
+      expect(latestAssistant(f.durable)).toMatchObject({ body: "durable final Text", status: "done", agentTurnOutcome: "success" });
+      expect(f.acks).toEqual([{ resultId: finalTextDelivery.resultId, version: 1, sha256: finalTextDelivery.sha256 }]);
+      expect(f.fixture.store.record).toBeUndefined();
+    }
+  });
+  it("repeated Text final-save failure then reload saves the same envelope and completes without another execution", async () => {
+    const f = finalTextFixture(); f.failWorkspace = true;
+    await runMorphoAgentTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    const envelope = structuredClone(f.fixture.store.record!.coordinator.latestProviderOutput);
+    for (let i = 0; i < 2; i++) {
+      detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+      f.fixture.fake.commitWorkspace(() => ({ workspace: structuredClone(f.durable), value: undefined }));
+      expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, f.fixture.host, f.fixture.dependencies)).toBe("pending");
+      expect(f.fixture.store.record?.coordinator.latestProviderOutput).toEqual(envelope);
+      expect(f.fixture.store.record?.coordinator.lifecycle).toMatchObject({ phase: "recovering", persistence: "failed", serverExecutionStatus: "externallyCompleted" });
+      expect(f.acks).toHaveLength(0);
+    }
+    f.failWorkspace = false;
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    f.fixture.fake.commitWorkspace(() => ({ workspace: structuredClone(f.durable), value: undefined }));
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, f.fixture.host, f.fixture.dependencies)).toBe("recovered");
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(latestAssistant(f.durable)).toMatchObject({ body: "durable final Text", status: "done", agentTurnOutcome: "success" });
+    expect(f.acks).toHaveLength(1); expect(f.fixture.store.record).toBeUndefined();
+  });
+  it("distinguishes final Text Recovery write failure from recoverable Workspace save failure", async () => {
+    const f = finalTextFixture(); const save = f.fixture.store.save.bind(f.fixture.store);
+    let rejected = false;
+    f.fixture.store.save = async record => {
+      if (!rejected && record.metadata.localPersistence === "required" && record.coordinator.lifecycle.serverExecutionStatus === "externallyCompleted") {
+        rejected = true; throw new Error("Recovery IndexedDB quota failure");
+      }
+      await save(record);
+    };
+    await runMorphoAgentTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    expect(f.acks).toHaveLength(0);
+    expect(f.fixture.store.record?.coordinator.lifecycle).toMatchObject({ serverExecutionStatus: "externallyCompleted", persistence: "failed",
+      fault: { error: { code: "recovery_record_persistence_failed", recoverable: false } } });
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(1);
+  });
   it.each([1, 2])("does not send request step %i until Recovery Store has durably saved its intent", async (step) => {
     const fixture = createFixture(step === 1 ? [{ status: "externallyCompleted", outputText: "正常完成" }] : [
       { status: "awaitingNextRequest", toolCalls: [{ callId: "read-first", name: "read_selected_context", argumentsText: "{}" }] },
@@ -1362,6 +1417,7 @@ type Script =
       status: "providerRunning" | "awaitingNextRequest" | "externallyCompleted" | "externallyFailed";
       outputText?: string;
       toolCalls?: readonly APlusToolCall[];
+      delivery?: ExternalResultManifest;
       externalErrorCode?: string;
       externalErrorMessage?: string;
     }>;
@@ -1432,7 +1488,8 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
             outputText: script.outputText ?? "",
             producedUserVisibleEffect: Boolean(script.outputText?.trim()),
             toolCallIds: toolCalls.map((call) => call.callId),
-            toolCalls
+            toolCalls,
+            ...(script.delivery ? { delivery: script.delivery } : {})
           });
         }
         if (script.externalErrorCode) {
@@ -1580,6 +1637,37 @@ function createFixture(
     readConversationTokenLimits: () => undefined
   };
   return { fake, host, input, coordinatorHost, store, dependencies };
+}
+
+const finalTextDelivery: ExternalResultManifest = {
+  kind: "text", effectId: `effect:${"d".repeat(64)}`, resultId: `result:${"e".repeat(64)}`, version: 1,
+  sha256: "f".repeat(64), byteLength: 24, mimeType: "application/json", chunkCount: 1, expiresAt: "2099-01-01T00:00:00Z"
+};
+
+function finalTextFixture() {
+  const fixture = createFixture([{ status: "externallyCompleted", outputText: "durable final Text", delivery: finalTextDelivery }]);
+  const values = new Map<string, string>();
+  vi.stubGlobal("window", { localStorage: { getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) } });
+  const state = { fixture, failWorkspace: false, durable: structuredClone(fixture.fake.getWorkspace()), acks: [] as unknown[] };
+  fixture.host.persistWorkspace = () => {
+    if (state.failWorkspace && latestAssistant(fixture.fake.getWorkspace())?.body.includes("durable final Text")) return failedPersistence();
+    state.durable = structuredClone(fixture.fake.getWorkspace()); return savedPersistence();
+  };
+  const save = fixture.store.save.bind(fixture.store);
+  fixture.store.save = async record => {
+    if (record.coordinator.lifecycle.phase === "terminal" && record.coordinator.lifecycle.outcome.kind === "completed") {
+      expect(latestAssistant(state.durable)).toMatchObject({ body: "durable final Text", status: "done", agentTurnOutcome: "success" });
+    }
+    await save(record);
+  };
+  fixture.fake.setFetchRoute(`/api/ai/effects/${encodeURIComponent(finalTextDelivery.effectId)}/result`, async request => {
+    expect(request.method).toBe("POST");
+    expect(latestAssistant(state.durable)).toMatchObject({ body: "durable final Text", status: "done", agentTurnOutcome: "success" });
+    expect(fixture.store.record?.coordinator.lifecycle).toMatchObject({ phase: "terminal", persistence: "succeeded", outcome: { kind: "completed" } });
+    state.acks.push(await request.json()); return Response.json({ acknowledged: true });
+  });
+  return state;
 }
 
 function savedPersistence(): WorkspacePersistenceState {
