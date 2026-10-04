@@ -1444,6 +1444,10 @@ Operational interpretation:
   Provider/Journal success stays intact. After storage recovers, reload/resume queries the original
   Journal and saves the same envelope/conversation before local completion and ACK; it never
   creates a new Provider request identity. An earlier Workspace save is not final save evidence.
+  A terminal Journal with `external_execution_state_unknown` preserves that bounded fact in
+  canonical local reasons and durable conversation text, even when coarse outcome is `failed`.
+  It does not prove Provider failure or authorize retry. Once that detail is durable, ordinary
+  terminal Recovery cleanup remains allowed; local save failure keeps Recovery.
   Summary applies only to its frozen source/base; an existing same revision survives reload.
   A durable local ACK outbox repeats only the same ACK when its response is lost.
 - Confirmed independent Image intents keep the original request/local commit draft in IndexedDB;

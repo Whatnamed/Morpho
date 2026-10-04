@@ -855,6 +855,11 @@ Text Agent:
   the uncommitted completion draft and records retryable failed local persistence in the Lifecycle
   and Recovery; query/resume reuses the same verified envelope/result and can converge after storage
   recovers. Recovery metadata never becomes an outcome authority or authorizes new execution.
+- Journal reconciliation retains the allowlisted `external_execution_state_unknown` detail in
+  canonical Lifecycle facts and outcome reasons. Administrative `externallyFailed` can coexist
+  with an `unknown` effect; terminal conversation explicitly records uncertainty and no automatic
+  retry. Recovery cleanup follows durable local detail, without reopening the Turn or changing
+  execution authority, outcome kinds, or retry policy.
 - Context pressure is classified from both tokens and Provider Item count. A continuation can perform at most two additional compactions, and only a strict token or Item reduction permits another Provider request; the server and client both fail closed above 1,024 Items. Provider and local tool-batch handling share `MAX_AGENT_FUNCTION_CALLS = 64`; a 65-call response is rejected before execution or continuation signing.
 - Explicit history, memory, and progress questions declare required `search_project_conversation`, `read_project_memory`, and/or `read_stage_record` reads in the Task Contract. P2B evaluates exact target/key/query/range receipts in the production Runner, permits a reminder within existing legal continuations, and reports terminal missing coverage as unverified without another paid request.
 - New turns resolve a turn-local Task Contract with a primary strategy and independent activities. The primary strategy is a compatibility/display hint; it does not cancel activities or own their effect scopes. The versioned Prompt Registry composes all activity policies and the bounded Method selection.

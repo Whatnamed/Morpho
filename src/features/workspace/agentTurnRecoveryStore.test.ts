@@ -23,6 +23,29 @@ import {
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ local Recovery Store", () => {
+  it("round-trips terminal unknown detail without enriching legacy lifecycle records", async () => {
+    const fixture = createFixture(), record = recoveryRecord("exact body");
+    const started = reduceAgentTurnLifecycle(record.coordinator.lifecycle, { type: "PROVIDER_REQUEST_STARTED", turnId: TURN_ID,
+      requestId: "request-1", stepSequence: 1 });
+    if (!started.ok) throw new Error(started.error.message);
+    const observed = reduceAgentTurnLifecycle(started.state, { type: "SERVER_EXECUTION_STATUS_OBSERVED", turnId: TURN_ID,
+      requestId: "request-1", stepSequence: 1, status: "externallyFailed", failureCode: "external_execution_state_unknown" });
+    if (!observed.ok) throw new Error(observed.error.message);
+    const terminal = reduceAgentTurnLifecycle(observed.state, { type: "TURN_FINALIZED", turnId: TURN_ID });
+    if (!terminal.ok) throw new Error(terminal.error.message);
+    const saved = { ...record, coordinator: { ...record.coordinator, activeRequest: undefined,
+      lastRequest: { requestId: "request-1", stepSequence: 1 }, lifecycle: terminal.state,
+      serverSnapshot: { ...record.coordinator.serverSnapshot, status: "externallyFailed" as const,
+        latestRequestId: "request-1", latestStepSequence: 1, failureCode: "external_execution_state_unknown" } } };
+    await fixture.store.save(saved);
+    expect(await fixture.store.load("project-test")).toMatchObject({ status: "ok", record: { coordinator: {
+      lifecycle: { serverFailureCode: "external_execution_state_unknown", outcome: { reasons: ["external_execution_state_unknown"] } },
+      serverSnapshot: { failureCode: "external_execution_state_unknown" } } } });
+    await fixture.store.save(record);
+    const legacy = await fixture.store.load("project-test");
+    if (legacy.status !== "ok") throw new Error("Legacy read failed");
+    expect(legacy.record.coordinator.lifecycle.serverFailureCode).toBeUndefined();
+  });
   it("preserves additive execution observation across refresh without enriching legacy records", async () => {
     const fixture = createFixture();
     const original = recoveryRecord("frozen Provider body");

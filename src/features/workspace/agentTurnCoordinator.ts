@@ -735,7 +735,8 @@ export class AgentTurnCoordinator {
     const observed = this.observeServerStatus(
       expected.requestId,
       expected.stepSequence,
-      snapshot.status
+      snapshot.status,
+      snapshot.failureCode
     );
     if (observed.status === "denied") return observed;
     if (snapshot.status === "providerRunning" && this.activeRequest) {
@@ -756,7 +757,8 @@ export class AgentTurnCoordinator {
   private observeServerStatus(
     requestId: string,
     stepSequence: number,
-    status: AgentTurnJournalSnapshot["status"]
+    status: AgentTurnJournalSnapshot["status"],
+    failureCode?: AgentTurnJournalSnapshot["failureCode"]
   ): AgentTurnCoordinatorActionResult {
     const lifecycle = this.lifecycle;
     if (!lifecycle) return this.denied("not_initialized", "Coordinator 尚未创建 Server Turn。");
@@ -768,7 +770,8 @@ export class AgentTurnCoordinator {
       turnId: lifecycle.turnId,
       requestId,
       stepSequence,
-      status
+      status,
+      failureCode
     });
     if (observed.status === "denied") return observed;
     if (status === "awaitingNextRequest") {

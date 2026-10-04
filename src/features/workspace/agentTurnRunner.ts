@@ -1699,6 +1699,11 @@ function terminalAssistantBody(
   assistant: AiMessage | undefined,
   lifecycle: Extract<AgentTurnLifecycleState, { phase: "terminal" }>
 ): string {
+  if (lifecycle.outcome.reasons.includes("external_execution_state_unknown")) {
+    const detail = "无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。";
+    const previous = assistant?.body.trim() ?? "";
+    return previous.includes(detail) ? previous : [previous, detail].filter(Boolean).join("\n\n");
+  }
   if (assistant?.body.trim()) return assistant.body;
   if (lifecycle.outcome.kind === "pendingConfirmation") return "等待你确认后再执行这个操作。";
   if (lifecycle.outcome.kind === "cancelled") return "当前 Agent 回合已取消，已有本地结果会保留。";

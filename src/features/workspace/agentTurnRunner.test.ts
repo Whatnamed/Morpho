@@ -466,6 +466,56 @@ describe("A+ Agent turn runner", () => {
     expect(fixture.coordinatorHost.executions).toHaveLength(1);
   });
 
+  it.each(["external_execution_state_unknown", "provider_http_422", undefined])(
+    "reload saves authoritative failure detail %s before terminal cleanup without new execution", async failureCode => {
+      const fixture = createFixture([{ status: "providerRunning" }]);
+      await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+      const identity = structuredClone(fixture.store.record!.coordinator.activeRequest);
+      detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+      fixture.coordinatorHost.setJournalFailure(failureCode);
+      const fetch = vi.fn(fixture.fake.fetch); fixture.host.fetch = fetch;
+      let durable = structuredClone(fixture.fake.getWorkspace());
+      fixture.host.persistWorkspace = () => {
+        const result = fixture.fake.persistWorkspace();
+        if (result.phase === "saved" && !result.isDirty) durable = structuredClone(fixture.fake.getWorkspace());
+        return result;
+      };
+      const clear = fixture.store.clear.bind(fixture.store);
+      const unknown = failureCode === "external_execution_state_unknown";
+      let clearCalls = 0;
+      fixture.store.clear = async () => {
+        clearCalls++;
+        expect(latestAssistant(durable)).toMatchObject({ status: "failed", agentTurnOutcome: "failedDuringProvider",
+          agentTurnOutcomeSummary: unknown ? "external_execution_state_unknown" : "externalExecutionFailed" });
+        expect(latestAssistant(durable)?.body).toBe(unknown
+          ? "无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。"
+          : "当前 Agent 回合未能完成。");
+        expect(fixture.store.record?.coordinator.lifecycle).toMatchObject({ phase: "terminal", outcome: { kind: "failed" } });
+        expect(fixture.store.record?.coordinator.lifecycle.serverFailureCode).toBe(unknown ? failureCode : undefined);
+        await clear();
+      };
+      expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, fixture.host, fixture.dependencies)).toBe("recovered");
+      expect(clearCalls).toBe(1); expect(fixture.store.record).toBeUndefined();
+      expect(fixture.coordinatorHost.executions).toHaveLength(1);
+      expect(fixture.coordinatorHost.executions[0]).toMatchObject({ requestId: identity!.requestId, stepSequence: identity!.stepSequence });
+      expect(fetch).not.toHaveBeenCalled(); // No result means no ACK or result fabrication.
+    });
+
+  it("keeps terminal unknown detail in Recovery when its final Workspace save fails", async () => {
+    const fixture = createFixture([{ status: "providerRunning" }]);
+    await runMorphoAgentTurn(fixture.input, fixture.host, fixture.dependencies);
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    fixture.coordinatorHost.setJournalFailure("external_execution_state_unknown");
+    fixture.host.persistWorkspace = failedPersistence;
+    const clear = vi.spyOn(fixture.store, "clear");
+    await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, fixture.host, fixture.dependencies);
+    expect(clear).not.toHaveBeenCalled();
+    expect(fixture.store.record).toMatchObject({ coordinator: { lifecycle: { phase: "terminal",
+      serverFailureCode: "external_execution_state_unknown", outcome: { reasons: ["external_execution_state_unknown"] } } },
+      metadata: { localPersistence: "failed" } });
+    expect(fixture.coordinatorHost.executions).toHaveLength(1);
+  });
+
   it("keeps a successful local Tool effect when the Provider continuation fails", async () => {
     const fixture = createFixture([
       {
@@ -1529,6 +1579,14 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
       this.snapshot.counters.provider,
       this.snapshot.localProjectId
     );
+  }
+
+  setJournalFailure(failureCode?: string): void {
+    this.setJournalStatus("externallyFailed");
+    this.snapshot = { ...this.snapshot, failureCode, externalEffect: { version: 1, effectId: `effect:${"a".repeat(64)}`,
+      kind: "text", requestDigest: "b".repeat(64), namespace: null,
+      executionState: failureCode === "external_execution_state_unknown" ? "unknown" : "failed",
+      cancelRequestedAt: null, localAbortObservedAt: null, attemptId: TURN_ID, taskId: null, responseId: null } };
   }
 
   async cancelExternalRequest(): Promise<void> {

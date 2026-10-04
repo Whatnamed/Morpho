@@ -42,6 +42,15 @@ export async function runAmbiguousClientScenario({ runtime, actor, row, output, 
       const values = JSON.parse(sessionStorage.getItem(prefix + name) ?? "[]"); values.push(value);
       sessionStorage.setItem(prefix + name, JSON.stringify(values));
     };
+    const nativeRemove = Storage.prototype.removeItem;
+    Storage.prototype.removeItem = function(key) {
+      if (this === localStorage && key.startsWith("morpho.agent-runtime-a-plus.recovery.v2")) {
+        const value = this.getItem(key), record = value ? JSON.parse(value) : null;
+        if (record?.localProjectId === seed.projectId) push("clearProofs", {
+          recoveryBeforeClear: record, durableWorkspace: JSON.parse(localStorage.getItem(seed.workspaceKey)) });
+      }
+      return nativeRemove.call(this, key);
+    };
     const recovery = () => Object.entries(localStorage).filter(([key]) => key.startsWith("morpho.agent-runtime-a-plus.recovery.v2"))
       .map(([, value]) => JSON.parse(value)).find(record => record.localProjectId === seed.projectId);
     const blob = async ref => {
@@ -84,6 +93,7 @@ export async function runAmbiguousClientScenario({ runtime, actor, row, output, 
   const facts = () => page.evaluate(workspaceKey => ({
     posts: JSON.parse(sessionStorage.getItem("l1b-D-postProofs") ?? "[]"), http: JSON.parse(sessionStorage.getItem("l1b-D-http") ?? "[]"),
     responses: JSON.parse(sessionStorage.getItem("l1b-D-responses") ?? "[]"), workspace: JSON.parse(localStorage.getItem(workspaceKey)),
+    clearProofs: JSON.parse(sessionStorage.getItem("l1b-D-clearProofs") ?? "[]"),
     recovery: Object.entries(localStorage).filter(([key]) => key.startsWith("morpho.agent-runtime-a-plus.recovery.v2"))
       .map(([, value]) => JSON.parse(value))
   }), seed.workspaceKey);
@@ -144,6 +154,28 @@ export async function runAmbiguousClientScenario({ runtime, actor, row, output, 
           status: m.status, outcome: m.agentTurnOutcome, summary: m.agentTurnOutcomeSummary })) };
       assert.ok(durableUnknown || recoveryUnknown,
         "Reload must preserve Journal external_execution_state_unknown in canonical local facts or durable failure detail; generic externalExecutionFailed loses execution uncertainty");
+      await page.waitForFunction(() => JSON.parse(sessionStorage.getItem("l1b-D-clearProofs") ?? "[]").length === 1,
+        null, { timeout: 30_000 });
+      const durable = await checkpoint("durable-unknown");
+      const cleanup = durable.client.clearProofs[0];
+      assert.equal(cleanup.recoveryBeforeClear.coordinator.lifecycle.serverFailureCode, "external_execution_state_unknown");
+      assert.deepEqual(cleanup.recoveryBeforeClear.coordinator.lifecycle.outcome, {
+        kind: "failed", reasons: ["external_execution_state_unknown"] });
+      const assistant = cleanup.durableWorkspace.ai.messages.find(m => m.role === "assistant");
+      assert.equal(assistant.agentTurnOutcomeSummary, "external_execution_state_unknown");
+      assert.ok(assistant.body.includes("无法确认外部请求是否已经执行"));
+      assert.ok(assistant.body.includes("停止自动重试"));
+      assert.equal(durable.client.recovery.length, 0);
+      assert.equal(durable.client.http.filter(r => r.method === "POST" && r.url.includes("/result")).length, 0);
+      assert.equal(durable.journal.results.filter(r => r.effect_id === effect.effect_id).length, 0);
+      assert.equal(durable.journal.turn[0].server_execution_status, "externally_failed");
+      assert.equal(durable.journal.turn[0].bounded_failure_code, "external_execution_state_unknown");
+      assert.equal(durable.journal.effects.find(e => e.effect_id === effect.effect_id).execution_state, "unknown");
+      row.terminalUnknown = { outcome: cleanup.recoveryBeforeClear.coordinator.lifecycle.outcome,
+        serverFailureCode: cleanup.recoveryBeforeClear.coordinator.lifecycle.serverFailureCode,
+        durableAssistant: { body: assistant.body, status: assistant.status, outcome: assistant.agentTurnOutcome,
+          summary: assistant.agentTurnOutcomeSummary }, detailBeforeCleanup: true, recoveryCleared: true,
+        providerExecutions: 1, ackPosts: 0, resultCount: 0 };
     } else {
       assert.equal(reloaded.journal.turn[0].server_execution_status, "provider_running");
       const saved = reloaded.client.recovery.find(r => r.serverTurnId === proof.serverTurnId);

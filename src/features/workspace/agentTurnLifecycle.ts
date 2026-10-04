@@ -120,6 +120,8 @@ type FinalizedToolBatch = {
 type AgentTurnFacts = {
   turnId: string;
   serverExecutionStatus: ServerExternalExecutionStatus;
+  /** Allowlisted detail observed from the exact authoritative Journal request. */
+  serverFailureCode?: "external_execution_state_unknown";
   externalRequest: ExternalRequestState;
   providerOutput: ProviderOutputState;
   providerEffectProduced: boolean;
@@ -183,6 +185,7 @@ export type AgentTurnEvent =
       requestId: string;
       stepSequence: number;
       status: ServerExternalExecutionStatus;
+      failureCode?: string;
     }
   | {
       type: "STREAM_ACTIVITY_OBSERVED";
@@ -326,6 +329,8 @@ export function createAgentTurnLifecycleState(turnId: string): AgentTurnLifecycl
 export function parseAgentTurnLifecycleState(value: unknown): AgentTurnLifecycleState | undefined {
   if (!isRecord(value) || typeof value.turnId !== "string" || !value.turnId.trim()) return undefined;
   if (!isServerExternalExecutionStatus(value.serverExecutionStatus)) return undefined;
+  if (value.serverFailureCode !== undefined &&
+    (value.serverFailureCode !== "external_execution_state_unknown" || value.serverExecutionStatus !== "externallyFailed")) return undefined;
   const externalRequest = parseExternalRequest(value.externalRequest);
   const providerOutput = parseProviderOutput(value.providerOutput);
   const fault = parseFault(value.fault);
@@ -351,6 +356,7 @@ export function parseAgentTurnLifecycleState(value: unknown): AgentTurnLifecycle
   const common: AgentTurnFacts = {
     turnId: value.turnId,
     serverExecutionStatus: value.serverExecutionStatus,
+    ...(value.serverFailureCode === "external_execution_state_unknown" ? { serverFailureCode: value.serverFailureCode } : {}),
     externalRequest,
     providerOutput,
     providerEffectProduced: value.providerEffectProduced,
@@ -553,7 +559,7 @@ export function reduceAgentTurnLifecycle(
     case "PROVIDER_REQUEST_STARTED":
       return startProviderRequest(state, event.requestId, event.stepSequence);
     case "SERVER_EXECUTION_STATUS_OBSERVED":
-      return observeServerStatus(state, event.requestId, event.stepSequence, event.status);
+      return observeServerStatus(state, event.requestId, event.stepSequence, event.status, event.failureCode);
     case "STREAM_ACTIVITY_OBSERVED":
       if (state.phase !== "requestingProvider" && state.phase !== "continuing") {
         return illegal(state, event);
@@ -740,7 +746,9 @@ function buildOutcomeReasons(
 ): string[] {
   const reasons: string[] = [];
   if (cancellationReason) reasons.push(cancellationReason);
-  if (state.serverExecutionStatus === "externallyFailed") reasons.push("externalExecutionFailed");
+  if (state.serverExecutionStatus === "externallyFailed") {
+    reasons.push(state.serverFailureCode ?? "externalExecutionFailed");
+  }
   if (state.serverExecutionStatus === "externallyCancelled") reasons.push("externalExecutionCancelled");
   if (
     state.serverExecutionStatus === "externallyCompleted" &&
@@ -1126,7 +1134,8 @@ function observeServerStatus(
   state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
   requestId: string,
   stepSequence: number,
-  status: ServerExternalExecutionStatus
+  status: ServerExternalExecutionStatus,
+  failureCode?: string
 ): AgentTurnTransitionResult {
   if (!matchesExternalRequest(state, requestId, stepSequence)) {
     return externalRequestMismatch(state, requestId, stepSequence);
@@ -1169,6 +1178,8 @@ function observeServerStatus(
   return success({
     ...state,
     serverExecutionStatus: status,
+    serverFailureCode: status === "externallyFailed" && failureCode === "external_execution_state_unknown"
+      ? failureCode : undefined,
     externalRequest: status === "providerRunning"
       ? { kind: "active", requestId, stepSequence }
       : { kind: "settled", requestId, stepSequence }

@@ -23,6 +23,29 @@ import {
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ AgentTurnCoordinator", () => {
+  it("reload preserves unknown Journal detail without executing another request and restores the terminal detail", async () => {
+    const host = new FakeHost(); host.queueStarted({ status: "providerRunning", output: false, interrupted: true });
+    const coordinator = await initializedCoordinator(host, ["request-1"]);
+    await coordinator.startInitialRequest(providerRequest());
+    const saved = JSON.parse(JSON.stringify(coordinator.exportRecoverySnapshot()));
+    host.queryOverride = async () => snapshot({ status: "externallyFailed", latestRequestId: "request-1", latestStepSequence: 1,
+      failureCode: "external_execution_state_unknown", counters: { provider: 1, webSearch: 0, image: 0 },
+      externalEffect: { version: 1, effectId: `effect:${"a".repeat(64)}`, kind: "text", executionState: "unknown",
+        requestDigest: "b".repeat(64), namespace: null, cancelRequestedAt: null, localAbortObservedAt: null,
+        attemptId: TURN_ID, taskId: null, responseId: null } });
+    const createRequestId = vi.fn(() => "must-not-create");
+    const restored = AgentTurnCoordinator.restore({ snapshot: saved, host, createRequestId });
+    if (restored.status !== "ok") throw new Error(restored.reason);
+    expect(await restored.coordinator.recoverServerExecutionStatus()).toMatchObject({ status: "ok", lifecycle: {
+      phase: "terminal", serverExecutionStatus: "externallyFailed", serverFailureCode: "external_execution_state_unknown",
+      outcome: { kind: "failed", reasons: ["external_execution_state_unknown"] } } });
+    expect(restored.coordinator.getServerSnapshot()?.externalEffect?.executionState).toBe("unknown");
+    expect(await restored.coordinator.retryActiveRequest()).toMatchObject({ status: "denied" });
+    expect(host.executions).toHaveLength(1); expect(createRequestId).not.toHaveBeenCalled();
+    const terminal = AgentTurnCoordinator.restore({ snapshot: JSON.parse(JSON.stringify(restored.coordinator.exportRecoverySnapshot())), host, createRequestId });
+    if (terminal.status !== "ok") throw new Error(terminal.reason);
+    expect(terminal.coordinator.getLifecycleSnapshot()).toEqual(restored.coordinator.getLifecycleSnapshot());
+  });
   it.each(["missing", "false", "throw"] as const)("does not POST when the request intent durability barrier is %s", async (mode) => {
     const host = new FakeHost();
     const coordinator = new AgentTurnCoordinator({ localProjectId: "project-a", creationIdempotencyKey: "creation-a",

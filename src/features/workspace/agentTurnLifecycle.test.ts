@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateToolBatchOutcome,
   createAgentTurnLifecycleState,
+  parseAgentTurnLifecycleState,
   reduceAgentTurnLifecycle,
   type AgentTurnError,
   type AgentTurnEvent,
@@ -40,6 +41,39 @@ const quotaError = {
   message: "quota exceeded",
   recoverable: false
 } satisfies AgentTurnError;
+
+describe("bounded Journal failure detail", () => {
+  it.each(["external_execution_state_unknown", "provider_http_422", undefined, "raw secret " + "x".repeat(100)])(
+    "retains only allowlisted unknown truth for failureCode %s", failureCode => {
+      const observed = apply(startProviderRequest(requesting()), { type: "SERVER_EXECUTION_STATUS_OBSERVED",
+        ...request1, status: "externallyFailed", failureCode });
+      const terminal = apply(observed, { type: "TURN_FINALIZED" });
+      const unknown = failureCode === "external_execution_state_unknown";
+      expect(terminal).toMatchObject({ phase: "terminal", outcome: { kind: "failed",
+        reasons: [unknown ? "external_execution_state_unknown" : "externalExecutionFailed"] } });
+      expect(terminal.serverFailureCode).toBe(unknown ? failureCode : undefined);
+      expect(parseAgentTurnLifecycleState(JSON.parse(JSON.stringify(terminal)))).toEqual(terminal);
+      expect(parseAgentTurnLifecycleState({ ...terminal, serverFailureCode: "unbounded secret detail" })).toBeUndefined();
+    });
+  it("keeps a local fault independent of the authoritative unknown observation", () => {
+    const faulted = apply(startProviderRequest(requesting()), { type: "EXTERNAL_ERROR_RECORDED", ...request1,
+      faultId: fault1, error: conflictError });
+    const observed = apply(faulted, { type: "SERVER_EXECUTION_STATUS_OBSERVED", ...request1,
+      status: "externallyFailed", failureCode: "external_execution_state_unknown" });
+    expect(observed.fault).toEqual(faulted.fault);
+    expect(apply(observed, { type: "TURN_FINALIZED" })).toMatchObject({ phase: "terminal",
+      outcome: { reasons: ["external_execution_state_unknown", "conflict"] } });
+  });
+  it("does not accept unknown detail for a different request or a successful/cancelled status", () => {
+    const state = startProviderRequest(requesting());
+    expect(reduceAgentTurnLifecycle(state, { type: "SERVER_EXECUTION_STATUS_OBSERVED", turnId, ...request2,
+      status: "externallyFailed", failureCode: "external_execution_state_unknown" })).toMatchObject({ ok: false });
+    for (const status of ["externallyCompleted", "externallyCancelled"] as const) {
+      expect(apply(state, { type: "SERVER_EXECUTION_STATUS_OBSERVED", ...request1, status,
+        failureCode: "external_execution_state_unknown" }).serverFailureCode).toBeUndefined();
+    }
+  });
+});
 
 type EventWithoutTurnId<T> = T extends { turnId: string } ? Omit<T, "turnId"> : never;
 
