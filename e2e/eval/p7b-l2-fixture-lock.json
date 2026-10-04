@@ -1,0 +1,146 @@
+{
+  "version": "p7b-l2-checkpoints-1",
+  "bundleSha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+  "source": "Deterministic explicit Eval-owned checkpoint overlays; current domain serialization/reconciliation; original case retains all historical semantic data/assets",
+  "slices": [
+    {
+      "id": "L2-1",
+      "projectId": "p7b-l2-L2-1",
+      "workspaceSha256": "b899790a6690de6f5aad7324fdcf1037190dc0ec86a2491ee57383c9ec82a5a7",
+      "selectedIds": [
+        "notes"
+      ],
+      "assetCount": 0,
+      "assetHashes": []
+    },
+    {
+      "id": "L2-2",
+      "projectId": "p7b-l2-L2-2",
+      "workspaceSha256": "b1f42f18956cef5c4773afe5a12e2ea7283d79bbced944ba852732cfc595ac81",
+      "selectedIds": [
+        "notes"
+      ],
+      "assetCount": 0,
+      "assetHashes": []
+    },
+    {
+      "id": "L2-3",
+      "projectId": "p7b-l2-L2-3",
+      "workspaceSha256": "dbd4500ba6c9d7f1aeaf5793662b679932dc2010ac5611a8ed43798fc2ea589b",
+      "selectedIds": [
+        "direction-A",
+        "direction-B",
+        "direction-C"
+      ],
+      "assetCount": 0,
+      "assetHashes": []
+    },
+    {
+      "id": "L2-4",
+      "projectId": "p7b-l2-L2-4",
+      "workspaceSha256": "1cd4620450af7477002af31670d04af94a9843471be92d05b84fe17452714e8a",
+      "selectedIds": [
+        "definition",
+        "direction-A"
+      ],
+      "assetCount": 0,
+      "assetHashes": []
+    },
+    {
+      "id": "L2-5",
+      "projectId": "p7b-l2-L2-5",
+      "workspaceSha256": "e575edb3df78161d37ed3e0b58709224d2b608843a95ae036c783dc7817a4d57",
+      "selectedIds": [],
+      "assetCount": 28,
+      "assetHashes": [
+        "35c8fea122cd5003db1d47f0526a00da722c39b3205e83594b7a7f7c2d497681",
+        "6233c25d79fb185063ea81f17e0657de5e7cfb915a4bb37dca68f6252931024e",
+        "bc9ce0d9aaddc2969b22d7f4605d2516e524d07fe24932fd5e99b025c3888c25",
+        "e579129b12fd957e6cfa1fcfc017c0b1f42dc709a62bd114cce04dfcac67cc0a",
+        "33bd110be0235626d81524289f43e2c176149c7109030e259503cb8afe54c6f6",
+        "b7e83328a1c4572595616d0a5ba0930a37fc9216292c1524f27def0e59bcd3cc",
+        "7e95517771095dbb08f2d0f955d745b54435b08f6abcd82818f7da0de55340ab",
+        "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+        "d30fd3aa9a0bf57a0761f9ab152bafae9419935ed261f7cd984a6e16335aad99",
+        "6a93dafc2584937c3ce0a251ee9113ffd8ad7fa087a89c5492b88cef7f99a033",
+        "1cea2ee855a0c5fbd38f41f46b372e6f42a808832751d1ab869738f5675eb08e",
+        "0116b683e410406b943d14fc0660faa29e88aaaee11c96ffb90808c2f2d2f7c3",
+        "5955aff073ce861298c6e9020355cbebf6742b2b983d950bf140df24ba3d5625",
+        "4963978d8389b0c05aac34a5970da2ab9cb3ea1a32c70d96da0d63bea0bb1b15",
+        "ec5255f56abaa5ca91ca2b650e118b6519ecfc92693d915a60fa43625ab89276",
+        "9a5445d4f5350a489e29156a788d7e0a6e660df9f9e3d273c69a419e380769c7",
+        "c41bb5bb8015ca2daf5a5f7fba5115274042f12c4e7fc10423266250f9357a81",
+        "6359e9e78c696712130d70cbd19bd714098721237fed21d54028b3a6c4bb2c4d",
+        "418920e8ec67677282ed67e13725441f695b033209ec584a12ecc0302ad8fae8",
+        "906aa554bc8f1e0546ebd87e53c8e2eea14d307f80b553b99141ac4e4c4ff642",
+        "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+        "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+        "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+        "82421cf7d89becc22ca99d43d3edc60709df07a1803c5676c603a99c63bdc6f7",
+        "5d01088f515aadbd42e1fcf209dfc0dc3efd54c5d3aa92552fbd897cecb0b5d2",
+        "6448012a33bca8ee873910a4fb6a93b181a01dd62e177fa41ed092708805503c",
+        "d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7",
+        "d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7"
+      ]
+    },
+    {
+      "id": "L2-6",
+      "projectId": "p7b-l2-L2-6",
+      "workspaceSha256": "5e29a3a38d7a67bc4ea9899ac45e1178b3fa708313abad9466f33afe31e35c47",
+      "selectedIds": [
+        "definition"
+      ],
+      "assetCount": 0,
+      "assetHashes": []
+    },
+    {
+      "id": "L2-7",
+      "projectId": "p7b-l2-L2-7",
+      "workspaceSha256": "85cca9d256eaef0ff832db0033caa463def74328ab665fab956d9b8fece90e3d",
+      "selectedIds": [
+        "delivery-厨房湿区方案准备"
+      ],
+      "assetCount": 0,
+      "assetHashes": []
+    },
+    {
+      "id": "L2-8",
+      "projectId": "p7b-l2-L2-8",
+      "workspaceSha256": "1132f810007111fc18fbfb1b696f6c9a15cdca2dee39381f3d55f58449df0dd4",
+      "selectedIds": [
+        "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+      ],
+      "assetCount": 28,
+      "assetHashes": [
+        "35c8fea122cd5003db1d47f0526a00da722c39b3205e83594b7a7f7c2d497681",
+        "6233c25d79fb185063ea81f17e0657de5e7cfb915a4bb37dca68f6252931024e",
+        "bc9ce0d9aaddc2969b22d7f4605d2516e524d07fe24932fd5e99b025c3888c25",
+        "e579129b12fd957e6cfa1fcfc017c0b1f42dc709a62bd114cce04dfcac67cc0a",
+        "33bd110be0235626d81524289f43e2c176149c7109030e259503cb8afe54c6f6",
+        "b7e83328a1c4572595616d0a5ba0930a37fc9216292c1524f27def0e59bcd3cc",
+        "7e95517771095dbb08f2d0f955d745b54435b08f6abcd82818f7da0de55340ab",
+        "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+        "d30fd3aa9a0bf57a0761f9ab152bafae9419935ed261f7cd984a6e16335aad99",
+        "6a93dafc2584937c3ce0a251ee9113ffd8ad7fa087a89c5492b88cef7f99a033",
+        "1cea2ee855a0c5fbd38f41f46b372e6f42a808832751d1ab869738f5675eb08e",
+        "0116b683e410406b943d14fc0660faa29e88aaaee11c96ffb90808c2f2d2f7c3",
+        "5955aff073ce861298c6e9020355cbebf6742b2b983d950bf140df24ba3d5625",
+        "4963978d8389b0c05aac34a5970da2ab9cb3ea1a32c70d96da0d63bea0bb1b15",
+        "ec5255f56abaa5ca91ca2b650e118b6519ecfc92693d915a60fa43625ab89276",
+        "9a5445d4f5350a489e29156a788d7e0a6e660df9f9e3d273c69a419e380769c7",
+        "c41bb5bb8015ca2daf5a5f7fba5115274042f12c4e7fc10423266250f9357a81",
+        "6359e9e78c696712130d70cbd19bd714098721237fed21d54028b3a6c4bb2c4d",
+        "418920e8ec67677282ed67e13725441f695b033209ec584a12ecc0302ad8fae8",
+        "906aa554bc8f1e0546ebd87e53c8e2eea14d307f80b553b99141ac4e4c4ff642",
+        "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+        "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+        "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+        "82421cf7d89becc22ca99d43d3edc60709df07a1803c5676c603a99c63bdc6f7",
+        "5d01088f515aadbd42e1fcf209dfc0dc3efd54c5d3aa92552fbd897cecb0b5d2",
+        "6448012a33bca8ee873910a4fb6a93b181a01dd62e177fa41ed092708805503c",
+        "d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7",
+        "d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7"
+      ]
+    }
+  ]
+}
