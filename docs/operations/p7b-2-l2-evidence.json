@@ -809,5 +809,533 @@
       "sha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
       "retainedInGit": false
     }
-  ]
+  ],
+  "currentBlocker": "P7B-2-D2",
+  "currentD1Status": "bounded product fix complete / actual Server-wire pass",
+  "d1FixAndLimitedRun": {
+    "d1FixSha": "cc2804c36b62bfcbbccbf68cc50259abaf326f80",
+    "d1Contract": "Only actual clause-boundary reference labels or explicit reported frames strip authority; quantified Research action remains explicit; quoted/reference commands and negation/conflict fail closed. No Server/tool ownership/schema/retry change. submit_memory_update exposure unchanged.",
+    "zeroPaidWire": {
+      "runId": "2026-10-04T13-26-08.655Z-21220-preflight",
+      "sourceSha": "91cfc348ad91dca63b308afdaf143c57fc8a465b",
+      "build": {
+        "schemaVersion": 2,
+        "sourceSha": "91cfc348ad91dca63b308afdaf143c57fc8a465b",
+        "sourceTreeSha256": "d93951db687b86c1c62e38c253620af92558e1aebc21f5d80d847219cce2efa9",
+        "sourceTreeFileCount": 1091,
+        "buildId": "HOMC8S7pBCFLxsn3xHp_f",
+        "artifactSha256": "86ebf3c22d9532c24e58790a863126c468890bb333d4158c0eb0049623a34f57",
+        "artifactFileCount": 856,
+        "isDirty": false,
+        "nodeVersion": "v22.23.2",
+        "builtAt": "2026-10-04T13:27:07.916Z"
+      },
+      "status": "preflight_complete / zero paid",
+      "serverTools": [
+        "read_selected_context",
+        "read_project_memory",
+        "read_stage_record",
+        "search_project_conversation",
+        "create_research_analysis",
+        "submit_memory_update",
+        "read_workspace_source"
+      ],
+      "productionBodySha256": "f844969ed72fe3bf6c98a7419eea92f1d0eea8f95a80953b3485e649583e5533",
+      "userGoalUnchanged": true,
+      "researchInstructionPreserved": true,
+      "providerRequests": 0
+    },
+    "realRun": {
+      "runId": "2026-10-04T13-27-43.142Z-29352",
+      "sourceSha": "91cfc348ad91dca63b308afdaf143c57fc8a465b",
+      "build": {
+        "schemaVersion": 2,
+        "sourceSha": "91cfc348ad91dca63b308afdaf143c57fc8a465b",
+        "sourceTreeSha256": "d93951db687b86c1c62e38c253620af92558e1aebc21f5d80d847219cce2efa9",
+        "sourceTreeFileCount": 1091,
+        "buildId": "IX-TNhJpPVx85GkNx5jfv",
+        "artifactSha256": "ea5dbd355c1b260336e195bd2dd0f4e19c20d8dc4a3b9473a20128b985fe2cd1",
+        "artifactFileCount": 864,
+        "isDirty": false,
+        "nodeVersion": "v22.23.2",
+        "builtAt": "2026-10-04T13:28:40.679Z"
+      },
+      "manifestSha256": "ff33d548da41d4cfd93fb44df059277c96b9392a3869ff3243cd57c449f039cc",
+      "fixtureBundleSha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+      "status": "interrupted / D2 / awaiting web review",
+      "hardBlocker": {
+        "id": "P7B-2-D2",
+        "reason": "Provider usage exceeded pre-send reservation",
+        "number": 1,
+        "usage": {
+          "input_tokens": 37777,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens": 606,
+          "output_tokens_details": {
+            "reasoning_tokens": 363
+          },
+          "total_tokens": 38383
+        },
+        "inputReserve": 32295,
+        "cap": 4096,
+        "ledger": {
+          "requests": 1,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "cachedInputTokens": 0,
+          "estimatedCny": 0,
+          "searchRequests": 0
+        }
+      }
+    },
+    "accounting": {
+      "classification": "P7B-2-D2 / invalid Eval input-token reservation bound",
+      "originalLedgerPreserved": true,
+      "rawResponsePreserved": true,
+      "actualProviderRequests": 1,
+      "providerReportedUsage": {
+        "input_tokens": 37777,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens": 606,
+        "output_tokens_details": {
+          "reasoning_tokens": 363
+        },
+        "total_tokens": 38383
+      },
+      "estimatedCostCny": 0.0122421,
+      "inputReserve": 32295,
+      "networkRetry": 0,
+      "finding": "Reported input usage exceeds the declared UTF-8 byte upper-bound reservation; actual total envelope was not exceeded. Guard rejected usage before adding it to raw ledger; totals here are independently recovered from original completed response.",
+      "trialClassification": "L2-1 trial 1 interrupted by harness blocker; no complete capability verdict. Raw executed/quality-pending label retained as history, not counted as completed baseline.",
+      "missingUsage": false,
+      "providerUsageAccountingExplanation": "unverified; no charge inflation or model tokenizer bug asserted",
+      "guardRepaired": false
+    },
+    "execution": {
+      "agentInteractionsAttempted": 1,
+      "completeQualityTrials": 0,
+      "remainingNotRun": 15,
+      "localRequestPosts": 2,
+      "paidProviderRequests": 1,
+      "journalReservedCallCount": 2,
+      "originalTextResultPublished": 1,
+      "originalTextResultAcknowledged": 1,
+      "localReadToolCalls": [
+        {
+          "callId": "sg_call_2a320835bf275_1",
+          "tool": "read_selected_context",
+          "status": "executed",
+          "objectIds": [
+            "notes"
+          ],
+          "revisionIds": [],
+          "persistence": "notRequired"
+        }
+      ],
+      "researchCandidateCreated": false,
+      "authoritativeObjectsAndDecisionsUnchanged": true,
+      "reloadObjectsDurable": true,
+      "realImageCalls": 0,
+      "realSearchCalls": 0,
+      "productionWrites": 0,
+      "automaticPaidRetry": 0,
+      "continuation": "Step 2 / distinct continuation identity durably prepared and posted to local route, but never sent upstream; not a replay or a duplicate paid execution"
+    },
+    "observations": {
+      "model": "gpt-6-sol",
+      "responseId": "resp_ft_9deae75fb8605caa947cd1a0808f916c",
+      "responseStatus": "completed",
+      "toolCalls": [
+        {
+          "callId": "sg_call_2a320835bf275_1",
+          "name": "read_selected_context",
+          "arguments": "{}"
+        }
+      ],
+      "outputText": [
+        " ",
+        "我先读取选中资料的完整上下文，核对两份关于折叠接缝清洁性的原始表述及其来源，再据此创建研究卡并提交本轮明确的长期避免项。"
+      ],
+      "uiOutcome": "partialSuccess",
+      "fulfillment": "notPerformed",
+      "interruptedInteractionLatencyMs": 27765,
+      "firstRequestLocalRoundTripMs": 21817
+    },
+    "slices": [
+      {
+        "id": "L2-1",
+        "checkpoint": "T1.2",
+        "dimensions": [
+          "Research → design",
+          "Evidence",
+          "User agency",
+          "Maturity fit"
+        ],
+        "trial1": "interrupted by Eval D2 after one real request",
+        "trial2": "not_run",
+        "quality": "ungraded / no complete capability verdict",
+        "firstAttempt": "not_measured",
+        "consistency": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "id": "L2-2",
+        "checkpoint": "T1.3",
+        "dimensions": [
+          "Evidence",
+          "Design judgment",
+          "User agency"
+        ],
+        "trial1": "not_run",
+        "trial2": "not_run",
+        "quality": "ungraded / no complete capability verdict",
+        "firstAttempt": "not_measured",
+        "consistency": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "id": "L2-3",
+        "checkpoint": "T1.5",
+        "dimensions": [
+          "Divergence",
+          "Design judgment",
+          "Evidence",
+          "User agency"
+        ],
+        "trial1": "not_run",
+        "trial2": "not_run",
+        "quality": "ungraded / no complete capability verdict",
+        "firstAttempt": "not_measured",
+        "consistency": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "id": "L2-4",
+        "checkpoint": "T1.6",
+        "dimensions": [
+          "Continuity",
+          "Definition",
+          "Critique",
+          "User agency"
+        ],
+        "trial1": "not_run",
+        "trial2": "not_run",
+        "quality": "ungraded / no complete capability verdict",
+        "firstAttempt": "not_measured",
+        "consistency": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "id": "L2-5",
+        "checkpoint": "T2.1",
+        "dimensions": [
+          "Project Truth",
+          "Continuity",
+          "Critique",
+          "Maturity fit"
+        ],
+        "trial1": "not_run",
+        "trial2": "not_run",
+        "quality": "ungraded / no complete capability verdict",
+        "firstAttempt": "not_measured",
+        "consistency": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "id": "L2-6",
+        "checkpoint": "T3.3/T3.4",
+        "dimensions": [
+          "Continuity",
+          "history reason retention",
+          "Project Truth",
+          "Evidence"
+        ],
+        "trial1": "not_run",
+        "trial2": "not_run",
+        "quality": "ungraded / no complete capability verdict",
+        "firstAttempt": "not_measured",
+        "consistency": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "id": "L2-7",
+        "checkpoint": "T4.2/T4.3",
+        "dimensions": [
+          "Delivery narrative",
+          "Evidence",
+          "Maturity fit",
+          "User agency"
+        ],
+        "trial1": "not_run",
+        "trial2": "not_run",
+        "quality": "ungraded / no complete capability verdict",
+        "firstAttempt": "not_measured",
+        "consistency": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "id": "L2-8",
+        "checkpoint": "T2.2/reference understanding",
+        "dimensions": [
+          "Visual preservation",
+          "Critique",
+          "Evidence",
+          "User agency"
+        ],
+        "trial1": "not_run",
+        "trial2": "not_run",
+        "quality": "ungraded / no complete capability verdict",
+        "firstAttempt": "not_measured",
+        "consistency": "not_measured",
+        "userRescue": 0
+      }
+    ],
+    "attribution": {
+      "primary": "Eval budget reservation/accounting harness; not D1 recurrence",
+      "context": "Actual source summary and production read_selected_context receipt delivered; later slices unverified",
+      "tool": "D1 grant present; only an authorized read executed",
+      "model": "One completed read-call response retained; no complete capability failure inference",
+      "adapter": "Original response/tool call reached production client trace and immutable escrow; no observed loss of that result",
+      "executor": "Read completed locally; no new object or authoritative mutation; continuation interrupted by guard"
+    },
+    "validation": {
+      "targetedAdjacentFiles": 7,
+      "targetedAdjacentTests": 206,
+      "wireGuardTests": 7,
+      "typecheck": "pass",
+      "targetedLint": "pass",
+      "cleanBuild": "pass",
+      "diffCheck": "pass",
+      "originalRawArtifactsVerified": 63,
+      "frozenManifestFixtureRubric": "unchanged",
+      "schemaMigrationRetryOwnership": "unchanged"
+    },
+    "productRepairOfD2": false,
+    "baselineComplete": false,
+    "programStatus": "validating",
+    "laterStages": "P7B-3/P7C/L4 not_started; no main merge",
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/active-trial.json",
+        "bytes": 61,
+        "sha256": "9710a87407d05b499f092534dab482c3ef6b9a8d02715bc57ec6672add29f804",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/build.log",
+        "bytes": 1475,
+        "sha256": "7df4a94c8b393ef4ae634a6b3ed060981330fe471133e465c60e0de9f7178dad",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/environment.json",
+        "bytes": 16029,
+        "sha256": "df5706926130a4b8d69eddbf9aac090bf733fb4aac9c83d0aabcfc8a99e07628",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/fixture-metadata.json",
+        "bytes": 6799,
+        "sha256": "365a5ba57da6ac7b5217612e1474a6bc9675dace6843d881bd0e9b142b176f47",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/fixtures.json",
+        "bytes": 3730591,
+        "sha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/L2-1-trial-1-after.json",
+        "bytes": 53582,
+        "sha256": "23aefe835b6c15743a38da7f37528cd40c082acc497e411c7cf83f6fa97b8d97",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/L2-1-trial-1-before.json",
+        "bytes": 8508,
+        "sha256": "993f8e1f40813d68bb47b1f2fbd0d21fb25ca3607aa3658e573b613332f365fc",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/L2-1-trial-1-journal.json",
+        "bytes": 678,
+        "sha256": "a7d140e0356c4288b09e31bc4c1bd92d1207d660eb8370dc31e6645690aa36c1",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/L2-1-trial-1-trial.json",
+        "bytes": 1458,
+        "sha256": "483bc5cdb4673bc0d0dd3e74303db54a292024eb1739cb3f7732911743ae4b19",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/L2-1-trial-1.png",
+        "bytes": 128272,
+        "sha256": "19c108e56ae0bc50d9225cbd2feb2269aa7d7631987a45412d0020d1a318e5a1",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/no-paid-preflight.json",
+        "bytes": 295,
+        "sha256": "b1f49a72d038a56e1e4277d955a5f106fe5f8d124779bcdfb55c7565034cd88e",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/no-paid-server-wire.json",
+        "bytes": 39559,
+        "sha256": "203944924374a7a4f2ca092def8e3f38745ada92b8790d48f4d1cb9361b04c2e",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/progress.json",
+        "bytes": 36921,
+        "sha256": "a95a4da39ed19848a1408ea1daf50620366c231d4573c52e725858cf91a2768a",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/run-manifest.json",
+        "bytes": 36208,
+        "sha256": "e6ce3965d94dcbef2efcae09d4a2f2e01afb314841daca85b354b6b0baa9c499",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/server.log",
+        "bytes": 155,
+        "sha256": "ce3370ec30ef9ab67348bd23a93439600a1e17e0c029b3be8b76ff78220a9749",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-26-08.655Z-21220-preflight/verdict.json",
+        "bytes": 37045,
+        "sha256": "ea3921428943762d13b737ffec714c4535e5deed95dd6acd27bbed52bf839272",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/active-trial.json",
+        "bytes": 61,
+        "sha256": "9710a87407d05b499f092534dab482c3ef6b9a8d02715bc57ec6672add29f804",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/build.log",
+        "bytes": 1474,
+        "sha256": "c6de7a456d36433c45bdbe15357517b560fc0291063ec26d5035c097d047dd98",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/environment.json",
+        "bytes": 16029,
+        "sha256": "b0f4aab41d9f5393a0439b55368f3330810620e67de63e8e0ddcdb370ae42373",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/fixture-metadata.json",
+        "bytes": 6799,
+        "sha256": "365a5ba57da6ac7b5217612e1474a6bc9675dace6843d881bd0e9b142b176f47",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/fixtures.json",
+        "bytes": 3730591,
+        "sha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/hard-blocker.json",
+        "bytes": 523,
+        "sha256": "24b1dc1c6c12d8218de15eed0da6997933f3e851d85238ef542b6a2491228869",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/L2-1-trial-1-after.json",
+        "bytes": 104167,
+        "sha256": "b8bce846ade339f4f89d660cae7064c12dd23cd798ae730f48c3e4ab90f255dc",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/L2-1-trial-1-before.json",
+        "bytes": 8508,
+        "sha256": "993f8e1f40813d68bb47b1f2fbd0d21fb25ca3607aa3658e573b613332f365fc",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/L2-1-trial-1-journal.json",
+        "bytes": 2029,
+        "sha256": "a9bf5e6adac40e8c22ac47dca0e7f8bcad8e7f352fb6210c8cb774303bb28d96",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/L2-1-trial-1-reopen.json",
+        "bytes": 31775,
+        "sha256": "c7ef48cdc15fda78903407a9340fa78c3af10ede5432f160e713e5b7002febfa",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/L2-1-trial-1-trial.json",
+        "bytes": 5491,
+        "sha256": "1577613c9336fb492284b0d3b55b89299534276a5d3e6cede8f27e2fdda38802",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/L2-1-trial-1.png",
+        "bytes": 139365,
+        "sha256": "b42458b9a7b9cf9ea28d295d4dcd28fc7d060374efc93e1bbca5496c0c88e95e",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/ledger.json",
+        "bytes": 131,
+        "sha256": "ee6204cbbeefbd078079cc1cc986c1586a92a56101b35872023e40b2f4bef33f",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/progress.json",
+        "bytes": 41378,
+        "sha256": "1674272c6a1f26e725221424ca5dfeed4c04048d41625d06a6659f890cd74430",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/run-manifest.json",
+        "bytes": 36188,
+        "sha256": "c7ee9b00e79bd16fe75ccb01ea482b187a328b6d68777a76252ebc2989200f88",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/server.log",
+        "bytes": 155,
+        "sha256": "6064629e8d2967742e83fb5b1933d8fe413506a86e576c9d4b96dbe7b9f68443",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/usage-reconciliation.json",
+        "bytes": 1115,
+        "sha256": "3ff53c21d894e0ed087c5352fbc7b5a7009bd1765f9d1fbbe6f0df23497575f3",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/verdict.json",
+        "bytes": 42115,
+        "sha256": "6378116f80be77b61bf92c3bc4b80495013cfe3480ff19e8086684dc12f1b78b",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/wire-001-request.json",
+        "bytes": 79195,
+        "sha256": "e73c010158e441263c4437128a59cb0a7092f5f598e5ffc5240e35411ac5b767",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-04T13-27-43.142Z-29352/wire-001-response.txt",
+        "bytes": 33253,
+        "sha256": "8edfc2aec51b698333ddc545e40d0194626850b46bef0071922f7f5fff6213e9",
+        "retainedInGit": false
+      }
+    ]
+  },
+  "historicalReceiptPolicy": "Predecessor fields describe the preserved original zero-paid D1 receipt; currentBlocker/currentD1Status/d1FixAndLimitedRun describe the latest run and paid totals"
 }
