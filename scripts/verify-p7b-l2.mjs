@@ -9,6 +9,7 @@ import { chromium } from "playwright";
 import { startIsolatedBoundary, baseUrl, ports } from "./p7b-l1b-runtime.mjs";
 import { readBuildProvenance } from "./build-provenance.mjs";
 import { buildL2Fixtures, hash } from "./p7b-l2-fixtures.mjs";
+import { writeL2CarryForward } from "./p7b-l2-carry-forward.mjs";
 const git=args=>execFileSync("git",args,{encoding:"utf8"}).trim(),root=process.cwd(),boundaryAudit=process.argv.includes("--boundary-audit"),preflight=process.argv.includes("--preflight")||boundaryAudit;
 if(git(["status","--porcelain","--untracked-files=no"]))throw Error("Clean tracked source required before L2");
 nextEnv.loadEnvConfig(root);const realKey=process.env.MORPHO_AI_API_KEY??process.env.AIJWS_API_KEY;
@@ -30,6 +31,7 @@ async function selectObject(page,seed,id,additive){
 const run={version:"p7b-l2-run-1",runId,sourceSha:git(["rev-parse","HEAD"]),manifestSha256:hash(manifestBytes),manifest,mode:preflight?"no-paid harness preflight":"real limited L2",trials:[],status:"invalid_run",hardBlocker:null,realImageCalls:0,productionWrites:0};
 let runtime,server,browser;
 try{
+  run.carryForward=await writeL2CarryForward(output,manifest);
   run.fixtureMetadata=await buildL2Fixtures(output);
   const lock=JSON.parse(await readFile("e2e/eval/p7b-l2-fixture-lock.json","utf8"));assert.equal(run.fixtureMetadata.bundleSha256,lock.bundleSha256,"Frozen fixture mismatch");
   const seeds=JSON.parse(await readFile(resolve(output,"fixtures.json"),"utf8"));
@@ -41,7 +43,7 @@ try{
   server=runtime.launch(process.execPath,[resolve("node_modules/next/dist/bin/next"),"start","-p",String(ports.app),"-H","127.0.0.1"],{
     ...runtime.appEnv,MORPHO_AI_BASE_URL:"https://api.aijws.com/v1",MORPHO_AI_API_KEY:realKey,MORPHO_AI_MODEL:manifest.provider.model,MORPHO_AI_REASONING_EFFORT:manifest.provider.reasoning,MORPHO_AI_WEB_SEARCH_ENABLED:"true",
     MORPHO_AI_SUPPORTS_PROMPT_CACHE_KEY:"false",MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION:"false",MORPHO_AI_PROMPT_CACHE_KEY_ENABLED:"false",MORPHO_L2_NO_PAID:preflight?"true":"false",
-    NODE_OPTIONS:`--require ${resolve("scripts/p7b-l2-wire-guard.cjs")}`,MORPHO_L2_MANIFEST:resolve("e2e/eval/p7b-l2-manifest.json"),MORPHO_L2_OUTPUT:output,
+    NODE_OPTIONS:`--require ${resolve("scripts/p7b-l2-wire-guard.cjs")}`,MORPHO_L2_MANIFEST:resolve("e2e/eval/p7b-l2-manifest.json"),MORPHO_L2_OUTPUT:output,MORPHO_L2_CARRY_FORWARD:resolve(output,"carry-forward.json"),
     MORPHO_BUILD_SOURCE_SHA:run.sourceSha,MORPHO_BUILD_ID:run.build.buildId,MORPHO_BUILD_SOURCE_TREE_SHA256:run.build.sourceTreeSha256,MORPHO_BUILD_ARTIFACT_SHA256:run.build.artifactSha256,MORPHO_BUILD_IS_DIRTY:"false"
   },root);await runtime.wait(`${baseUrl}/login`,server);
   let cookies=[];const auth=createServerClient(runtime.origin,runtime.keys.anon,{cookies:{getAll:()=>cookies,setAll:u=>{cookies=u;}}});
@@ -118,12 +120,12 @@ try{
         assert.ok(contract.activities.some(a=>a.kind==="research"&&a.instruction.includes("资料创建一张研究分析卡")),"D1 instruction incorrectly stripped");
         row.serverWireVerdict="pass / D1 restored / zero paid";
       }
-    }catch(error){row.status="hard_blocker";row.error=error.message;run.hardBlocker={id:"P7B-2-D2",trial:key,reason:error.message};throw error;}
+    }catch(error){row.status="hard_blocker";row.error=error.message;run.hardBlocker={id:"P7B-2-D3",trial:key,reason:error.message};throw error;}
     finally{row.pageErrors=errors;await save(`${key}-trial.json`,row);await save("progress.json",run);await context.close();}
     try{run.hardBlocker=JSON.parse(await readFile(resolve(output,"hard-blocker.json"),"utf8"));throw Error(run.hardBlocker.reason);}catch(e){if(e.code!=="ENOENT")throw e;}
   }
   run.status=preflight?"preflight_complete / zero paid":"limited L2 execution complete / quality grading pending";
-}catch(error){run.status="hard_blocker / stopped";run.hardBlocker??={id:"P7B-2-D2",reason:error.message};}
+}catch(error){run.status="hard_blocker / stopped";run.hardBlocker??={id:"P7B-2-D3",reason:error.message};}
 finally{
   if(browser)await browser.close();if(server)await writeFile(resolve(output,"server.log"),server.safeLog.replaceAll(realKey,"[redacted]"));if(runtime)await runtime.stop();
   try{run.ledger=JSON.parse(await readFile(resolve(output,"ledger.json"),"utf8"));}catch{run.ledger={requests:0,inputTokens:0,outputTokens:0,estimatedCny:0};}
