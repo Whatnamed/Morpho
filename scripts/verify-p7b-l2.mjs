@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 import { startIsolatedBoundary, baseUrl, ports } from "./p7b-l1b-runtime.mjs";
 import { readBuildProvenance } from "./build-provenance.mjs";
 import { buildL2Fixtures, hash } from "./p7b-l2-fixtures.mjs";
-const git=args=>execFileSync("git",args,{encoding:"utf8"}).trim(),root=process.cwd(),preflight=process.argv.includes("--preflight");
+const git=args=>execFileSync("git",args,{encoding:"utf8"}).trim(),root=process.cwd(),boundaryAudit=process.argv.includes("--boundary-audit"),preflight=process.argv.includes("--preflight")||boundaryAudit;
 if(git(["status","--porcelain","--untracked-files=no"]))throw Error("Clean tracked source required before L2");
 nextEnv.loadEnvConfig(root);const realKey=process.env.MORPHO_AI_API_KEY??process.env.AIJWS_API_KEY;
 if(!realKey)throw Error("Missing real Provider credential; no paid request sent");
@@ -48,12 +48,12 @@ try{
   const signed=await auth.auth.signUp({email:`l2-${randomUUID()}@example.test`,password:randomUUID()+"Aa1!"});if(signed.error||!signed.data.session)throw Error("Isolated Auth unavailable");
   const userId=signed.data.user.id;await runtime.db.query("update public.app_user_access set status='active' where user_id=$1",[userId]);
   browser=await chromium.launch({headless:true});
-  for(const slice of manifest.slices)for(const trial of (preflight?[1]:[1,2])){
+  for(const slice of (boundaryAudit?manifest.slices.slice(0,1):manifest.slices))for(const trial of (preflight?[1]:[1,2])){
     const key=`${slice.id}-trial-${trial}`,seed=seeds.find(s=>s.sliceId===slice.id),row={key,slice:slice.id,trial,status:"running",userRescue:0};run.trials.push(row);await save("active-trial.json",{key,slice:slice.id,trial});
     const context=await browser.newContext({viewport:{width:1440,height:1000}});await context.addCookies(cookies.map(c=>({...c,url:baseUrl,sameSite:"Lax"})));
     const page=await context.newPage(),errors=[];page.on("pageerror",e=>errors.push(e.message));
     await context.route("**/*",route=>{const u=new URL(route.request().url());return ["127.0.0.1","localhost","[::1]"].includes(u.hostname)||["data:","blob:"].includes(u.protocol)?route.continue():route.abort("blockedbyclient");});
-    if(preflight){await context.route("**/api/ai/agent/turns/*/requests",r=>r.abort("blockedbyclient"));await context.route("**/api/ai/agent/turns/*/actions/compaction",r=>r.abort("blockedbyclient"));}
+    if(preflight&&!boundaryAudit){await context.route("**/api/ai/agent/turns/*/requests",r=>r.abort("blockedbyclient"));await context.route("**/api/ai/agent/turns/*/actions/compaction",r=>r.abort("blockedbyclient"));}
     await page.addInitScript(async seed=>{
       if(!localStorage.getItem(seed.workspaceKey)){localStorage.setItem(seed.catalogKey,seed.catalogValue);localStorage.setItem(seed.workspaceKey,seed.workspaceValue);}
       window.__l2Ready=false;window.__l2Wire=[];
@@ -72,9 +72,15 @@ try{
       const notice=page.locator(".workspace-banner").getByRole("button",{name:"知道了",exact:true});if(await notice.isVisible())await notice.click();
       for(const [i,id]of seed.selectedIds.entries())await selectObject(page,seed,id,i>0);
       const before=await page.evaluate(k=>JSON.parse(localStorage.getItem(k)),seed.workspaceKey);await save(`${key}-before.json`,before);
-      if(slice.fixture==="delivery")await page.locator('[aria-label="交付准备"]').getByRole("button",{name:"生成本节说明草稿",exact:true}).click();else await page.locator(".ai-panel textarea").fill(slice.prompt);
+      if(slice.fixture==="delivery"){
+        await page.getByRole("button",{name:"交付准备",exact:true}).click();
+        const panel=page.locator('[aria-label="交付准备"]'),delivery=Object.values(before.objects).find(o=>o.type==="delivery");
+        await panel.locator(".delivery-package-row").filter({hasText:delivery.title}).click();
+        await panel.locator(".delivery-section-tab").filter({hasText:delivery.sections[0].title}).click();
+        await panel.getByRole("button",{name:"生成本节说明草稿",exact:true}).click();
+      }else await page.locator(".ai-panel textarea").fill(slice.prompt);
       row.actualUserPrompt=await page.locator(".ai-panel textarea").inputValue();row.startedAt=new Date().toISOString();await page.locator('[aria-label="发送"]').click();
-      if(preflight)await page.waitForFunction(()=>window.__l2Wire.some(r=>r.url.endsWith("/requests")||r.url.endsWith("/actions/compaction")),null,{timeout:30_000});
+      if(preflight)await page.waitForFunction(audit=>window.__l2Wire.some(r=>(r.url.endsWith("/requests")||r.url.endsWith("/actions/compaction"))&&(!audit||r.status)),boundaryAudit,{timeout:30_000});
       else await page.waitForFunction(({key,ids})=>{const ws=JSON.parse(localStorage.getItem(key));return ws.ai.messages.some(m=>m.role==="assistant"&&!ids.includes(m.id)&&m.agentTurnOutcome)&&!document.querySelector('[aria-label="停止当前任务"]');},{key:seed.workspaceKey,ids:before.ai.messages.map(m=>m.id)},{timeout:300_000});
       await page.evaluate(async()=>{await Promise.all(window.__l2Wire.map(r=>r.capture).filter(Boolean));});
       const facts=await page.evaluate(k=>({workspace:JSON.parse(localStorage.getItem(k)),wire:window.__l2Wire.map(({capture,...r})=>r),recoveries:Object.entries(localStorage).filter(([key])=>key.startsWith("morpho.agent-runtime-a-plus.recovery.v2")).map(([,v])=>JSON.parse(v)),ackOutbox:Object.entries(localStorage).filter(([key])=>key.startsWith("morpho.result-ack.v1.")).map(([key,value])=>({key,value}))}),seed.workspaceKey);
@@ -86,7 +92,7 @@ try{
         assert.deepEqual(facts.workspace.assets,before.assets,"Unexpected Image/asset mutation");
         const stable=o=>{const v=structuredClone(o);if(v.type==="image"&&v.generation)delete v.generation.observations;return v;};
         for(const [id,o]of Object.entries(before.objects))if(o.type!=="delivery")assert.deepEqual(stable(facts.workspace.objects[id]),stable(o),`Unauthorized object mutation ${id}`);
-        assert.equal(facts.workspace.workingState.currentPrimaryDirectionId,before.workingState.currentPrimaryDirectionId,"Unauthorized primary change");assert.equal(facts.workspace.workingState.currentDesignDefinitionId,before.workingState.currentDesignDefinitionId,"Unauthorized Definition change");
+        assert.equal(facts.workspace.workingState.primaryDirectionId,before.workingState.primaryDirectionId,"Unauthorized primary change");assert.equal(facts.workspace.workingState.currentDesignDefinitionId,before.workingState.currentDesignDefinitionId,"Unauthorized Definition change");
         await page.reload();await page.waitForFunction(()=>window.__l2Ready,null,{timeout:45_000});const reopened=await page.evaluate(k=>JSON.parse(localStorage.getItem(k)),seed.workspaceKey);await save(`${key}-reopen.json`,reopened);assert.deepEqual(reopened.objects,facts.workspace.objects,"Durable object reopen mismatch");assert.deepEqual(reopened.deliverySectionDrafts,facts.workspace.deliverySectionDrafts,"Draft persistence mismatch");
         const wires=[];for(const f of(await readdir(output)).filter(n=>/^wire-\d+-request.json$/.test(n))){const w=JSON.parse(await readFile(resolve(output,f),"utf8"));if(w.key===key)wires.push(w);}assert.ok(wires.length,"Missing final server input");
         if(slice.id==="L2-8")assert.ok(wires.some(w=>JSON.stringify(w.finalWire.input).includes("data:image/")),"Required real reference pixels omitted");
@@ -102,6 +108,7 @@ try{
         row.serverWireRequests=wires.map(w=>w.number);row.contractVerdict="pass";
       }
       row.status=preflight?"preflight_pass":"executed / quality grading pending";await page.screenshot({path:resolve(output,`${key}.png`),fullPage:true});
+      if(boundaryAudit){run.hardBlocker=JSON.parse(await readFile(resolve(output,"hard-blocker.json"),"utf8"));throw Error(run.hardBlocker.reason);}
     }catch(error){row.status="hard_blocker";row.error=error.message;run.hardBlocker={id:"P7B-2-D1",trial:key,reason:error.message};throw error;}
     finally{row.pageErrors=errors;await save(`${key}-trial.json`,row);await save("progress.json",run);await context.close();}
     try{run.hardBlocker=JSON.parse(await readFile(resolve(output,"hard-blocker.json"),"utf8"));throw Error(run.hardBlocker.reason);}catch(e){if(e.code!=="ENOENT")throw e;}

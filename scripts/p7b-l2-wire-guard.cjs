@@ -4,7 +4,7 @@ const manifest=JSON.parse(fs.readFileSync(process.env.MORPHO_L2_MANIFEST,"utf8")
 const root=path.resolve(process.env.MORPHO_L2_OUTPUT);
 const sha=b=>crypto.createHash("sha256").update(b).digest("hex");
 const native=globalThis.fetch;
-let pending=Promise.resolve(),ledger={requests:0,inputTokens:0,outputTokens:0,cachedInputTokens:0,estimatedCny:0,searchRequests:0};
+let pending=Promise.resolve(),entry=Promise.resolve(),ledger={requests:0,inputTokens:0,outputTokens:0,cachedInputTokens:0,estimatedCny:0,searchRequests:0};
 const write=(name,value)=>fs.writeFileSync(path.join(root,name),JSON.stringify(value,null,2)+"\n");
 const hard=(reason,details={})=>{write("hard-blocker.json",{id:"P7B-2-D1",reason,...details,ledger});throw new Error("L2 hard stop: "+reason);};
 function reserveInput(body){
@@ -33,7 +33,15 @@ globalThis.fetch=async(input,init)=>{
     return new Response(text,{status:unavailable?404:200,headers:{"Content-Type":"text/plain"}});
   }
   if(url.href!==manifest.provider.endpoint||(init?.method??"GET")!=="POST")return hard("Unexpected external route / real Image or search request",{endpoint:url.origin+url.pathname});
-  if(process.env.MORPHO_L2_NO_PAID==="true")return hard("No-paid preflight egress blocked");
+  if(process.env.MORPHO_L2_NO_PAID==="true"){
+    const active=JSON.parse(fs.readFileSync(path.join(root,"active-trial.json"),"utf8"));
+    const sourceBody=String(init.body),body=JSON.parse(sourceBody);
+    write("no-paid-server-wire.json",{...active,endpoint:url.href,productionBodySha256:sha(sourceBody),productionBody:body,networkSent:false});
+    if(active.slice==="L2-1"&&!(body.tools??[]).some(t=>t.name==="create_research_analysis"))return hard("Required create_research_analysis omitted for frozen L2-1 explicit Research candidate request",{trial:active.key,observedTools:(body.tools??[]).map(t=>t.name),networkSent:false});
+    return hard("No-paid preflight egress blocked");
+  }
+  const prior=entry;let release;entry=new Promise(resolve=>{release=resolve;});await prior;
+  try{
   await pending;
   if(fs.existsSync(path.join(root,"hard-blocker.json")))throw new Error("L2 run already stopped");
   const active=JSON.parse(fs.readFileSync(path.join(root,"active-trial.json"),"utf8"));
@@ -67,6 +75,7 @@ globalThis.fetch=async(input,init)=>{
     write(prefix+"-response.json",{...active,number,status:response.status,contentType:response.headers.get("Content-Type"),latencyMs:Date.now()-started,rawSha256:sha(raw),rawBytes:Buffer.byteLength(raw),usage,costCnyEstimate:((usage.input_tokens-cached)*0.3+cached*0.03+usage.output_tokens*1.5)/1e6});write("ledger.json",ledger);
   })().catch(error=>{if(!fs.existsSync(path.join(root,"hard-blocker.json")))write("hard-blocker.json",{id:"P7B-2-D1",reason:"Final server response capture failed",number,error:error.message,ledger});throw error;});
   // Prevent unhandled rejection, preserve it for the next pre-send barrier/run auditor.
-  pending.catch(()=>{});
+  pending.finally(release).catch(()=>{});
   return response;
+  }catch(error){release();throw error;}
 };
