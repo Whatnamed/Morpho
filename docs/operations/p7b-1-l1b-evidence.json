@@ -576,7 +576,7 @@
   ],
   "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main.",
   "receiptScope": "Original pre-fix blocker receipt preserved above; current bounded D1 fix is recorded in postFix.",
-  "currentP7b1Status": "validating / D1-D3 web accepted; A-D accepted receipts retained; E fail at P7B-1-D4, F-G not_run; awaiting bounded web review",
+  "currentP7b1Status": "validating / D1-D3 web accepted; A-D accepted receipts retained; D4 bounded fix complete awaiting web review; E pass, F-G not_run; P7B-1 overall not passed",
   "postFix": {
     "id": "P7B-1-D1",
     "status": "closed / bounded A+B pass; awaiting web review",
@@ -2666,5 +2666,373 @@
       "Local Auth has Windows single-listener compatibility shim"
     ],
     "stop": "P7 validating; P7B-1 overall not passed; D4 awaiting web review/bounded scope; F-G not_run; no P7B-2/P7B-3/P7C/L4; no main merge."
+  },
+  "d4Fix": {
+    "date": "2026-10-04",
+    "reviewedBaseline": "19144ae3610859bbb04ec905449e632ace88e7b9",
+    "mainAtFetch": "f852578f0d1303ff074f66db1e3919c3218a5561",
+    "fixSha": "7c3e4c2d1a37b29b20aa38bb94b0b7c944308390",
+    "reviewStatus": "bounded fix complete / awaiting web review",
+    "productFiles": [
+      "src/features/workspace/agentTurnLifecycle.ts",
+      "src/features/workspace/agentTurnCoordinator.ts",
+      "src/features/workspace/agentTurnRunner.ts"
+    ],
+    "rootCause": "Exact original escrow output was denied from cancelling, leaving stale providerRunning; cancellation also bypassed the accepted final Text durability barrier.",
+    "contract": {
+      "originalIdentityGuardsRetained": true,
+      "cancellationPhaseRetained": true,
+      "authoritativeExternalSuccessRetained": true,
+      "canonicalCancellationFact": "Freeze reason and Provider effect presence before cancellation; late delivery is not a resumed local effect. Prior Tool/compaction effects keep partial semantics.",
+      "lateToolCalls": "Original envelope retained, never consumed; no Tool batch, confirmation, continuation or new request.",
+      "ackOrder": [
+        "exact envelope in Recovery",
+        "final cancelled/result Workspace durable",
+        "canonical local persistence/finalization",
+        "Recovery flush",
+        "same result ACK",
+        "Recovery clear"
+      ],
+      "failedSave": "ACK 0; canonical recovering resumes cancelling and retains original envelope/external truth. Reload queries original Journal and retries local save only.",
+      "schemaMigrationRecordVersionRetryPolicyChanges": false
+    },
+    "runIdentity": {
+      "runId": "2026-10-04T09-21-57.249Z-31764",
+      "sourceSha": "7c3e4c2d1a37b29b20aa38bb94b0b7c944308390",
+      "build": {
+        "schemaVersion": 2,
+        "sourceSha": "7c3e4c2d1a37b29b20aa38bb94b0b7c944308390",
+        "sourceTreeSha256": "569a9a08c6d5354e6163d091e0726e878ad0ad33bdeef0905d947780b4dc03b9",
+        "sourceTreeFileCount": 1079,
+        "buildId": "LyX0TsD0-NTKR4lUlccg9",
+        "artifactSha256": "1bedd7697f4298ed68f720462b6bd86d1817d1c41b1bdb7263a6966a351b0005",
+        "artifactFileCount": 848,
+        "isDirty": false,
+        "nodeVersion": "v22.23.2",
+        "builtAt": "2026-10-04T09:22:25.771Z"
+      },
+      "contractVersion": "p7b-l1b-boundary-1",
+      "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f"
+    },
+    "environment": {
+      "databaseIdentity": "acb3bb65-79ec-4317-9a33-bbaee67317fa",
+      "postgresVersion": "PostgreSQL 17.10 on x86_64-windows, compiled by msvc-19.44.35226, 64-bit",
+      "authVersion": "v2.197.0",
+      "postgrestVersion": "v16.4",
+      "migrationHashesUnchanged": true,
+      "remoteDatabaseAccess": false,
+      "authPlatformShim": "cmd/serve_cmd.go: single net.ListenConfig; Unix SO_REUSEPORT only removed, no auth logic changes"
+    },
+    "verdict": "E bounded pass / overall inconclusive",
+    "scenarioVerdicts": {
+      "E": "pass",
+      "F": "not_run",
+      "G": "not_run"
+    },
+    "acceptedADReceipts": "retained; not re-audited or rerun",
+    "E": {
+      "confirmedCancellation": {
+        "name": "running-cancelled",
+        "seed": {
+          "projectId": "p7b-cancel-running-cancelled",
+          "sha256": "5fbca8d8d0a13c01bdbf237246c39289b76358c8fe3b19f15861255bd661a477"
+        },
+        "checkpoint": "final",
+        "identity": {
+          "serverTurnId": "dd9f5ed2-2159-47e3-82b8-85da6adaae1e",
+          "localProjectId": "p7b-cancel-running-cancelled",
+          "requestId": "a7c740ca-fbaf-4037-b163-00313e676eb8",
+          "stepSequence": 1,
+          "effectId": "effect:c2e6d38a568566e2b211dc21fc19779f7589445300af6749f359c4ab3c86db5e",
+          "attemptId": "d842d375-eea5-4fb4-9a95-f533f49058e1",
+          "requestDigest": "694bc0755eb55e4d171503e5c482c1bff807b725d90cb6c183d2a52d92e511af"
+        },
+        "wrongIdentities": "pass / current Journal unchanged",
+        "trustedLateObservation": {
+          "status": 200,
+          "data": {
+            "snapshot": {
+              "kind": "text",
+              "taskId": null,
+              "version": 1,
+              "effectId": "effect:c2e6d38a568566e2b211dc21fc19779f7589445300af6749f359c4ab3c86db5e",
+              "attemptId": "d842d375-eea5-4fb4-9a95-f533f49058e1",
+              "namespace": {
+                "baseUrl": "http://127.0.0.1:55435/provider/v1",
+                "provider": "openai-compatible",
+                "credentialScope": "6c52e68a2ce8526c8f08fa128a6691d7c51e1fc26929d4f5a1661083a0958970"
+              },
+              "responseId": "resp-p7b-local",
+              "requestDigest": "694bc0755eb55e4d171503e5c482c1bff807b725d90cb6c183d2a52d92e511af",
+              "executionState": "cancelled",
+              "cancelRequestedAt": "2026-10-04T17:23:03.836898+08:00",
+              "localAbortObservedAt": "2026-10-04T17:23:03.85786+08:00"
+            },
+            "executionGranted": false
+          },
+          "source": "Controlled Provider cancellation receipt / test-owned privileged real RPC observer"
+        },
+        "terminal": {
+          "serverStatus": "externally_cancelled",
+          "effectState": "cancelled",
+          "cancelRequestedAt": "2026-10-04T09:23:03.836Z",
+          "localAbortObservedAt": "2026-10-04T09:23:03.857Z",
+          "canonicalOutcome": {
+            "kind": "cancelled",
+            "reasons": [
+              "用户停止了当前 AI 任务。",
+              "externalExecutionCancelled"
+            ]
+          },
+          "assistantOutcome": "cancelledDuringProvider",
+          "providerExecutions": 1,
+          "requestPosts": 1,
+          "ackPosts": 0,
+          "recoveryCleared": true
+        },
+        "verdict": "pass",
+        "pageErrors": [
+          "Failed to fetch",
+          "Failed to fetch"
+        ]
+      },
+      "originalLateSuccess": {
+        "name": "running-late-success",
+        "seed": {
+          "projectId": "p7b-cancel-running-late-success",
+          "sha256": "0d8c8ce9c57dad6611d7f0c053747ac477d4eea126b38bdfe6efc0a40813e79d"
+        },
+        "checkpoint": "final",
+        "identity": {
+          "serverTurnId": "cf4be964-dbca-4824-873a-3eebcd88914f",
+          "localProjectId": "p7b-cancel-running-late-success",
+          "requestId": "c0c6ded2-e4db-4aa0-b221-797258643e52",
+          "stepSequence": 1,
+          "effectId": "effect:91290423326cbc015982990d72424ca4880738d0ece3ec37e5855dad385127ed",
+          "attemptId": "f7c16a2a-3025-4600-b044-2622d9a5c48b",
+          "requestDigest": "ebb8916e25e845dbe8ab88182c1295bfe7b9df7fc6a99cfac8a9e326e1192d2a"
+        },
+        "wrongIdentities": "pass / current Journal unchanged",
+        "lateClientFacts": {
+          "faults": [],
+          "phases": [],
+          "durableMessages": [
+            {
+              "role": "user",
+              "body": "请只用简短文字回复，不调用工具。",
+              "outcome": "cancelledDuringProvider"
+            },
+            {
+              "role": "assistant",
+              "body": "P7B controlled result",
+              "status": "cancelled",
+              "outcome": "cancelledDuringProvider"
+            }
+          ]
+        },
+        "durability": {
+          "workspaceBeforeAck": true,
+          "recoveryBeforeAck": true,
+          "canonicalCancelled": true,
+          "lateTextPreserved": true,
+          "toolBatches": 0,
+          "confirmations": 0,
+          "continuations": 0,
+          "sameResultAck": true
+        },
+        "lateResult": {
+          "manifest": {
+            "kind": "text",
+            "sha256": "6dbbe495a9cad4d3a626572c1ad0ba6df6b29b66df9359565f2d5efcb9918dd8",
+            "version": 1,
+            "effectId": "effect:91290423326cbc015982990d72424ca4880738d0ece3ec37e5855dad385127ed",
+            "mimeType": "application/json",
+            "resultId": "result:984f75a1fbeafbdfe61ab4cbcbbd574ac7ec5d1920303b1d43e4a53ac201cf2c",
+            "byteLength": 195,
+            "chunkCount": 1
+          },
+          "binding": {
+            "claims": [],
+            "status": "externallyCompleted",
+            "requestId": "c0c6ded2-e4db-4aa0-b221-797258643e52",
+            "actorUserId": "c7f7c1f9-40f1-4456-8d13-f7552eff7cc6",
+            "serverTurnId": "cf4be964-dbca-4824-873a-3eebcd88914f",
+            "stepSequence": 1,
+            "localProjectId": "p7b-cancel-running-late-success",
+            "requestContentSha256": "397fab1c4f0d9617a2951b0f174f3016d68355f7ca248d863954ed1b2ed80440"
+          },
+          "acknowledgedAt": "2026-10-04T09:23:38.139Z"
+        },
+        "terminal": {
+          "serverStatus": "externally_completed",
+          "effectState": "succeeded",
+          "cancelRequestedAt": "2026-10-04T09:23:36.345Z",
+          "localAbortObservedAt": null,
+          "canonicalOutcome": {
+            "kind": "cancelled",
+            "reasons": [
+              "用户停止了当前 AI 任务。"
+            ]
+          },
+          "assistantOutcome": "cancelledDuringProvider",
+          "providerExecutions": 1,
+          "requestPosts": 1,
+          "ackPosts": 1,
+          "recoveryCleared": true
+        },
+        "verdict": "pass",
+        "pageErrors": [
+          "Failed to fetch",
+          "Failed to fetch"
+        ]
+      }
+    },
+    "firstDivergence": null,
+    "gates": {
+      "focusedAdjacent": {
+        "files": 14,
+        "tests": 477,
+        "result": "pass"
+      },
+      "typecheck": "pass",
+      "lint": "pass",
+      "cleanProductionBuild": "pass / strict isolated executed source",
+      "modifiedHarnessSyntax": "pass",
+      "diffCheck": "pass",
+      "fullUnitFullChromiumSqlP7A": "not_run / bounded task; no schema changes",
+      "frozenL1bAndP7AFilesAndLock": "unchanged"
+    },
+    "deterministicRegressions": [
+      "exact cancelling late result and authoritative completion",
+      "wrong request/sequence/Turn/project rejection",
+      "late Tools and Tool-only envelope suppress downstream work",
+      "cancelled conversation durable and Recovery flushed before exact ACK",
+      "failed late save, failed reload then successful reload reuse original result without another execution",
+      "confirmed/no-result cancellation",
+      "prior committed Tool effect partial outcome",
+      "real Recovery payload-store roundtrip",
+      "D1 replay/content conflict",
+      "D2 final Text durability",
+      "D3 explicit unknown/no retry"
+    ],
+    "realLateToolEnvelope": "not added to real E trajectory; deterministic Runner and payload-store tests cover actual late Tool envelopes",
+    "providerExecutions": {
+      "controlledLocalStubTotal": 2,
+      "perIndependentRequest": 1,
+      "clientRequestPostsPerCase": 1,
+      "replacementExecutionGrants": 0
+    },
+    "paidProviderSearchImageCalls": 0,
+    "paidCost": 0,
+    "productionDataSchemaWrites": 0,
+    "historicalEvidence": {
+      "priorFieldsExceptCurrentStatus": "unchanged",
+      "verifiedPriorArtifactHashesAndSizes": 158,
+      "meaningfulD4": "2026-10-04T08-51-01.446Z-6776",
+      "diagnosticD4": "2026-10-04T08-47-50.176Z-23476",
+      "rawVerdictsReclassified": false
+    },
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-cancelled-cancel-observed.json",
+        "sha256": "2fa0084c5e6bc715b7f6e18fc0a4d127081e2fc45b9245243fe70ec268437a0f",
+        "byteLength": 50400
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-cancelled-final.json",
+        "sha256": "d136e042c4eaadfbc42655f9d53e8a115606e0b3aa096845acedafc05fdfe497",
+        "byteLength": 76244
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-cancelled-final.png",
+        "sha256": "f280c0c27ed487f8d1415aa7351644a57c653f7d908daea0b44942248637c4a0",
+        "byteLength": 77654
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-cancelled-running.json",
+        "sha256": "ec371928048859de40a324c87c835f4694421430a29fbbacbd43ada70fa292cc",
+        "byteLength": 45663
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-cancelled-terminal.json",
+        "sha256": "d136e042c4eaadfbc42655f9d53e8a115606e0b3aa096845acedafc05fdfe497",
+        "byteLength": 76244
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-late-success-cancel-observed.json",
+        "sha256": "4f3c98c9bda4b57bc7d9dbf99009f1b5ec1183c3d3bed6ff49342721c6137db7",
+        "byteLength": 52731
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-late-success-durable-intent.json",
+        "sha256": "3c91bf395bb1bc1c390a5b8aac526366d1eb1532cff8c78ae2afd7bba170168e",
+        "byteLength": 50250
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-late-success-final.json",
+        "sha256": "7017ad823c9818930cf79c20d63831921108cea1c2dcb2788f4df86414ec1ccf",
+        "byteLength": 107488
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-late-success-final.png",
+        "sha256": "f3fb2cb5c39aa7c796a70b561685145508c1cd5482766e84decb995a3ccea484",
+        "byteLength": 90561
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-late-success-late-client-reconciliation.json",
+        "sha256": "7017ad823c9818930cf79c20d63831921108cea1c2dcb2788f4df86414ec1ccf",
+        "byteLength": 107488
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-late-success-late-success-before-cancel-response.json",
+        "sha256": "2d466ea682605b985e1da800cae6e4ceb8eab72e14ef5b06831df17be3ac390c",
+        "byteLength": 52266
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-late-success-running.json",
+        "sha256": "178ae8c1d708897bc34c72cfccbf02eb7eb013ddfbbd37989126844f2c15ed5f",
+        "byteLength": 46169
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/E-running-late-success-terminal.json",
+        "sha256": "7017ad823c9818930cf79c20d63831921108cea1c2dcb2788f4df86414ec1ccf",
+        "byteLength": 107488
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/build.log",
+        "sha256": "216466f92dbd6c9319fa1133f6b7b1cc6555af7fc94ffc77826c4201f7995f0f",
+        "byteLength": 1476
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/environment.json",
+        "sha256": "9c7e4b7f355da790d1c7f9cdd83d73476e1ea2ccbced1cf14748ac4f539363cd",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/scenario-E.json",
+        "sha256": "046f8adf086166c87bfe5ee2cefa4038866b70500205e8ca324b92ee396d8ee4",
+        "byteLength": 14689
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/server.log",
+        "sha256": "a85bdb0850ee57290b8095faafdc4918927ba3554199d911df106e4a397c72e7",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T09-21-57.249Z-31764/verdict.json",
+        "sha256": "f183cb1c07c31ca6213b4f45e993642f40ada4d23e488f16844714669d23d724",
+        "byteLength": 36599
+      }
+    ],
+    "rawArtifactsLocation": "output/playwright/p7b-l1b/",
+    "servicesStopped": true,
+    "limits": [
+      "Remote migration/schema state unverified: authentication failures",
+      "No production Journal fault injection",
+      "No L2/L3 or L4",
+      "No Kong/hosted Supabase/Vercel path",
+      "Local Auth has Windows single-listener compatibility shim"
+    ],
+    "stop": "P7 validating; D4 awaiting web review; E pass; F/G not_run; P7B-1 overall not passed; no main merge."
   }
 }

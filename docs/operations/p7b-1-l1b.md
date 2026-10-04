@@ -1,6 +1,6 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：P7B-1-D1 / D2 / D3 web ACCEPTED / closed；A–D accepted pass；D4 bounded fix 已实现，E rerun 待执行。**
+**当前：P7B-1-D1 / D2 / D3 web ACCEPTED / closed；A–D accepted pass；D4 bounded fix complete / awaiting web review；E pass。**
 P7 继续 `validating`；F/G `not_run`；P7B-1 overall 未 PASS；
 P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main；以下原 D4 blocker / diagnostic receipts 保持历史事实。
 
@@ -14,6 +14,31 @@ P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main；以下原 D4 blocker / dia
 flush Recovery，最后 ACK 同一 result。保存失败保留 cancellation-owned recovery 与原 envelope；reload
 只查询原 Journal / 重试本地保存，不分配新 request，也不重新执行 Provider。
 没有 SQL、migration、Journal/result schema、record version 或 retry-policy 变更。
+
+Fix / clean executed source：**`7c3e4c2d1a37b29b20aa38bb94b0b7c944308390`**。
+产品文件仅 `agentTurnLifecycle.ts`、`agentTurnCoordinator.ts`、`agentTurnRunner.ts`；
+focused/adjacent **14 files / 477 tests pass**，含 wrong request/sequence/Turn/project、late Tool/Tool-only
+抑制、save failure → failed reload → successful reload、实际 payload-store roundtrip、先 durable 后 ACK、
+既有 local Tool partial outcome 和 D1/D2/D3 回归。Typecheck / lint / syntax / diff check pass。
+
+Real E-only run：**`2026-10-04T09-21-57.249Z-31764`**；strict clean production build
+`LyX0TsD0-NTKR4lUlccg9`；source-tree hash
+`569a9a08c6d5354e6163d091e0726e878ad0ad33bdeef0905d947780b4dc03b9`；artifact hash
+`1bedd7697f4298ed68f720462b6bd86d1817d1c41b1bdb7263a6966a351b0005`。
+E1/E2 和 wrong cancellation identity guards pass；E3 原 intent durable 后，原 Provider success /
+Journal externallyCompleted / effect succeeded 与 canonical **cancelled** 同时保留。
+ACK 时捕获的 durable Workspace 已有原 Text `P7B controlled result` / cancelled conversation，
+Recovery 已 terminal / persistence succeeded，随后同一 result ACK **1** / Recovery clear。
+没有 illegalTransition、replacement request/grant/execution、Tool batch、confirmation 或 continuation。
+本次 real envelope 没有 Tool calls；late Tool-envelope 抑制由 deterministic Runner 和 payload-store tests 验证。
+
+两个独立 real case 各 **1** 次 controlled local Provider execution、**1** 个 request POST（共 2），
+paid Provider/Search/Image calls = **0**，production writes = **0**。
+无新 first divergence；F/G `not_run`，A–D accepted receipts 仅保留；raw overall **inconclusive** / exit 1
+表示 full L1b 未完成，不能报告 P7B-1 overall PASS。服务已停止。
+158 项 prior artifact hashes / sizes 全部核对不变，新 18 项 artifact index 见
+[machine-readable D4 receipt](./p7b-1-l1b-evidence.json) 的 `d4Fix`；raw artifacts 仍只在 ignored `output/`。
+P7 继续 validating；D4 bounded fix complete / awaiting web review；未 merge main，停止本轮。
 
 原 meaningful `2026-10-04T08-51-01.446Z-6776` 与 diagnostic `2026-10-04T08-47-50.176Z-23476`
 raw artifacts / 分类 / hashes 保留；post-fix 只运行 `--slice=E`，F/G 仍 `not_run`。
