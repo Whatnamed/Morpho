@@ -1,8 +1,64 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：P7B-1-D1 web ACCEPTED / closed；新增 PRODUCT BLOCKER P7B-1-D2（C fail）。**
+**当前：P7B-1-D1 web ACCEPTED / closed；D2 bounded fix closed，post-fix C pass，待网页复审。**
 P7 继续 `validating`；D–G `not_run`；P7B-1 overall 未 PASS；
-P7B-2/P7B-3/P7C `not_started`；本轮未改产品、未 merge main，等待网页给 bounded fix scope。
+P7B-2/P7B-3/P7C `not_started`；未 merge main，未继续 D–G；原 D2 blocker / invalid run 完整保留。
+
+## D2 bounded fix / post-fix C（2026-10-04，待网页复审）
+
+- Fetch / reviewed baseline：`afe2a1a3b15394a563c211c23ac874ce31c86c02`，main 仍为
+  `f852578f0d1303ff074f66db1e3919c3218a5561`。Fix / clean executed source：
+  **`573a83b9b76a8d1e26b57970909ef1fd9cd0f0ef`**。
+- 产品仅改 `agentTurnLifecycle.ts`、`agentTurnCoordinator.ts`、`agentTurnRunner.ts`。
+  Coordinator 观察 visible Text 的 server success 时保留 `externallyCompleted`，重新要求 final
+  local persistence，先不 `TURN_FINALIZED`。Runner 用同一个 pure reducer preview 准备最终
+  Workspace 草案，保存成功后才 dispatch actual `LOCAL_PERSISTENCE_SUCCEEDED` / `TURN_FINALIZED`，
+  再 flush Recovery 和 ACK；不是 metadata outcome setter 或 UI-only patch。
+- Final Workspace save 失败时撤回本 Turn 未提交的 message completion 草案，canonical
+  Lifecycle 记录 retryable `final_text_persistence_failed` 并进入 `recovering`；
+  Lifecycle persistence 与 `metadata.localPersistence` 均为 **`failed`**，没有 completed outcome。
+  原 verified envelope / escrow 保留，ACK **0**。Server/Provider success 不被改为 failure/cancel/unknown。
+- Query 不能替代 local save。解除 fault 后 reload 仍查询 original Journal、复用同一 request/
+  envelope/result；durable final conversation 成功后，本地才为 `terminal` / `completed` /
+  `succeeded`，相同 resultId/version/hash ACK **1**，Recovery 按原合同清理。
+  没有新的 requestId、execution grant、Provider submission 或 result identity。
+- Deterministic regression：normal final save；save failure；重复 local failure 后 reload 成功；
+  独立 Recovery write failure；既有 Tool persistence failure / failed / cancelled / no-output /
+  confirmation / Compaction adjacency。**12 files / 360 tests pass**；typecheck、lint、diff check pass。
+  无 SQL/migration/Workspace/Recovery schema version、Provider retry、ACK/retention 或 D1 proof 改动。
+  SQL/full unit/full Chromium/P7A 未机械重跑。
+
+Real `--slice=C` post-fix run：**`2026-10-04T07-34-48.607Z-34460`**。
+Fresh isolated DB identity `03228ea7-5ada-4968-9646-baeb095a90d1`；原 native Chromium → real
+Next/Auth/PostgREST → PostgreSQL 17.10 → controlled local stub 环境与 migration hashes 不变。
+Clean build `i22CQoC6ckKIhn4L9eCv6`；source-tree SHA-256
+`48cd67de66ac16e0fd3ac96f1e1f05093b06347f23aaf5a48ea48a8174c1d24b`；artifact SHA-256
+`b97d3a0f9ad058ffd50c1bc671c3b793c4e4b00006daff06e6c5f103fbe2b2d2`。
+
+| C subcase | Post-fix verdict | 实际事实 |
+|---|---|---|
+| response loss / reload | pass | exact intent before POST、original Journal/result/chunks、envelope + final conversation before ACK、每 request 原始一次 submission |
+| final save failure → fault removed → reload success | pass | failed checkpoint 为 non-terminal recovering / failed local persistence、durable assistant body 空、ACK 0；恢复时 same envelope SHA、final assistant done/success durable、canonical completed/succeeded，然后 exact ACK 1 / Recovery cleared |
+
+Failure/recovery request：Turn `1b22ab6f-28ba-4ddd-9485-8d41ed9f936f`、request
+`6cd6cc82-e702-4a58-89c3-0ad655dae33d` / sequence `1`；original envelope SHA-256
+`5645e5b64cdcf083c1e3a887bdfab1e1c005af679dc920ef3a1e78f51895fa93` 在恢复后保持相同。
+ACK result `result:1ace53a17c03f0ed7492a885c1412c8d0eacb3a8f2060bcfc45509caf6d1c356` / version `1` /
+SHA-256 `1655a1cf8702be854abfbea8d8ab6622d8be266d501b573cd6957e4446dcec92`；
+DB `acknowledged_at` 在成功保存后有值。该 request POST / Provider execution 总数仍各 **1**。
+完整 C run 两个独立 requests 的 controlled stub executions 共 **2**；paid calls/cost **0**；
+production DB/schema/data writes **0**，没有新 first divergence。
+
+现有 `--slice=C` runner 因 D–G 排除，overall 保留 **`inconclusive` / exit 1**；`scenario-C.verdict`
+为 **pass**，不属于 invalid_run/product blocker，也不表示 P7B-1 overall PASS。
+原 blocker `2026-10-04T07-01-53.206Z-14756` 和 selector invalid_run
+`2026-10-04T06-57-15.515Z-7604` 未覆盖；全部 66 项历史 artifact hashes/sizes 核对。
+[Machine receipt](./p7b-1-l1b-evidence.json) 的 `d2Fix` 追加新 run 与 14 项 raw artifact index，
+原 `continuation` / D1 receipts 保持原字段值。Raw evidence 仅在 ignored `output/`，服务已停止。
+Frozen L1b expectations、P7A 五项 hashes + lock 不变。P7 `validating`，D–G `not_run`，
+等待网页复审；不继续后续 scenarios。
+
+## 原始 D2 continuation / blocker receipt（历史事实，以下保留）
 
 ## C continuation / first divergence（2026-10-04）
 
@@ -77,13 +133,13 @@ Canonical Lifecycle owns Overall Local Outcome and must include current local pe
 - Remote schema/migrations 未核实、无 production fault injection、无 hosted Kong/Vercel path、
   Windows Auth compatibility shim、无真实 Provider quality/billing、无 L2/L3/L4 等 limits 保持。
 
-复现当前 C first-divergence，在 clean task source / 已准备的 isolated tools 上执行：
+复现原始 C first-divergence，在原 blocker source `80704fc1cf0d4fd9cd7e7b7cb7fc9e5a77443d10` / 已准备的 isolated tools 上执行：
 
 ```powershell
 node scripts/verify-p7b-l1b.mjs temp/p7b-l1b-tools --slice=C
 ```
 
-当前应非零退出并保存 C product blocker；D–G `not_run`。本轮没有接线或执行后续场景来寻找
+原 blocker source 应非零退出并保存 C product blocker；D–G `not_run`。该历史轮次没有接线或执行后续场景来寻找
 第二问题，也没有修 P7B-1-D2。
 
 ## D1 bounded fix / post-fix rerun（2026-10-04）

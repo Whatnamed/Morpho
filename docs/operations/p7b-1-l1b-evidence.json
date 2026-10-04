@@ -576,7 +576,7 @@
   ],
   "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main.",
   "receiptScope": "Original pre-fix blocker receipt preserved above; current bounded D1 fix is recorded in postFix.",
-  "currentP7b1Status": "product_blocker / P7B-1-D2 open / C fail; D-G not_run; P7 validating",
+  "currentP7b1Status": "validating / D1 web accepted; D2 bounded fix closed, C pass awaiting web review; D-G not_run; overall not passed",
   "postFix": {
     "id": "P7B-1-D1",
     "status": "closed / bounded A+B pass; awaiting web review",
@@ -1218,5 +1218,311 @@
       "No D-G coverage in this continuation; stop at C blocker"
     ],
     "stop": "Await web review and bounded D2 fix scope; P7 validating, P7B-2/P7B-3/P7C not_started; no main merge."
+  },
+  "d2Fix": {
+    "id": "P7B-1-D2",
+    "status": "closed / bounded Scenario C pass; awaiting web review",
+    "date": "2026-10-04",
+    "reviewedBaseline": "afe2a1a3b15394a563c211c23ac874ce31c86c02",
+    "fixCommit": "573a83b9b76a8d1e26b57970909ef1fd9cd0f0ef",
+    "productFiles": [
+      "src/features/workspace/agentTurnLifecycle.ts",
+      "src/features/workspace/agentTurnCoordinator.ts",
+      "src/features/workspace/agentTurnRunner.ts"
+    ],
+    "contract": "Successful visible Text starts final local persistence pending despite external terminal success. A pure canonical reducer preview prepares final Workspace, then actual durable save permits canonical success/finalization and Recovery flush before ACK. Failed save retracts only uncommitted message completion draft, records retryable failed local persistence and retains original envelope/result. Query alone cannot certify local save; recovery can converge after storage recovers.",
+    "schemaMigrationChanges": false,
+    "recoveryRecordVersionChanged": false,
+    "providerRetryChanges": false,
+    "acceptedD1ProductSourceChanged": false,
+    "runIdentity": {
+      "runId": "2026-10-04T07-34-48.607Z-34460",
+      "sourceSha": "573a83b9b76a8d1e26b57970909ef1fd9cd0f0ef",
+      "build": {
+        "schemaVersion": 2,
+        "sourceSha": "573a83b9b76a8d1e26b57970909ef1fd9cd0f0ef",
+        "sourceTreeSha256": "48cd67de66ac16e0fd3ac96f1e1f05093b06347f23aaf5a48ea48a8174c1d24b",
+        "sourceTreeFileCount": 1077,
+        "buildId": "i22CQoC6ckKIhn4L9eCv6",
+        "artifactSha256": "b97d3a0f9ad058ffd50c1bc671c3b793c4e4b00006daff06e6c5f103fbe2b2d2",
+        "artifactFileCount": 822,
+        "isDirty": false,
+        "nodeVersion": "v22.23.2",
+        "builtAt": "2026-10-04T07:35:10.955Z"
+      },
+      "contractVersion": "p7b-l1b-boundary-1",
+      "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f"
+    },
+    "environment": {
+      "databaseIdentity": "03228ea7-5ada-4968-9646-baeb095a90d1",
+      "postgresVersion": "PostgreSQL 17.10 on x86_64-windows, compiled by msvc-19.44.35226, 64-bit",
+      "authVersion": "v2.197.0",
+      "postgrestVersion": "v16.4",
+      "migrationHashesUnchanged": true,
+      "productionAccess": false
+    },
+    "scenarioVerdict": "C pass",
+    "overallVerdict": "inconclusive",
+    "harnessExitCode": 1,
+    "exitReason": "Existing --slice=C harness keeps overall inconclusive and exit 1 when D-G are excluded; Scenario C itself passed all assertions, not invalid_run or product divergence.",
+    "firstDivergence": null,
+    "cases": [
+      {
+        "name": "response_loss_reload",
+        "verdict": "pass",
+        "preSend": {
+          "serverTurnId": "a6f1654f-7a38-4510-a170-b0c22a6a3e56",
+          "requestId": "e4dacb80-f733-481a-b8f3-8e50cae95a52",
+          "stepSequence": 1,
+          "clientBodySha256": "b2d38fb5ecacb7fe77465bb5bb2fb25293597981304d9c7954ede93fba08d18f",
+          "durableProviderBodySha256": "0a1a2e9e61683c059f62d7293a53b14d1beabc4044b590b43c0a91562aac742f",
+          "verifiedBeforePost": true
+        },
+        "reload": {
+          "journalQuery": true,
+          "exactResultRedelivery": true,
+          "providerSubmissions": 1,
+          "requestPosts": 1,
+          "envelopeBeforeAck": true,
+          "conversationBeforeAck": true
+        }
+      },
+      {
+        "name": "local_save_failure",
+        "verdict": "pass",
+        "preSend": {
+          "serverTurnId": "1b22ab6f-28ba-4ddd-9485-8d41ed9f936f",
+          "requestId": "6cd6cc82-e702-4a58-89c3-0ad655dae33d",
+          "stepSequence": 1,
+          "clientBodySha256": "615166ce21d4a1dfbdf870770b15093e7499dd9fc84ec4e6c7ba58b8244dba43",
+          "durableProviderBodySha256": "2c9dc9b939a3e94f98a0df23def0eed05e7656732eaf574cfd8b181e1637c019",
+          "verifiedBeforePost": true
+        },
+        "reload": {
+          "journalQuery": true,
+          "exactResultRedelivery": true,
+          "providerSubmissions": 1,
+          "requestPosts": 1
+        },
+        "failedSave": {
+          "injected": true,
+          "ackPosts": 0,
+          "recoveryRetained": true,
+          "recoveryPhase": "recovering",
+          "lifecyclePersistence": "failed",
+          "metadataLocalPersistence": "failed",
+          "savedAssistantBodies": [
+            ""
+          ]
+        },
+        "successfulLocalRecovery": {
+          "originalRequestId": "6cd6cc82-e702-4a58-89c3-0ad655dae33d",
+          "originalStepSequence": 1,
+          "envelopeSha256": "5645e5b64cdcf083c1e3a887bdfab1e1c005af679dc920ef3a1e78f51895fa93",
+          "ack": {
+            "resultId": "result:1ace53a17c03f0ed7492a885c1412c8d0eacb3a8f2060bcfc45509caf6d1c356",
+            "version": 1,
+            "sha256": "1655a1cf8702be854abfbea8d8ab6622d8be266d501b573cd6957e4446dcec92"
+          },
+          "ackPosts": 1,
+          "journalQueried": true,
+          "durableConversationBeforeAck": true,
+          "canonicalOutcomeAtAck": "completed",
+          "persistenceAtAck": "succeeded",
+          "providerSubmissions": 1,
+          "requestPosts": 1,
+          "recoveryCleared": true
+        }
+      }
+    ],
+    "failedSaveFacts": {
+      "serverTurnId": "1b22ab6f-28ba-4ddd-9485-8d41ed9f936f",
+      "requestId": "6cd6cc82-e702-4a58-89c3-0ad655dae33d",
+      "stepSequence": 1,
+      "serverExecutionStatus": "externallyCompleted",
+      "clientPhase": "recovering",
+      "lifecyclePersistence": "failed",
+      "metadataLocalPersistence": "failed",
+      "overallCompleted": false,
+      "fault": {
+        "kind": "present",
+        "faultId": "1b22ab6f-28ba-4ddd-9485-8d41ed9f936f:final-text-persistence",
+        "error": {
+          "kind": "retryable",
+          "code": "final_text_persistence_failed",
+          "message": "最终对话尚未保存；只能恢复同一结果并重试本地保存。",
+          "recoverable": true
+        }
+      },
+      "clientAckPosts": 0,
+      "durableAssistantBodies": [
+        ""
+      ],
+      "envelopeSha256": "5645e5b64cdcf083c1e3a887bdfab1e1c005af679dc920ef3a1e78f51895fa93"
+    },
+    "successfulRecoveryFacts": {
+      "serverTurnId": "1b22ab6f-28ba-4ddd-9485-8d41ed9f936f",
+      "requestId": "6cd6cc82-e702-4a58-89c3-0ad655dae33d",
+      "stepSequence": 1,
+      "envelopeSha256": "5645e5b64cdcf083c1e3a887bdfab1e1c005af679dc920ef3a1e78f51895fa93",
+      "sameEnvelopeHash": true,
+      "serverExecutionStatus": "externallyCompleted",
+      "clientPhase": "terminal",
+      "overallOutcome": {
+        "kind": "completed",
+        "reasons": []
+      },
+      "lifecyclePersistence": "succeeded",
+      "metadataLocalPersistence": "succeeded",
+      "durableAssistant": [
+        {
+          "id": "ai-assistant-a-plus-1791099345685-wligsl",
+          "body": "P7B controlled result",
+          "status": "done",
+          "outcome": "success"
+        }
+      ],
+      "ackIdentity": {
+        "resultId": "result:1ace53a17c03f0ed7492a885c1412c8d0eacb3a8f2060bcfc45509caf6d1c356",
+        "version": 1,
+        "sha256": "1655a1cf8702be854abfbea8d8ab6622d8be266d501b573cd6957e4446dcec92"
+      },
+      "ackPosts": 1,
+      "serverAcknowledgedAt": "2026-10-04T07:35:53.377Z",
+      "resultIdentity": {
+        "effectId": "effect:125e8cc9647ba951e238f0eb95b282ef65034a54945348783fc141104f581b3e",
+        "resultId": "result:1ace53a17c03f0ed7492a885c1412c8d0eacb3a8f2060bcfc45509caf6d1c356",
+        "version": 1,
+        "sha256": "1655a1cf8702be854abfbea8d8ab6622d8be266d501b573cd6957e4446dcec92"
+      },
+      "requestPosts": 1,
+      "providerExecutionsForThisRequest": 1,
+      "recoveryCleared": true
+    },
+    "subsequentScenarios": [
+      {
+        "id": "D",
+        "verdict": "not_run",
+        "reason": "Excluded from bounded D2 fix / Scenario C rerun"
+      },
+      {
+        "id": "E",
+        "verdict": "not_run",
+        "reason": "Excluded from bounded D2 fix / Scenario C rerun"
+      },
+      {
+        "id": "F",
+        "verdict": "not_run",
+        "reason": "Excluded from bounded D2 fix / Scenario C rerun"
+      },
+      {
+        "id": "G",
+        "verdict": "not_run",
+        "reason": "Excluded from bounded D2 fix / Scenario C rerun"
+      }
+    ],
+    "controlledProviderStubExecutions": 2,
+    "perIndependentRequest": 1,
+    "paidProviderCalls": 0,
+    "paidCost": 0,
+    "productionDataSchemaMigrationWrites": false,
+    "gates": {
+      "targetedUnit": {
+        "files": 12,
+        "tests": 360,
+        "status": "pass",
+        "coverage": "Lifecycle/Coordinator/Runner/Recovery/result/ACK/Tool/persistence/cancellation/no-output/Compaction adjacency; repeated local-save failure then successful recovery; separate Recovery write fault"
+      },
+      "typecheck": "pass",
+      "lint": "pass",
+      "productionBuild": "pass / clean strict build in runIdentity",
+      "diffCheck": "pass",
+      "frozenP7AHashes": "five files + lock unchanged",
+      "sql": "not_run / no SQL or schema change",
+      "fullUnit": "not_run / sufficient relevant adjacency",
+      "fullChromium": "not_run / real bounded Scenario C only",
+      "p7aTrajectory": "not_run / frozen contract unchanged"
+    },
+    "historicalEvidencePreserved": {
+      "originalD2RunId": "2026-10-04T07-01-53.206Z-14756",
+      "invalidSelectorRunId": "2026-10-04T06-57-15.515Z-7604",
+      "allOriginalFieldsExceptCurrentStatusUnchanged": true,
+      "artifactHashesAndSizesVerified": 66
+    },
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/C-local-save-failure-ack-entry.json",
+        "sha256": "43c8d18f97fc918d00667d664ab6d2f4ace30c9a0988d2ee4d0002db22450aa5",
+        "byteLength": 44321
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/C-local-save-failure-before-reload.json",
+        "sha256": "4978d86c602b890bd32b7b815791badc25e25d2d45f996b2706e1b618c4bb737",
+        "byteLength": 41829
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/C-local-save-failure-final.json",
+        "sha256": "35b77cf37c0a7f7dbf3f4ba8285a2db1347281d41261155fbfccb5062d182a13",
+        "byteLength": 69034
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/C-local-save-failure-final.png",
+        "sha256": "ac40b7b5097e1b46f8480cb01724d917dc70d6260f211ff0ce48e5b80f2e3ceb",
+        "byteLength": 76899
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/C-local-save-failure-successful-recovery.json",
+        "sha256": "35b77cf37c0a7f7dbf3f4ba8285a2db1347281d41261155fbfccb5062d182a13",
+        "byteLength": 69034
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/C-reload-ack-entry.json",
+        "sha256": "3d0b95a4a75ba52f157c9cb6e6dad1744d484c5a58b517d6bf379d35e3764269",
+        "byteLength": 68031
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/C-reload-before-reload.json",
+        "sha256": "7fc2748d3fbbe29bf75f3ce5358db040473fd2233d179804fb4eb8334c7c7201",
+        "byteLength": 41777
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/C-reload-final.json",
+        "sha256": "3d0b95a4a75ba52f157c9cb6e6dad1744d484c5a58b517d6bf379d35e3764269",
+        "byteLength": 68031
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/C-reload-final.png",
+        "sha256": "ac40b7b5097e1b46f8480cb01724d917dc70d6260f211ff0ce48e5b80f2e3ceb",
+        "byteLength": 76899
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/build.log",
+        "sha256": "5265eca81736c9d68b4384e3b1f0ddc77ceac95f382d529475aac8751ee6f4eb",
+        "byteLength": 1475
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/environment.json",
+        "sha256": "4def619c02c81267ff2307fa33cf97246e7fda3628acb9327a32e119f1ef4262",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/scenario-C.json",
+        "sha256": "b7839899b73f6e19e4462e4ffb8a3698e0ec14bb3e7259c4ef26f5cc4ccd28fa",
+        "byteLength": 8647
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/server.log",
+        "sha256": "f4f35404c5f0983c8fa410865ab3929172f5188bbf5f19b549752360cd030379",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460/verdict.json",
+        "sha256": "2f54efba6bb8d253e851c03604556afc2d4146ace5eac34e6aa4b14bcef2d426",
+        "byteLength": 29840
+      }
+    ],
+    "rawArtifactsLocation": "output/playwright/p7b-l1b/2026-10-04T07-34-48.607Z-34460",
+    "servicesStopped": true,
+    "stop": "P7 validating; D1 remains web accepted, D2/C awaits web review; P7B-1 overall not passed, D-G not_run; P7B-2/P7B-3/P7C not_started; no main merge."
   }
 }
