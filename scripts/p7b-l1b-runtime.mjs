@@ -10,6 +10,11 @@ export const sha256 = (value) => createHash("sha256").update(value).digest("hex"
 const root = process.cwd();
 export const ports = { db: 55432, rest: 55433, auth: 55434, gateway: 55435, app: 55436 };
 export const baseUrl = `http://127.0.0.1:${ports.app}`;
+export const controlledCompactionSummary = {
+  threadGoal:"P7B controlled original Summary",establishedContext:["Continuous conversation"],
+  decisionsAndReasons:[],activeWork:[],unresolvedQuestions:[],referencedObjects:[]
+};
+export const controlledCompactionText = "```json\n"+JSON.stringify({morphoConversationSummary:controlledCompactionSummary})+"\n```";
 const origin = `http://127.0.0.1:${ports.gateway}`;
 
 export async function startIsolatedBoundary(toolsPath, outputPath) {
@@ -141,10 +146,7 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
         if(call.providerOutcome==="cancelled") return;
         call.providerOutcome="succeeded";
       }
-      const text=mode==="compaction" ? "```morphoConversationSummary\n"+JSON.stringify({
-        threadGoal:"P7B controlled original Summary",establishedContext:["Continuous conversation"],
-        decisionsAndReasons:[],activeWork:[],unresolvedQuestions:[],referencedObjects:[]
-      })+"\n```" : "P7B controlled result";
+      const text=mode==="compaction" ? controlledCompactionText : "P7B controlled result";
       if(payload.stream) {
         if(!response.headersSent) response.writeHead(200,{"Content-Type":"text/event-stream"});
         response.end(`event: response.completed\ndata: ${JSON.stringify({type:"response.completed",response:responseObject(text)})}\n\n`);

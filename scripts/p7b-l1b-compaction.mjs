@@ -4,13 +4,16 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
-import { baseUrl, sha256 } from "./p7b-l1b-runtime.mjs";
+import { baseUrl, sha256, controlledCompactionSummary, controlledCompactionText } from "./p7b-l1b-runtime.mjs";
 
 async function seedCompaction(name) {
   const vite=await createServer({appType:"custom",configFile:resolve("vitest.config.ts"),server:{middlewareMode:true}});
   try {
     const {createBlankWorkspace,serializeWorkspace}=await vite.ssrLoadModule("/src/domain/morpho/workspace.ts");
-    const {applyConversationSummaryRevision,buildConversationCompactionPlan}=await vite.ssrLoadModule("/src/domain/morpho/conversationCompaction.ts");
+    const {applyConversationSummaryRevision,buildConversationCompactionPlan,parseConversationSummaryPayload}=await vite.ssrLoadModule("/src/domain/morpho/conversationCompaction.ts");
+    const controlled=parseConversationSummaryPayload(controlledCompactionText);
+    if(controlled.status!=="ok")throw Error(`Invalid controlled Summary fixture: ${controlled.reason}`);
+    assert.deepEqual(controlled.summary,controlledCompactionSummary);
     const {createCatalog,summarizeProject,CATALOG_STORAGE_KEY,getProjectWorkspaceStorageKey}=await vite.ssrLoadModule("/src/infrastructure/persistence/localProjectStore.ts");
     let workspace=createBlankWorkspace(`p7b-G-${name}`);
     workspace.project.title="L1b original Compaction boundary";
