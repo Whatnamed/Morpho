@@ -6,7 +6,7 @@ const sha=b=>crypto.createHash("sha256").update(b).digest("hex");
 const native=globalThis.fetch;
 let pending=Promise.resolve(),entry=Promise.resolve(),ledger={requests:0,inputTokens:0,outputTokens:0,cachedInputTokens:0,estimatedCny:0,searchRequests:0};
 const write=(name,value)=>fs.writeFileSync(path.join(root,name),JSON.stringify(value,null,2)+"\n");
-const hard=(reason,details={})=>{write("hard-blocker.json",{id:"P7B-2-D1",reason,...details,ledger});throw new Error("L2 hard stop: "+reason);};
+const hard=(reason,details={})=>{write("hard-blocker.json",{id:process.env.MORPHO_L2_BLOCKER_ID??"P7B-2-D2",reason,...details,ledger});throw new Error("L2 hard stop: "+reason);};
 function reserveInput(body){
   let images=0;
   const text=JSON.stringify(body,(_k,v)=>{if(typeof v==="string"&&v.startsWith("data:image/")){images++;return "[bounded input pixels]";}return v;});
@@ -38,7 +38,8 @@ globalThis.fetch=async(input,init)=>{
     const sourceBody=String(init.body),body=JSON.parse(sourceBody);
     write("no-paid-server-wire.json",{...active,endpoint:url.href,productionBodySha256:sha(sourceBody),productionBody:body,networkSent:false});
     if(active.slice==="L2-1"&&!(body.tools??[]).some(t=>t.name==="create_research_analysis"))return hard("Required create_research_analysis omitted for frozen L2-1 explicit Research candidate request",{trial:active.key,observedTools:(body.tools??[]).map(t=>t.name),networkSent:false});
-    return hard("No-paid preflight egress blocked");
+    write("no-paid-preflight.json",{...active,status:"production wire captured / zero paid",networkSent:false,ledger});
+    throw new Error("No-paid preflight egress blocked after capture");
   }
   const prior=entry;let release;entry=new Promise(resolve=>{release=resolve;});await prior;
   try{
@@ -74,7 +75,7 @@ globalThis.fetch=async(input,init)=>{
     const cached=usage.input_tokens_details?.cached_tokens??0;ledger.cachedInputTokens+=cached;
     ledger.estimatedCny+=((usage.input_tokens-cached)*0.3+cached*0.03+usage.output_tokens*1.5)/1e6;
     write(prefix+"-response.json",{...active,number,status:response.status,contentType:response.headers.get("Content-Type"),latencyMs:Date.now()-started,rawSha256:sha(raw),rawBytes:Buffer.byteLength(raw),usage,costCnyEstimate:((usage.input_tokens-cached)*0.3+cached*0.03+usage.output_tokens*1.5)/1e6});write("ledger.json",ledger);
-  })().catch(error=>{if(!fs.existsSync(path.join(root,"hard-blocker.json")))write("hard-blocker.json",{id:"P7B-2-D1",reason:"Final server response capture failed",number,error:error.message,ledger});throw error;});
+  })().catch(error=>{if(!fs.existsSync(path.join(root,"hard-blocker.json")))write("hard-blocker.json",{id:process.env.MORPHO_L2_BLOCKER_ID??"P7B-2-D2",reason:"Final server response capture failed",number,error:error.message,ledger});throw error;});
   // Prevent unhandled rejection, preserve it for the next pre-send barrier/run auditor.
   pending.finally(release).catch(()=>{});
   return response;

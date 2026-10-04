@@ -108,13 +108,22 @@ try{
         row.serverWireRequests=wires.map(w=>w.number);row.contractVerdict="pass";
       }
       row.status=preflight?"preflight_pass":"executed / quality grading pending";await page.screenshot({path:resolve(output,`${key}.png`),fullPage:true});
-      if(boundaryAudit){run.hardBlocker=JSON.parse(await readFile(resolve(output,"hard-blocker.json"),"utf8"));throw Error(run.hardBlocker.reason);}
-    }catch(error){row.status="hard_blocker";row.error=error.message;run.hardBlocker={id:"P7B-2-D1",trial:key,reason:error.message};throw error;}
+      if(boundaryAudit){
+        const captured=JSON.parse(await readFile(resolve(output,"no-paid-server-wire.json"),"utf8"));
+        assert.equal(captured.networkSent,false);assert.equal(captured.productionBody.model,manifest.provider.model);
+        assert.equal(captured.productionBody.reasoning?.effort,manifest.provider.reasoning);
+        assert.ok(captured.productionBody.tools.some(t=>t.name==="create_research_analysis"),"D1 required Research tool still missing");
+        const canonical=captured.productionBody.input.flatMap(i=>i.content??[]).find(c=>c.type==="input_text"&&c.text.startsWith("<morpho_turn_task_contract>"));
+        const contract=JSON.parse(canonical.text.split("\n")[2]);assert.equal(contract.userGoal,slice.prompt);
+        assert.ok(contract.activities.some(a=>a.kind==="research"&&a.instruction.includes("资料创建一张研究分析卡")),"D1 instruction incorrectly stripped");
+        row.serverWireVerdict="pass / D1 restored / zero paid";
+      }
+    }catch(error){row.status="hard_blocker";row.error=error.message;run.hardBlocker={id:"P7B-2-D2",trial:key,reason:error.message};throw error;}
     finally{row.pageErrors=errors;await save(`${key}-trial.json`,row);await save("progress.json",run);await context.close();}
     try{run.hardBlocker=JSON.parse(await readFile(resolve(output,"hard-blocker.json"),"utf8"));throw Error(run.hardBlocker.reason);}catch(e){if(e.code!=="ENOENT")throw e;}
   }
   run.status=preflight?"preflight_complete / zero paid":"limited L2 execution complete / quality grading pending";
-}catch(error){run.status="hard_blocker / stopped";run.hardBlocker??={id:"P7B-2-D1",reason:error.message};}
+}catch(error){run.status="hard_blocker / stopped";run.hardBlocker??={id:"P7B-2-D2",reason:error.message};}
 finally{
   if(browser)await browser.close();if(server)await writeFile(resolve(output,"server.log"),server.safeLog.replaceAll(realKey,"[redacted]"));if(runtime)await runtime.stop();
   try{run.ledger=JSON.parse(await readFile(resolve(output,"ledger.json"),"utf8"));}catch{run.ledger={requests:0,inputTokens:0,outputTokens:0,estimatedCny:0};}
