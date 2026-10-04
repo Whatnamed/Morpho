@@ -69,7 +69,10 @@ export async function runCompactionScenario({runtime,actor,row,output,setTurn,jo
           const record=recovery(),requestBody=await blob(record?.metadata.pendingExternalActionPayload?.ref);
           push("posts",{url,body:String(init.body),record,durableBody:requestBody});
           const response=await native(input,init);const data=await response.clone().json();push("responses",{url,method,status:response.status,data});
-          sessionStorage.setItem(prefix+"responseLost","true");throw new TypeError("G test-owned loss after original production compaction response");
+          if(!sessionStorage.getItem(prefix+"responseLost")){
+            sessionStorage.setItem(prefix+"responseLost","true");throw new TypeError("G test-owned loss after original production compaction response");
+          }
+          return response;
         }
         if(method==="GET"&&(url.includes("/actions?")||url.includes("/result"))&&!sessionStorage.getItem(prefix+"deliver")){
           sessionStorage.setItem(prefix+"receiveBlocked","true");return new Promise(()=>{});
