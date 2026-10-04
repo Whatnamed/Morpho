@@ -6,12 +6,12 @@ import { chromium } from "playwright";
 import { createServer } from "vite";
 import { baseUrl, sha256 } from "./p7b-l1b-runtime.mjs";
 
-async function seedClient() {
+async function seedClient(fault) {
   const vite = await createServer({ appType: "custom", configFile: resolve("vitest.config.ts"), server: { middlewareMode: true } });
   try {
     const { createBlankWorkspace, serializeWorkspace } = await vite.ssrLoadModule("/src/domain/morpho/workspace.ts");
     const { createCatalog, summarizeProject, CATALOG_STORAGE_KEY, getProjectWorkspaceStorageKey } = await vite.ssrLoadModule("/src/infrastructure/persistence/localProjectStore.ts");
-    const workspace = createBlankWorkspace("p7b-browser-recovery");
+    const workspace = createBlankWorkspace(fault ? "p7b-browser-save-failure" : "p7b-browser-recovery");
     workspace.project.title = "L1b controlled client recovery";
     return { projectId: workspace.project.id, workspaceKey: getProjectWorkspaceStorageKey(workspace.project.id),
       workspaceValue: serializeWorkspace(workspace), catalogKey: CATALOG_STORAGE_KEY,
@@ -19,8 +19,9 @@ async function seedClient() {
   } finally { await vite.close(); }
 }
 
-export async function runDurableClientScenario({ runtime, actor, row, output, setTurn }) {
-  const seed = await seedClient();
+export async function runDurableClientScenario({ runtime, actor, row, output, setTurn, fault = false }) {
+  const startingSubmissions = runtime.stub.calls.length;
+  const seed = await seedClient(fault);
   row.seed = { projectId: seed.projectId, workspaceSha256: sha256(seed.workspaceValue), source: "current createBlankWorkspace / serializeWorkspace" };
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -35,11 +36,21 @@ export async function runDurableClientScenario({ runtime, actor, row, output, se
     return ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) || ["data:", "blob:"].includes(url.protocol)
       ? route.continue() : route.abort("blockedbyclient");
   });
-  await page.addInitScript(({ seed }) => {
+  await page.addInitScript(({ seed, fault }) => {
     if (!localStorage.getItem(seed.workspaceKey)) {
       localStorage.setItem(seed.catalogKey, seed.catalogValue); localStorage.setItem(seed.workspaceKey, seed.workspaceValue);
     }
     const prefix = "l1b-C-";
+    if (fault) {
+      const nativeSet = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key, value) {
+        if (key === seed.workspaceKey && sessionStorage.getItem(prefix + "phase") === "reload" && value.includes("P7B controlled result")) {
+          sessionStorage.setItem(prefix + "saveFailed", "true");
+          throw new DOMException("L1b test-owned local Workspace persistence failure", "QuotaExceededError");
+        }
+        return nativeSet.call(this, key, value);
+      };
+    }
     const push = (name, value) => {
       const values = JSON.parse(sessionStorage.getItem(prefix + name) ?? "[]"); values.push(value);
       sessionStorage.setItem(prefix + name, JSON.stringify(values));
@@ -89,16 +100,18 @@ export async function runDurableClientScenario({ runtime, actor, row, output, se
       push("responses", { url, method, status: response.status });
       return response;
     };
-  }, { seed });
+  }, { seed, fault });
   const facts = () => page.evaluate(({ workspaceKey }) => ({
     postProofs: JSON.parse(sessionStorage.getItem("l1b-C-postProofs") ?? "[]"),
     ackProofs: JSON.parse(sessionStorage.getItem("l1b-C-ackProofs") ?? "[]"),
     http: JSON.parse(sessionStorage.getItem("l1b-C-http") ?? "[]"), responses: JSON.parse(sessionStorage.getItem("l1b-C-responses") ?? "[]"),
     workspace: JSON.parse(localStorage.getItem(workspaceKey)),
     recoveries: Object.entries(localStorage).filter(([key]) => key.startsWith("morpho.agent-runtime-a-plus.recovery.v2")),
-    responseLost: sessionStorage.getItem("l1b-C-responseLost"), retrievalBlocked: sessionStorage.getItem("l1b-C-retrievalBlocked")
+    responseLost: sessionStorage.getItem("l1b-C-responseLost"), retrievalBlocked: sessionStorage.getItem("l1b-C-retrievalBlocked"),
+    localSaveFailed: sessionStorage.getItem("l1b-C-saveFailed")
   }), { workspaceKey: seed.workspaceKey });
-  const checkpoint = async name => { row.checkpoint = name; const value = await facts(); await writeFile(resolve(output, `C-${name}.json`), JSON.stringify(value, null, 2) + "\n"); return value; };
+  const label = fault ? "local-save-failure" : "reload";
+  const checkpoint = async name => { row.checkpoint = name; const value = await facts(); await writeFile(resolve(output, `C-${label}-${name}.json`), JSON.stringify(value, null, 2) + "\n"); return value; };
   try {
     await page.goto(`${baseUrl}/projects/${seed.projectId}`);
     await page.locator(".ai-panel textarea").fill("请只用简短文字回复这条消息，不调用任何工具。");
@@ -111,29 +124,39 @@ export async function runDurableClientScenario({ runtime, actor, row, output, se
     assert.equal(proof.stepSequence, proof.body.stepSequence);
     assert.equal(proof.providerPayload.sha256, proof.durableBodySha256);
     assert.deepEqual(JSON.parse(proof.durableBody), proof.body.providerRequest, "Exact client request must be committed in IndexedDB before POST");
-    assert.equal(before.ackProofs.length, 0); assert.equal(runtime.stub.calls.length, 1);
+    assert.equal(before.ackProofs.length, 0); assert.equal(runtime.stub.calls.length - startingSubmissions, 1);
     row.preSend = { serverTurnId: proof.serverTurnId, requestId: proof.requestId, stepSequence: proof.stepSequence,
       clientBodySha256: sha256(JSON.stringify(proof.body)), durableProviderBodySha256: proof.durableBodySha256, verifiedBeforePost: true };
     await page.evaluate(() => sessionStorage.setItem("l1b-C-phase", "reload"));
     await page.reload();
-    await page.waitForFunction(() => JSON.parse(sessionStorage.getItem("l1b-C-ackProofs") ?? "[]").length > 0, null, { timeout: 30_000 });
+    if (fault) {
+      await page.waitForFunction(() => sessionStorage.getItem("l1b-C-saveFailed") === "true", null, { timeout: 30_000 });
+      await page.locator(".recovery-pending-card, .failure-card").first().waitFor({ state: "visible", timeout: 30_000 });
+    } else {
+      await page.waitForFunction(() => JSON.parse(sessionStorage.getItem("l1b-C-responses") ?? "[]").some(r => r.method === "POST" && r.url.includes("/effects/") && r.status === 200), null, { timeout: 30_000 });
+    }
     const after = await checkpoint("ack-entry");
     assert.equal(after.postProofs.length, 1, "Reload must not create a second Request POST/identity");
-    assert.equal(runtime.stub.calls.length, 1, "Reload must not submit a second Provider execution");
+    assert.equal(runtime.stub.calls.length - startingSubmissions, 1, "Reload must not submit a second Provider execution");
     assert.ok(after.http.some(h => h.phase === "reload" && h.method === "GET" && h.url.includes(`/turns/${proof.serverTurnId}?`)), "Reload queries original real Server Journal");
     assert.ok(after.http.some(h => h.phase === "reload" && h.method === "GET" && h.url.includes("/effects/") && h.url.includes("chunk=")), "Reload consumes real original escrow chunks");
-    for (const ack of after.ackProofs) {
+    if (fault) {
+      assert.equal(after.localSaveFailed, "true"); assert.equal(after.ackProofs.length, 0, "Failed local save cannot ACK");
+      assert.ok(after.recoveries.length > 0, "Failed local save retains recoverable original envelope");
+      assert.ok(!after.workspace.ai.messages.some(m => m.role === "assistant" && m.body.includes("P7B controlled result")), "Failed save must not claim durable full result");
+      row.localSaveFailure = { injected: true, ackPosts: 0, recoveryRetained: true, fullSuccessReported: false };
+    } else for (const ack of after.ackProofs) {
       assert.equal(ack.outputReference?.sha256, ack.envelopeSha256, "Verified envelope must be durable before ACK");
       assert.equal(JSON.parse(ack.durableEnvelope).requestId, proof.requestId);
       assert.ok(ack.durableWorkspace.ai.messages.some(m => m.role === "assistant" && m.body.includes("P7B controlled result")),
         "Complete assistant conversation must be durably saved before result ACK");
     }
     row.reload = { journalQuery: true, exactResultRedelivery: true, providerSubmissions: 1, requestPosts: 1,
-      envelopeBeforeAck: true, conversationBeforeAck: true };
+      ...(fault ? {} : { envelopeBeforeAck: true, conversationBeforeAck: true }) };
   } finally {
     row.pageErrors = errors;
     await checkpoint("final").catch(() => {});
-    await page.screenshot({ path: resolve(output, "C-final.png"), fullPage: true }).catch(() => {});
+    await page.screenshot({ path: resolve(output, `C-${label}-final.png`), fullPage: true }).catch(() => {});
     await browser.close();
   }
 }

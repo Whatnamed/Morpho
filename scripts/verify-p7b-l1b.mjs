@@ -85,7 +85,13 @@ try {
   };
   let A;
   if(clientSlice) {
-    await scenario("C",row=>runDurableClientScenario({runtime,actor:actors[0],row,output,setTurn:value=>{turn=value;}}));
+    await scenario("C",async row=>{
+      row.cases=[];
+      for(const fault of [false,true]) {
+        const subcase={name:fault?"local_save_failure":"response_loss_reload"}; row.cases.push(subcase);
+        await runDurableClientScenario({runtime,actor:actors[0],row:subcase,output,setTurn:value=>{turn=value;},fault});
+      }
+    });
     verdict.scenarios.unshift(...contract.scenarios.filter(s=>["A","B"].includes(s.id)).map(s=>({id:s.id,expected:s.expected,verdict:"not_run",reason:"Accepted A/B receipt retained; no D1 re-audit"})));
   } else A=await scenario("A",async(row)=>{
     const body={localProjectId:project,creationIdempotencyKey:"l1b-create-A"};
