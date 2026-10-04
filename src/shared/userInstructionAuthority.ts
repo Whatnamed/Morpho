@@ -26,7 +26,7 @@ const ACTION_RULES: Record<UserInstructionAction, ActionRule> = {
     false
   ),
   createResearchAnalysis: explicitRule(
-    /(?:创建|形成|整理|记录|生成|产出|保存)\s*(?:研究|调研|分析)(?:对象|草案|结果|报告)?/i
+    /(?:创建|形成|整理|记录|生成|产出|保存)\s*(?:(?:一|两|[二三四五六七八九十\d]+)\s*(?:张|份|个)\s*)?(?:研究|调研|分析)(?:分析)?(?:卡|对象|草案|结果|报告)?/i
   ),
   designDefinition: explicitRule(
     /(?:创建|形成|修改|修订|更新|调整|重写|改写|建立|定义|生成|提炼)\s*(?:当前|新的|一版|一份)?\s*(?:设计定义|设计原则|核心问题)/i
@@ -47,7 +47,11 @@ const ACTION_RULES: Record<UserInstructionAction, ActionRule> = {
 
 const CLAUSE_BOUNDARY = /[，,。.!！?？；;：:\n]/;
 const REFERENCE_CLAUSE = /^(?:在)?(?:示例|引用|文档|资料|原文|命令|记录)[^，,。.!！?？；;：:\n]{0,12}[:：]/i;
-const REFERENCE_FRAME = /(?:示例|引用|文档|资料|原文|命令|记录)[^。.!！?？\n]{0,40}[:：][^。.!！?？\n]*/gi;
+// A source noun inside an action ("基于资料创建…：") is not a reference frame.
+// Bare source labels need a clause boundary; inline frames need an explicit
+// reporting predicate. Both continue to suppress the reported instruction.
+const REFERENCE_FRAME = /(?:^|[，,。.!！?？；;\n])\s*(?:(?:请)?(?:解释|说明|分析|总结|解读|复述)(?:一下|这段|以下|下列)?\s*)?(?:在)?(?:示例|引用(?:命令|内容|原文)?|文档|资料|原文|命令|记录)\s*[:：][^。.!！?？\n]*/gi;
+const REPORTED_REFERENCE_FRAME = /(?:示例|引用(?:命令|内容|原文)?|文档|资料|原文|命令|记录)(?:中|里|内)?(?:写着|写道|提到|说|要求|记载)\s*[:：][^。.!！?？\n]*/gi;
 
 function explicitRule(positive: RegExp, allowInterveningText = true): ActionRule {
   return {
@@ -75,7 +79,7 @@ export function stripUntrustedInstructionSegments(text: string): string {
     chars[index] = " ";
     if (char === closing) closing = undefined;
   }
-  return chars.join("").replace(REFERENCE_FRAME, " ");
+  return chars.join("").replace(REPORTED_REFERENCE_FRAME, " ").replace(REFERENCE_FRAME, " ");
 }
 
 function findActionDecisions(draft: string, action: UserInstructionAction): ActionDecision[] {

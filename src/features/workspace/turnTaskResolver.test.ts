@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import l2Manifest from "../../../e2e/eval/p7b-l2-manifest.json";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import { resolveTurnTaskContract } from "./turnTaskResolver";
 import { buildTurnTaskContexts } from "./taskContext";
@@ -25,6 +26,15 @@ function setup(draft: string, overrides: Partial<AgentToolAuthorityInput> = {}, 
 }
 
 describe("Turn Task / scope / authority", () => {
+  it("grants the frozen L2-1 Research candidate instruction without expanding paid authority", () => {
+    const draft = l2Manifest.slices[0]!.prompt!;
+    const { contract } = setup(draft, { executionTaskMode: "chatAnalysis", executionTaskModeSource: "autoRecommended", executionWorkIntent: "discussion", allowStructuredComparison: false });
+    const research = contract.activities.find(activity => activity.kind === "research");
+    expect(research?.effectGrants.map(grant => grant.tool)).toContain("create_research_analysis");
+    expect(research?.instruction).toContain("资料创建一张研究分析卡");
+    expect(contract.userGoal).toBe(draft);
+    expect(getTurnAllowedTools(contract)).not.toContain("generate_visuals");
+  });
   it.each([
     "参考 B",
     "借用 B",
