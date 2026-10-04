@@ -1,8 +1,20 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：D1–D5 accepted / closed、A–F accepted；D6 bounded fix complete，完整 G pass；P7B-1 = L1b complete / awaiting web acceptance。**
-P7 继续 `validating`；L1b completion 由已接受的 A–F receipts 与本次完整 G-only receipt 组成，待网页最终接受。
-P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main；以下原 blocker / diagnostic receipts 保持历史事实。
+**当前：P7B-1 L1b web ACCEPTED / closed；A–G accepted PASS；D1–D6 accepted / closed。**
+P7 overall 继续 `validating`；P7B-2/P7B-3/P7C / L4 `not_started`。
+以下全部 blocker / fix / diagnostic / raw verdict / limits 保持历史事实。
+
+## Final web acceptance / docs-only closeout（2026-10-04）
+
+最终 reviewed implementation/evidence head：**`2ded556fba53bacd4f951ae65717290b3cf31c8f`**。
+用户网页最终复审接受 A–G 和 D1–D6，范围仅为 isolated real L1b routes / Journal / RPC。
+Fetch 确认 task local/remote 都为 reviewed head，main/origin/main 均为
+`f852578f0d1303ff074f66db1e3919c3218a5561`，ahead34/behind0，唯一 worktree clean。
+本次只有 report / evidence / Program Map 的 docs-only closeout；通过 ff-only 保留原34个逻辑
+commits，并按用户授权 push main，不 squash/rewrite。实现、SQL、migration、frozen contract/oracle
+保持 reviewed tree；不因 docs-only closeout 重跑 full unit / Chromium / L1b。
+此接受不扩展到 P7 overall、production、real Provider、hosted boundary、T1/T3 full execution、
+production Journal fault injection 或 L2/L3/L4；paid calls=0，后续 package 未开始。
 
 ## D6 bounded Runner fix / complete G-only rerun（2026-10-04）
 

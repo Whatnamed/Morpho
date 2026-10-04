@@ -576,7 +576,7 @@
   ],
   "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main.",
   "receiptScope": "Original pre-fix blocker receipt preserved above; current bounded D1 fix is recorded in postFix.",
-  "currentP7b1Status": "L1b complete / awaiting web acceptance; D1-D5 accepted/closed, A-F accepted receipts retained, D6 bounded fix and complete G pass; P7 remains validating",
+  "currentP7b1Status": "P7B-1 L1b web ACCEPTED / closed; A-G accepted PASS; D1-D6 accepted / closed; P7 validating; P7B-2/P7B-3/P7C/L4 not_started",
   "postFix": {
     "id": "P7B-1-D1",
     "status": "closed / bounded A+B pass; awaiting web review",
@@ -4826,5 +4826,46 @@
     ],
     "status": "P7B-1 = L1b complete / awaiting web acceptance; P7 validating; no merge main or later package",
     "acceptanceBasis": "User-accepted A-F historical receipts plus this complete G-only real run. T1/T3 full execution, remote hosted boundary, production Journal fault injection, L2 real model, L3 real image, L4 human handoff remain unverified/not_run."
+  },
+  "finalWebAcceptance": {
+    "date": "2026-10-04",
+    "authority": "User final web review instruction",
+    "status": "ACCEPTED / closed",
+    "scope": "P7B-1 L1b isolated real routes / Journal / RPC only",
+    "reviewedImplementationEvidenceHead": "2ded556fba53bacd4f951ae65717290b3cf31c8f",
+    "acceptedScenarios": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F",
+      "G"
+    ],
+    "closedBlockers": [
+      "P7B-1-D1",
+      "P7B-1-D2",
+      "P7B-1-D3",
+      "P7B-1-D4",
+      "P7B-1-D5",
+      "P7B-1-D6"
+    ],
+    "programStatus": "validating",
+    "laterStages": "P7B-2/P7B-3/P7C/L4 not_started",
+    "mainAtFetch": "f852578f0d1303ff074f66db1e3919c3218a5561",
+    "taskAheadAtFetch": 34,
+    "taskBehindAtFetch": 0,
+    "closeout": "Docs-only; ff-only main integration preserving all 34 implementation/evidence commits; no squash/rewrite",
+    "historicalReceipts": "All predecessor fields except currentP7b1Status unchanged; original p7b1Verdict and raw G-only inconclusive verdict remain historical evidence",
+    "validation": "Git state/ancestry and docs-only diff checks; no repeated full unit/Chromium/L1b execution",
+    "paidCalls": 0,
+    "limitsRetained": [
+      "P7 overall not accepted",
+      "Production and hosted boundary not accepted",
+      "No real Provider/model/image acceptance",
+      "T1/T3 full execution not complete",
+      "Production Journal fault injection not run",
+      "L2/L3/L4 not run"
+    ]
   }
 }
