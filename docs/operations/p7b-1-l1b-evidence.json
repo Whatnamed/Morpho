@@ -576,7 +576,7 @@
   ],
   "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main.",
   "receiptScope": "Original pre-fix blocker receipt preserved above; current bounded D1 fix is recorded in postFix.",
-  "currentP7b1Status": "validating / D1-D4 web accepted and closed; A-E accepted receipts retained; F pass; G fail at P7B-1-D5; remaining G trajectories not_run; awaiting bounded web review",
+  "currentP7b1Status": "validating / D1-D4 web accepted and closed; A-F accepted receipts retained; D5 bounded fix complete awaiting web review; G6 passes, G stops at new P7B-1-D6; remaining G not_run",
   "postFix": {
     "id": "P7B-1-D1",
     "status": "closed / bounded A+B pass; awaiting web review",
@@ -3935,5 +3935,422 @@
       "Local Auth has Windows single-listener compatibility shim"
     ],
     "stop": "P7 validating; P7B-1 overall not passed; D5 awaiting bounded web review; remaining G trajectories not_run; no P7B-2/P7B-3/P7C/L4; no main merge."
+  },
+  "d5Fix": {
+    "date": "2026-10-04",
+    "reviewedBaseline": "e9fad50e53d5d9aeb430cb0608518d1a64edfe55",
+    "mainAtFetch": "f852578f0d1303ff074f66db1e3919c3218a5561",
+    "fixSha": "97dd399fa502cb5c4a461cf1cfe8e3c74739664e",
+    "cleanExecutedSource": "9c8734acd80a054397048eaa995b91ce2f05bc9e",
+    "harnessCalibrationSha": "9c8734acd80a054397048eaa995b91ce2f05bc9e",
+    "acceptedReviews": {
+      "source": "User instruction",
+      "D1": "closed",
+      "D2": "closed",
+      "D3": "closed",
+      "D4": "closed",
+      "A": "accepted",
+      "B": "accepted",
+      "C": "accepted",
+      "D": "accepted",
+      "E": "accepted",
+      "F": "accepted PASS"
+    },
+    "productContract": {
+      "proofField": "Existing result.binding.requestContentSha256 JSONB",
+      "canonicalDomain": "morpho-a-plus-compaction-request-content-v1",
+      "input": "Bounded validated complete client Compaction body; optional previousSummary/expectedPreviousRevisionId normalize to null; recursive object keys sorted, arrays/order/body preserved",
+      "replay": "Before Provider config/cache/model/acquire, validate proof and supplied Turn/project/request/sequence/action identity; exact replay returns same immutable manifest with zero execution",
+      "changedContent": "409 external_action_hash_conflict; no old manifest",
+      "missingInvalidProof": "503 request_content_identity_unavailable; no delivery or staged publication",
+      "textD1": "Unchanged request_id_conflict / config-independent Text identity contract",
+      "journalActionHash": "Unchanged; acquire/hash conflict remains",
+      "sqlSchemaMigrationRecordVersionsRetryPolicyChanged": false
+    },
+    "G": {
+      "verdict": "fail / new D6",
+      "runIdentity": {
+        "runId": "2026-10-04T11-59-25.097Z-27012",
+        "sourceSha": "9c8734acd80a054397048eaa995b91ce2f05bc9e",
+        "build": {
+          "schemaVersion": 2,
+          "sourceSha": "9c8734acd80a054397048eaa995b91ce2f05bc9e",
+          "sourceTreeSha256": "057bfe9596b96d79119bf284100d21888620f62934459acbf8536db599730ec7",
+          "sourceTreeFileCount": 1081,
+          "buildId": "vXdCYOk7oioeolOGNyLTn",
+          "artifactSha256": "a92ee451f13685c208f00f4dfde7f3052985c779bd8c506fc414cd8edc0c8975",
+          "artifactFileCount": 852,
+          "isDirty": false,
+          "nodeVersion": "v22.23.2",
+          "builtAt": "2026-10-04T11:59:47.934Z"
+        },
+        "contractVersion": "p7b-l1b-boundary-1",
+        "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f",
+        "databaseIdentity": "5d265d69-c15f-48f1-b47b-d958acee6107"
+      },
+      "D5G6": "pass / changed source 409 without manifest, exact and canonical equivalent original manifest, unchanged original Journal, execution1",
+      "preDelivery": {
+        "intentDurableBeforePost": true,
+        "exactBodyDurable": true,
+        "originalSummaryHashVerified": true,
+        "exactReplayNoExecution": true
+      },
+      "canonicalReplay": {
+        "verdict": "pass",
+        "manifestUnchanged": true,
+        "noNewExecution": true
+      },
+      "identity": {
+        "serverTurnId": "36b56fe5-ff9c-4243-b2cc-e7ba90b32264",
+        "localProjectId": "p7b-G-original-summary",
+        "requestId": "compact:manual:1fe74f43-a5b4-461c-87ae-402679065264",
+        "stepSequence": 1,
+        "actionId": "compact:manual:1fe74f43-a5b4-461c-87ae-402679065264",
+        "clientRequestSha256": "b89bee229ed26964193f4534f4b9358eab79c6641e82a2334c6645fb5728101a",
+        "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+        "effectId": "effect:e07c69062675373ac50e11c45511cdb408e574c9cc4de1880979bdb90be7550d",
+        "attemptId": "76b5164b-e7a8-4a0c-9c58-b38947085963",
+        "providerRequestDigest": "7ecccd98607cd2913af7109f3c03164daab4863f68ef9308a25744a90a52fc34",
+        "manifest": {
+          "kind": "compaction",
+          "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+          "version": 1,
+          "effectId": "effect:e07c69062675373ac50e11c45511cdb408e574c9cc4de1880979bdb90be7550d",
+          "mimeType": "application/json",
+          "resultId": "result:5f790189bac83ee35655abbe5e3e759be71f9deab2ecae32a6df1c1057cbeadf",
+          "expiresAt": "2026-10-05T20:00:23.8943+08:00",
+          "byteLength": 491,
+          "chunkCount": 1
+        },
+        "binding": {
+          "actionId": "compact:manual:1fe74f43-a5b4-461c-87ae-402679065264",
+          "requestId": "compact:manual:1fe74f43-a5b4-461c-87ae-402679065264",
+          "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+          "actionKind": "compaction",
+          "serverTurnId": "36b56fe5-ff9c-4243-b2cc-e7ba90b32264",
+          "stepSequence": 1,
+          "localProjectId": "p7b-G-original-summary",
+          "requestContentSha256": "32feebb3e1756bf8deecf24cd07af709d60c1b07cb009f8d84ad742ee791e750"
+        }
+      },
+      "changedSourceReplay": {
+        "originalSha256": "b89bee229ed26964193f4534f4b9358eab79c6641e82a2334c6645fb5728101a",
+        "changedSha256": "a48b99074a4b94b3aec03843cbc0ce3ef7476795335c8efbe9728ac9e727bc98",
+        "outcome": {
+          "status": 409,
+          "data": {
+            "code": "external_action_hash_conflict",
+            "recoverable": false
+          }
+        },
+        "journalUnchanged": true,
+        "providerExecutions": 1
+      },
+      "application": {
+        "saveFailureAckPosts": 0,
+        "originalActionAndBodyRetained": true,
+        "newRevisionCount": 1,
+        "revisionId": "conversation-summary-v3-13e66984634216cdc6c9fd9649d7cfd87be9bdfd259b3a93fc4a139a5e5389eb",
+        "sameRevisionAfterReload": true,
+        "summaryDurableBeforeAck": true,
+        "recoveryAppliedBeforeAck": true,
+        "ackAttempts": 3,
+        "exactAck": {
+          "resultId": "result:5f790189bac83ee35655abbe5e3e759be71f9deab2ecae32a6df1c1057cbeadf",
+          "version": 1,
+          "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37"
+        },
+        "acknowledgedAtAtStop": null
+      },
+      "firstDivergence": {
+        "id": "P7B-1-D6",
+        "scenario": "G / manual Compaction recovery after durable Summary, before ACK convergence",
+        "title": "Reloaded manual Compaction falls through to a new Text Provider request",
+        "expected": "Manual-only recovery applies/reuses the original Summary and settles the same result; it never creates a Text request identity or POST.",
+        "actual": "Summary saved once and reused; generic recovered driver issues a new Text request with empty input, HTTP 400 invalid_provider_request; canonical partiallyCompleted/terminal and Recovery clear. No second Provider execution observed.",
+        "originalIdentity": {
+          "serverTurnId": "36b56fe5-ff9c-4243-b2cc-e7ba90b32264",
+          "localProjectId": "p7b-G-original-summary",
+          "requestId": "compact:manual:1fe74f43-a5b4-461c-87ae-402679065264",
+          "stepSequence": 1,
+          "actionId": "compact:manual:1fe74f43-a5b4-461c-87ae-402679065264",
+          "clientRequestSha256": "b89bee229ed26964193f4534f4b9358eab79c6641e82a2334c6645fb5728101a",
+          "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+          "effectId": "effect:e07c69062675373ac50e11c45511cdb408e574c9cc4de1880979bdb90be7550d",
+          "attemptId": "76b5164b-e7a8-4a0c-9c58-b38947085963",
+          "providerRequestDigest": "7ecccd98607cd2913af7109f3c03164daab4863f68ef9308a25744a90a52fc34",
+          "manifest": {
+            "kind": "compaction",
+            "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+            "version": 1,
+            "effectId": "effect:e07c69062675373ac50e11c45511cdb408e574c9cc4de1880979bdb90be7550d",
+            "mimeType": "application/json",
+            "resultId": "result:5f790189bac83ee35655abbe5e3e759be71f9deab2ecae32a6df1c1057cbeadf",
+            "expiresAt": "2026-10-05T20:00:23.8943+08:00",
+            "byteLength": 491,
+            "chunkCount": 1
+          },
+          "binding": {
+            "actionId": "compact:manual:1fe74f43-a5b4-461c-87ae-402679065264",
+            "requestId": "compact:manual:1fe74f43-a5b4-461c-87ae-402679065264",
+            "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+            "actionKind": "compaction",
+            "serverTurnId": "36b56fe5-ff9c-4243-b2cc-e7ba90b32264",
+            "stepSequence": 1,
+            "localProjectId": "p7b-G-original-summary",
+            "requestContentSha256": "32feebb3e1756bf8deecf24cd07af709d60c1b07cb009f8d84ad742ee791e750"
+          }
+        },
+        "unintendedTextRequest": {
+          "serverTurnId": "36b56fe5-ff9c-4243-b2cc-e7ba90b32264",
+          "requestId": "ee530869-1f76-45bb-ac1b-e07c88785018",
+          "stepSequence": 1,
+          "providerPayload": {
+            "ref": "morpho.agent-runtime-a-plus.recovery.v2.provider:36b56fe5-ff9c-4243-b2cc-e7ba90b32264:ee530869-1f76-45bb-ac1b-e07c88785018:1:7301a76a0eb2920a010159fc794869f5e9e9a6c860cb5b3bfa92e18fd96800b4",
+            "sha256": "7301a76a0eb2920a010159fc794869f5e9e9a6c860cb5b3bfa92e18fd96800b4",
+            "byteLength": 147
+          },
+          "status": 400,
+          "code": "invalid_provider_request",
+          "journalRequestRows": 0
+        },
+        "firstEvidenceCheckpoint": "G-original-summary-summary-durable-before-ack-crash.json",
+        "rawAssertionCheckpoint": "G-original-summary-recovered-same-revision.json",
+        "minimalBoundary": [
+          "agentTurnRunner.ts:289-302 restores manual Recovery through generic driveSessionSerialized",
+          "agentTurnRunner.ts:1100-1114 recoverInterruptedCompaction completes applied Summary into requestingProvider",
+          "agentTurnLifecycle.ts:853-856 completeCompaction resumes requestingProvider",
+          "agentTurnRunner.ts:843-852 generic driver starts initial Text request from manual-only runtime input=[]"
+        ],
+        "summaryRevisionId": "conversation-summary-v3-13e66984634216cdc6c9fd9649d7cfd87be9bdfd259b3a93fc4a139a5e5389eb",
+        "newSummaryRevisionCount": 1,
+        "compactionExecutions": 1,
+        "compactionClientPosts": 3,
+        "allCompactionBodiesExact": true,
+        "saveFailureAckPosts": 0,
+        "ackAttempts": 3,
+        "allAckBodiesExact": true,
+        "summaryAndAppliedRecoveryDurableBeforeAck": true,
+        "resultAcknowledgedAtAtFinalCheckpoint": null,
+        "ackQualification": "Two attempts intentionally held by crash barrier; final in-flight attempt has no durable server ACK receipt at stop. No claim of successful ACK convergence or independent ACK defect.",
+        "localOutcome": {
+          "kind": "partiallyCompleted",
+          "reasons": [
+            "terminal"
+          ]
+        },
+        "localFault": {
+          "kind": "present",
+          "faultId": "ee530869-1f76-45bb-ac1b-e07c88785018:invalid_provider_request",
+          "error": {
+            "kind": "terminal",
+            "code": "invalid_provider_request",
+            "message": "input 必须包含 1-1024 个 bounded message。",
+            "recoverable": false
+          }
+        },
+        "providerExecutions": 1,
+        "noObservedSecondExecution": true,
+        "productNotFixed": true,
+        "remainingCasesNotRun": [
+          "source-changed",
+          "base-changed",
+          "intent-failure"
+        ],
+        "rawVerdictPreserved": true
+      },
+      "remainingTrajectories": "not_run after D6; source/base currentness and successful ACK convergence not accepted"
+    },
+    "invalidRuns": [
+      {
+        "runId": "2026-10-04T11-54-13.770Z-26064",
+        "rawVerdict": "invalid_run",
+        "sourceSha": "97dd399fa502cb5c4a461cf1cfe8e3c74739664e",
+        "build": {
+          "schemaVersion": 2,
+          "sourceSha": "97dd399fa502cb5c4a461cf1cfe8e3c74739664e",
+          "sourceTreeSha256": "80930806651ee030168db8e70d15b663d0ba2a3dfd61bebbd5af2bd56a9ba4bd",
+          "sourceTreeFileCount": 1081,
+          "buildId": "BuWxEtXWYAVRlVbnCZ6uG",
+          "artifactSha256": "737996a8d936503e9e3a37a008d4d8adb8ae465e1718ee53656957d96af5d8ca",
+          "artifactFileCount": 845,
+          "isDirty": false,
+          "nodeVersion": "v22.23.2",
+          "builtAt": "2026-10-04T11:54:38.524Z"
+        },
+        "classification": {
+          "runId": "2026-10-04T11-54-13.770Z-26064",
+          "classification": "invalid_run / harness response-loss injection repeated on exact Recovery replay",
+          "rawVerdictPreserved": true,
+          "evidence": "G-original-summary-final.json records two identical durable Compaction POST bodies, both production responses HTTP 200 with the same immutable manifest, execution 1, ACK 0; the test fetch wrapper throws after each response, preventing result delivery and the Summary save-failure checkpoint.",
+          "meaningfulPartialFacts": "G6 changed source returns 409 without manifest; canonical equivalent replay returns unchanged manifest; original Journal unchanged and execution 1.",
+          "correction": "Only the first original Compaction response is lost. Subsequent exact replay returns the real response. Production code, identity, expectations, persistence/ACK faults and wait timeouts remain unchanged.",
+          "paidProviderCalls": 0,
+          "recordedControlledProviderExecutions": 1
+        },
+        "controlledProviderExecutions": 1
+      }
+    ],
+    "gates": {
+      "targetedAdjacent": "pass / 11 files, 277 tests; Compaction, shared result store, D1 Text, Journal, Recovery, Runner, Image/client delivery adjacent contracts",
+      "typecheck": "pass",
+      "lint": "pass",
+      "modifiedHarnessSyntaxLint": "pass",
+      "cleanProductionBuild": "pass / both fresh G runs",
+      "diffCheck": "pass",
+      "frozenL1bP7AFilesLockAnd20MigrationHashes": "unchanged",
+      "fullUnitChromiumP7A": "not_run / bounded scope, stop at new divergence"
+    },
+    "historicalEvidence": {
+      "priorFieldsExceptCurrentStatus": "unchanged",
+      "verifiedPriorArtifactHashesAndSizes": 248,
+      "originalD5RunRetained": "2026-10-04T11-32-20.442Z-27396",
+      "rawVerdictsOverwritten": false
+    },
+    "controlledProviderExecutions": {
+      "meaningfulG": 1,
+      "invalidCalibrationG": 1,
+      "totalRecordedThisTurn": 2
+    },
+    "paidProviderSearchImageCalls": 0,
+    "paidCost": 0,
+    "productionDataSchemaWrites": 0,
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/G-original-summary-changed-content-replay.json",
+        "sha256": "e7b3443e736d68e283780d92811703810f46f30dd165838eba5780416a151fdd",
+        "byteLength": 28260
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/G-original-summary-final.json",
+        "sha256": "5f737afe029eb46d282a9d1d0de50ec222b31d4d2fb52e269df37abd86710cfe",
+        "byteLength": 35605
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/G-original-summary-final.png",
+        "sha256": "c6d9a8c23e0ca61fb160e81e8ae6382de7467ca65c4fa36d89a3b23d597c6738",
+        "byteLength": 106364
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/G-original-summary-published-before-local-delivery.json",
+        "sha256": "e7b3443e736d68e283780d92811703810f46f30dd165838eba5780416a151fdd",
+        "byteLength": 28260
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/G-original-summary-result.json",
+        "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+        "byteLength": 491
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/build.log",
+        "sha256": "4a61eaf07b45299a8f8af43e536b1f98ef573003622167e6007faab57ca9ad7e",
+        "byteLength": 1475
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/calibration.json",
+        "sha256": "16e314f94b62b2a3ae24dcee7a17901575c23e38cba7ae17df79dd42629ffde3",
+        "byteLength": 964
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/environment.json",
+        "sha256": "ada72beaa6f57a4ba73ad34a1e1e89d7a43e3dd495cf84e7c542cebecc8b8954",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/scenario-G.json",
+        "sha256": "d20db473f452f9f132603891cffec9c4bde9cf4b9f6977e8a9b5159c2c3d0943",
+        "byteLength": 5897
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/server.log",
+        "sha256": "d4a95efa39136eb3852adf8bf86cf73adfab67add45cc0a8aba11ef7000e84d3",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-54-13.770Z-26064/verdict.json",
+        "sha256": "5010ddf71f46f5fa7ec2f9a3d5a20f29a3f35fc5a483586c05f1bd5f67bc366e",
+        "byteLength": 26277
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/G-original-summary-changed-content-replay.json",
+        "sha256": "b1b0908516424562eeb0925492c059ac26bd2e6cd87ba53c2f3f61f540f82ba5",
+        "byteLength": 28258
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/G-original-summary-final.json",
+        "sha256": "3df89dbe9db22a0b086f7c8bc5914e965fcd324ca2e1cb25fb41723052773fbb",
+        "byteLength": 128593
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/G-original-summary-final.png",
+        "sha256": "cac30c22c0409d8112944f16678124718e6f3a2a87b7946a1cbc0b57e62bd2d8",
+        "byteLength": 106445
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/G-original-summary-published-before-local-delivery.json",
+        "sha256": "b1b0908516424562eeb0925492c059ac26bd2e6cd87ba53c2f3f61f540f82ba5",
+        "byteLength": 28258
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/G-original-summary-recovered-same-revision.json",
+        "sha256": "3df89dbe9db22a0b086f7c8bc5914e965fcd324ca2e1cb25fb41723052773fbb",
+        "byteLength": 128593
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/G-original-summary-result.json",
+        "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+        "byteLength": 491
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/G-original-summary-summary-durable-before-ack-crash.json",
+        "sha256": "796c456d7c13d9a6bec6edb390305343d078902801b34b4790a2d4b54450c047",
+        "byteLength": 89558
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/G-original-summary-summary-save-failed.json",
+        "sha256": "70fa9b138e8c1b18406bf75ce987a8b4d86717bc5aa860b7a31ff2e788f12546",
+        "byteLength": 36840
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/build.log",
+        "sha256": "536c762079272cf5d349b269afe837f88575430b1896268c56afbf9816c07cd2",
+        "byteLength": 1475
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/environment.json",
+        "sha256": "d9d8059e0e77890cea0bd271afe18b8c5996b3b152ed04153c34930e4cf87aa7",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/first-divergence.json",
+        "sha256": "38adaf3e1ec47f84244c1fe202375baab1a2f9023a50b48ce16380617e752795",
+        "byteLength": 4805
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/scenario-G.json",
+        "sha256": "3dfb4c4005c00fb75ad81a9391fc3fa598f007be269ce4f18ea3483a26c0d6d9",
+        "byteLength": 11565
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/server.log",
+        "sha256": "b3526f5ee642631ab74f7cda4bf361d785d284845e2bcd4a3ea89f4a05bfd188",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T11-59-25.097Z-27012/verdict.json",
+        "sha256": "e2bf27d6d9e6c27448a1aa0d7c07fcd69c3b9cab15224807400ba651f210f93d",
+        "byteLength": 33107
+      }
+    ],
+    "rawArtifactsLocation": "ignored output/playwright/p7b-l1b",
+    "servicesStopped": true,
+    "limits": [
+      "Remote migration/schema state unverified: authentication failures",
+      "No production Journal fault injection",
+      "No L2/L3 or L4",
+      "No Kong/hosted Supabase/Vercel path",
+      "Local Auth has Windows single-listener compatibility shim"
+    ],
+    "stop": "D5 fix awaiting web review; D6 recorded without repair; P7B-1 incomplete, P7 validating; A-F not rerun, remaining G not_run; no main merge or later package."
   }
 }

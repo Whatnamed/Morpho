@@ -1,8 +1,82 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：P7B-1-D1–D4 web ACCEPTED / closed；A–E accepted pass；F pass；G 首个 PRODUCT BLOCKER P7B-1-D5。**
-P7 继续 `validating`；G 剩余轨迹 `not_run`；P7B-1 overall 未 PASS；
-P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main；以下原 D4 blocker / diagnostic receipts 保持历史事实。
+**当前：D1–D4 closed、A–F web accepted；D5 bounded fix complete / awaiting web review；G6 pass，G 在新 PRODUCT BLOCKER P7B-1-D6 停止。**
+P7 继续 `validating`；P7B-1 overall 未 PASS / L1b 未完成，G 剩余轨迹 `not_run`。
+P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main；以下原 blocker / diagnostic receipts 保持历史事实。
+
+## D5 bounded fix / G-only rerun（2026-10-04）
+
+Fetch 确认 reviewed task head `e9fad50e53d5d9aeb430cb0608518d1a64edfe55`、main
+`f852578f0d1303ff074f66db1e3919c3218a5561`、工作树 clean。Fix：
+**`97dd399fa502cb5c4a461cf1cfe8e3c74739664e`**。
+
+Compaction POST 对 validated bounded client body 计算 domain-separated canonical SHA256，保存到
+既有 result binding JSONB 的 `requestContentSha256`。递归 object key 排序，array/source order 与
+精确 body 保留；optional previousSummary / expectedPreviousRevisionId 的 absent/null 归一化。
+在返回或 publish escrow **之前**核对 proof 和 Turn/project/request/sequence/action identity，仍在
+当前 config/cache/model 加载之前。Exact historical replay 只返回同一 immutable manifest，不 acquire
+或执行 Provider；changed content 为 **409 external_action_hash_conflict**，无旧 manifest；
+missing/invalid proof 为 **503 request_content_identity_unavailable**，不 delivery / publish。
+原 actionHash/acquire conflict、immutable result、D1 Text contract 保持；无 SQL/schema/migration、
+record version、Provider retry 或 generic paid retry 变更。
+
+Deterministic focused/adjacent **11 files / 277 tests pass**：exact same result / no execution、changed
+messages/body/order/membership/source endpoints/previous Summary/base identity、canonical nested keys、
+absent/null equivalence、staged/published missing/invalid proof、当前 config changed/unavailable 均覆盖，
+并保留 Text D1、Journal、Compaction apply、Recovery/Runner 与 Image/client delivery 相邻回归。
+Typecheck / full lint / modified harness syntax/lint / diff check pass；本次两个 real G source 均 strict
+clean production build pass。没有机械重跑 full unit、P7A 或 full Chromium。
+
+有效 **G-only run `2026-10-04T11-59-25.097Z-27012`**，clean executed source
+`9c8734acd80a054397048eaa995b91ce2f05bc9e` / build `vXdCYOk7oioeolOGNyLTn`；
+source-tree hash `057bfe9596b96d79119bf284100d21888620f62934459acbf8536db599730ec7`，
+artifact hash `a92ee451f13685c208f00f4dfde7f3052985c779bd8c506fc414cd8edc0c8975`。
+DB identity `5d265d69-c15f-48f1-b47b-d958acee6107`。使用 real Auth / PostgreSQL /
+PostgREST / production routes / RPC，controlled local Provider。
+未重跑 A–F；原 D5 run **`2026-10-04T11-32-20.442Z-27396`** 完整保留。
+
+- **D5/G6 pass**：same identity changed source 返回 409 且无 manifest；exact 与 canonical equivalent
+  replay 返回原 manifest，原 action/Journal/effect/result 未变，Provider execution **1**。
+- Lost initial response 后 reload 使用同一 exact durable Compaction body/action/source/base；native
+  Compaction POST **3**，全部 body 与 IndexedDB payload 相同，外部 execution 始终 **1**。
+- Actual local Summary save failure 时 ACK **0**、durable pointer 仍为旧 base。恢复 storage 后只创建
+  **1** 个新 revision，后续 reload 复用同一 revision（总 revisions=2）。每个 ACK attempt 捕获的
+  Workspace Summary 与 Recovery `summaryApplyState=applied` 已 durable。
+- ACK attempts **3**、identity/body 全部相同；前两次由 crash barrier 阻塞。停止时原 result 的
+  `acknowledged_at=null`，最终 attempt 尚无 Server receipt；不声明成功 ACK convergence。
+
+**P7B-1-D6 — reloaded manual Compaction falls through to a new Text Provider request**：
+
+Turn `36b56fe5-ff9c-4243-b2cc-e7ba90b32264`，原 request/action
+`compact:manual:1fe74f43-a5b4-461c-87ae-402679065264` / sequence 1。
+新 Summary `conversation-summary-v3-13e66984634216cdc6c9fd9649d7cfd87be9bdfd259b3a93fc4a139a5e5389eb`
+已保存，但在 `summary-durable-before-ack-crash` checkpoint 已出现一个无用户授权的 Text
+`/requests` POST：新 request `ee530869-1f76-45bb-ac1b-e07c88785018` / sequence 1。
+Server 返回 **400 invalid_provider_request**（manual runtime input=[]），没有 Journal request row
+或第二次 execution。最终 canonical local outcome 为 `partiallyCompleted` / terminal fault，Recovery
+被 clear；不是成功完成的 manual-only recovery。
+
+最小边界：`recoverMorphoAgentTurn()` 对 manual Recovery 进入通用 `driveSessionSerialized()`；
+`recoverInterruptedCompaction()` complete applied Summary 后恢复 `requestingProvider`；通用 driver
+的 created/requestingProvider 分支调用 `startInitialRequest()`。Initial manual path 有专用 finalize，
+reload path 没有保持这项 manual-only ownership。原 action/effect/result success 与单次 Summary apply
+仍保留；此处未观察到第二次 paid execution，也不将缺少 ACK receipt 另报成独立缺陷。
+
+已 first-divergence stop，**未修 D6**。Source/base-changed 与本轮 intent-failure case 未执行；完整
+G recovery/ACK convergence 未接受。原 G1 零 POST 证据继续保留，但不冒充本轮执行。
+
+Calibration run `2026-10-04T11-54-13.770Z-26064` 为原始 `invalid_run`：测试注入器对 Recovery
+exact replay 也重复丢失响应，导致等待 Summary save-failure 超时。真实两次同 body POST 均 200 /
+same manifest、execution1。仅 harness commit `9c8734acd80a054397048eaa995b91ce2f05bc9e` 将 loss
+限制为第一次响应；不改产品、expectation、timeout 或 storage/ACK fault。原 raw verdict 未覆盖，
+新增 calibration receipt。该 diagnostic 与有效 G 各 stub1，本轮 controlled executions 共 **2**；
+paid Provider/Search/Image calls / cost / production writes **0**。
+
+248 项 prior artifact hashes/sizes 全部不变，新增 25 项 index 与 D6 最小文本证据见
+[machine-readable D5 receipt](./p7b-1-l1b-evidence.json) 的 `d5Fix`。Frozen P7A files/lock、L1b
+contract 与 20 项 migration hashes 完全一致。Raw screenshots/state dumps/logs 只在 ignored
+`output/` / `temp/`；隔离服务已停止。Hosted/production boundary、real L2/L3/L4 等原 limits 保留。
+P7B-1 仍 incomplete，P7 validating；未 merge main，停止等待 D5/D6 网页复审。
 
 ## F/G continuation / first divergence（2026-10-04）
 
