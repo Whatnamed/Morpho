@@ -10,12 +10,14 @@ import { readBuildProvenance } from "./build-provenance.mjs";
 import { runDurableClientScenario } from "./p7b-l1b-browser.mjs";
 import { runAmbiguousClientScenario } from "./p7b-l1b-ambiguity.mjs";
 import { runCancellationScenario } from "./p7b-l1b-cancellation.mjs";
+import { runResultScenario } from "./p7b-l1b-result.mjs";
 
 const root=process.cwd();
 const boundedD1=process.argv.includes("--slice=AB");
 const clientSlice=process.argv.includes("--slice=C");
 const ambiguitySlice=process.argv.includes("--slice=D");
 const cancellationSlice=process.argv.includes("--slice=E");
+const resultSlice=process.argv.includes("--slice=F");
 const git=(args)=>execFileSync("git",args,{encoding:"utf8"}).trim();
 if(git(["status","--porcelain","--untracked-files=no"])) throw Error("Clean tracked source required");
 const sourceSha=git(["rev-parse","HEAD"]);
@@ -89,7 +91,10 @@ try {
     return row.verdict==="pass";
   };
   let A;
-  if(cancellationSlice) {
+  if(resultSlice) {
+    sliceComplete=await scenario("F",row=>runResultScenario({runtime,actors,row,output,setTurn:value=>{turn=value;},journal,request}));
+    verdict.scenarios.unshift(...contract.scenarios.filter(s=>["A","B","C","D","E"].includes(s.id)).map(s=>({id:s.id,expected:s.expected,verdict:"not_run",reason:"Accepted A-E receipts retained; no re-audit"})));
+  } else if(cancellationSlice) {
     await scenario("E",row=>runCancellationScenario({runtime,actor:actors[0],row,output,setTurn:value=>{turn=value;},journal,request}));
     verdict.scenarios.unshift(...contract.scenarios.filter(s=>["A","B","C","D"].includes(s.id)).map(s=>({id:s.id,expected:s.expected,verdict:"not_run",reason:"Accepted A-D receipts retained; no re-audit"})));
   } else if(ambiguitySlice) {
@@ -163,9 +168,8 @@ try {
   }
   verdict.verdict=verdict.firstDivergence?"product_blocker":"inconclusive";
   verdict.providerStubCalls=runtime.stub.calls;
-  for(const s of contract.scenarios.filter(s=>!["A","B",...(clientSlice?["C"]:[]),...(ambiguitySlice?["C","D"]:[]),...(cancellationSlice?["C","D","E"]:[])].includes(s.id))) verdict.scenarios.push({id:s.id,expected:s.expected,verdict:"not_run",
+  for(const s of contract.scenarios.filter(s=>!verdict.scenarios.some(row=>row.id===s.id))) verdict.scenarios.push({id:s.id,expected:s.expected,verdict:"not_run",
     reason:verdict.firstDivergence?"Stopped at first product divergence":boundedD1?"Excluded from bounded D1 A/B rerun":"Not implemented in first slice; no full L1b pass claimed"});
-  if(!A&&!clientSlice&&!ambiguitySlice&&!cancellationSlice) verdict.scenarios.push({id:"B",verdict:"not_run",reason:"Stopped at A divergence"});
   await writeFile(resolve(output,"server.log"),server.safeLog);
 } catch(error) {
   verdict.setupError=error.message; verdict.verdict="invalid_run";
