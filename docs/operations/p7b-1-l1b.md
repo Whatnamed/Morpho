@@ -1,7 +1,90 @@
-# P7B-1 — L1b real routes / Journal / RPC（2026-10-03）
+# P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：P7B-1-D1 closed（bounded real A+B pass，待网页复审）；P7B-1 overall 未 PASS。**
-P7 继续 `validating`；C–G `not_run`；P7B-2/P7B-3/P7C `not_started`；未 merge main。
+**当前：P7B-1-D1 web ACCEPTED / closed；新增 PRODUCT BLOCKER P7B-1-D2（C fail）。**
+P7 继续 `validating`；D–G `not_run`；P7B-1 overall 未 PASS；
+P7B-2/P7B-3/P7C `not_started`；本轮未改产品、未 merge main，等待网页给 bounded fix scope。
+
+## C continuation / first divergence（2026-10-04）
+
+Fetch 确认 reviewed branch head `96053909f1dbc341f699c4e177fb5cdbd67bc3e0`，main 仍为
+`f852578f0d1303ff074f66db1e3919c3218a5561`，工作树 clean。用户本轮明确确认 D1 已网页接受，
+accepted fix `1f410e4553d89447cfb934590e0a00979dc75ee6`；没有重审或修改 D1，A/B 使用原 accepted receipt。
+
+本轮只新增 Eval browser harness：native Chromium + 当前 domain `createBlankWorkspace` seed，
+real Auth cookie → production Next A+ routes → real privileged server boundary / PostgREST →
+fresh isolated TCP PostgreSQL → controlled local Text stub。没有 Agent/Journal/RPC mocks。
+POST/ACK 入口读取真实 localStorage 与 IndexedDB；response loss 仅发生在客户端已读完真实
+HTTP response 后，reload 前的客户端 receive barrier 阻塞取回，不伪造 server result。
+Workspace fault 只对 test-owned project 的最终 conversation `Storage.setItem` 抛
+`QuotaExceededError`，不影响 Recovery/IndexedDB、服务端或 production。
+
+| Scenario | 当前 verdict | 实际 evidence |
+|---|---|---|
+| A/B | prior accepted evidence | 本轮 not_run；保留原 D1 failure、accepted fix 与 A/B pass |
+| C response loss / reload | subcase pass | original request identity/body 在 POST 前 durable；reload GET original Journal/result/chunk；envelope + conversation durable before real ACK；每个 request 一次 Provider submission |
+| C final local save failure | **fail / P7B-1-D2** | ACK 0、Recovery/envelope 保留、UI 显示保存失败；但 durable conversation 未写入，Recovery 仍持久化 completed Overall Local Outcome + succeeded persistence |
+| D/E/F/G | not_run | 第一 genuine product divergence 后停止；没有用 unit/P7A 或 C 的部分 escrow evidence 代填 |
+
+**P7B-1-D2 / P2 — recovered Text 的 final conversation 保存失败后保留错误的 completed local facts。**
+
+- Turn `b1c45c0a-f86f-4141-9dff-659c78205f49`，project `p7b-browser-save-failure`，
+  request `85437f38-b4c8-4698-933d-7f1cd9542b65` / sequence `1`。
+- Provider 与 server Journal 正确为 `succeeded` / `externally_completed`，原 escrow published。
+  reload 从真实 RPC/PostgREST 取回原 result/chunk，并保留完整 envelope。
+- Final Workspace write 被人为拒绝；实际 localStorage 中 assistant body 仍为空、status 仍
+  `streaming`；UI 显示 Workspace“保存失败”，**没有声称 UI 展示 full success**。
+- 同时持久化的 Recovery 为 `phase = terminal`、`outcome.kind = completed`、
+  `lifecycle.persistence = succeeded`、`metadata.localPersistence = succeeded`。
+  这是客户端 Overall Local Outcome / persistence facts 的错误，不是 server completion 错误。
+- **未观察到错误 ACK 或重复付费**：client ACK POST = 0，DB `acknowledged_at = null`，
+  original request POST = 1，该 effect 的 Provider stub execution = 1。
+
+最小代码边界（本轮未改）：
+[`agentTurnCoordinator.ts`](../../src/features/workspace/agentTurnCoordinator.ts) 的
+`observeServerStatus()` 在 `externallyCompleted` 时，沿用 initial Workspace 的 succeeded
+persistence，先 dispatch `TURN_FINALIZED`；
+[`agentTurnRunner.ts`](../../src/features/workspace/agentTurnRunner.ts) 的
+`reconcileRequestResult()` 先 flush Recovery，再检查 final Workspace persistence。
+后者失败时仅返回 `pending`，未纠正已保存的 terminal completed / succeeded facts。
+Canonical Lifecycle owns Overall Local Outcome and must include current local persistence facts；
+保留 Provider/server succeeded 是正确行为，不能代替最终本地保存成功。
+
+## C run identity、invalid harness run 与 gates
+
+- Meaningful first-divergence run：`2026-10-04T07-01-53.206Z-14756`；clean executed source
+  `80704fc1cf0d4fd9cd7e7b7cb7fc9e5a77443d10`；build `guEFOaew_P_7M6AkocOkl`。
+  Source-tree SHA-256 `b188289f3cd04d26523603184990af5e1a9830e852a5352f77ed98682a862eaa`；
+  artifact SHA-256 `ccc008adbdbe0f47c97afac78cb1289aa390b9f886635f49cd1ec8b1c002e186`。
+- Isolated DB identity：`b06485ff-8260-4357-ad59-50fcadbc1fe8`；PostgreSQL 17.10 /
+  PostgREST 16.4 / Auth v2.197.0，环境与 20 项 repository migrations hashes 保持原值。
+  各服务只用 loopback，ports 55432–55436；浏览器非 loopback 网络请求被阻断。
+- 保留三个独立 run：`2026-10-04T06-54-17.795Z-3696` 仅 C response-loss/reload 初始子场景
+  pass，不声称完整 C pass；`2026-10-04T06-57-15.515Z-7604` 为 **invalid_run**，harness 错误
+  等待 Agent `.failure-card`，实际 failure UI 是 Workspace banner；校准 selector 并检查
+  durable Outcome 后，第三个 run 才记录 genuine product blocker。没有删除或改写前两次 raw verdict。
+- Meaningful run stub submissions = **2**（两个独立 Text requests 各 1）；三个新 runs 共 **5**。
+  每个 request 都没有 reload 造成的第二 submission；automatic retries = 0。
+  Paid calls / cost = **0**；production DB/schema/data/migration 写入 = **0**。
+- Changed Eval scripts 的 Node syntax、targeted ESLint、clean strict production build、
+  `git diff --check` **pass**。最初 harness revision 的 full lint pass；后续小改动做 targeted lint。
+  因已发现产品 blocker，本轮不再跑 unit/SQL/typecheck/full Chromium/P7A 来增加绿色 gate。
+  全部 `src/`、`e2e/`、migrations 与 reviewed head 无 diff；P7A 五项 frozen hashes + lock
+  和 L1b frozen contract hash 不变。
+- 原始 D1 / post-fix receipt 字段保持原值，原 33 项 artifact hashes 核对；新 33 项 raw artifact
+  index 追加于 [machine receipt](./p7b-1-l1b-evidence.json) 的 `continuation`。
+  原始 request/state/screenshots、DB 与 logs 只保存在 ignored
+  `D:\Morpho\output\playwright\p7b-l1b\`。所有服务已停止，55432–55436 无 listener。
+- Remote schema/migrations 未核实、无 production fault injection、无 hosted Kong/Vercel path、
+  Windows Auth compatibility shim、无真实 Provider quality/billing、无 L2/L3/L4 等 limits 保持。
+
+复现当前 C first-divergence，在 clean task source / 已准备的 isolated tools 上执行：
+
+```powershell
+node scripts/verify-p7b-l1b.mjs temp/p7b-l1b-tools --slice=C
+```
+
+当前应非零退出并保存 C product blocker；D–G `not_run`。本轮没有接线或执行后续场景来寻找
+第二问题，也没有修 P7B-1-D2。
 
 ## D1 bounded fix / post-fix rerun（2026-10-04）
 
