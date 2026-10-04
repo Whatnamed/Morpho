@@ -125,6 +125,16 @@ export async function runCancellationScenario({ runtime, actor, row, output, set
         c.trustedLateObservation={status:response.status,data:await response.json(),source:"Controlled Provider cancellation receipt / test-owned privileged real RPC observer"};
         assert.equal(c.trustedLateObservation.status,200);assert.equal(c.trustedLateObservation.data.snapshot.executionState,"cancelled");
         const observed=await request(`/api/ai/effects/${effectId}?kind=text`);assert.equal(observed.data.effect.executionState,"cancelled");
+      } else {
+        await waitUntil(async()=>{const client=await facts();return client.clears.length===1||
+          client.recoveries.some(r=>r.coordinator.lifecycle.fault.kind==="present");},"Client late-result reconciliation reaches outcome or bounded fault");
+        const reconciled=await checkpoint("late-client-reconciliation");
+        const faults=reconciled.client.recoveries.filter(r=>r.localProjectId===seed.projectId)
+          .map(r=>r.coordinator.lifecycle.fault);
+        c.lateClientFacts={faults,phases:reconciled.client.recoveries.map(r=>r.coordinator.lifecycle.phase),
+          durableMessages:reconciled.client.workspace.ai.messages.map(m=>({role:m.role,body:m.body,status:m.status,outcome:m.agentTurnOutcome}))};
+        assert.ok(!faults.some(f=>f.kind==="present"&&f.error.code==="illegalTransition"),
+          "Original late-success Text result after durable cancel intent must reconcile without illegalTransition / PROVIDER_OUTPUT_RECEIVED from cancelling");
       }
       await page.waitForFunction(()=>JSON.parse(sessionStorage.getItem("l1b-E-clears")??"[]").length===1,null,{timeout:30_000});
       const final=await checkpoint("terminal");
