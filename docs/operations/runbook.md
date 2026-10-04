@@ -1458,6 +1458,10 @@ Operational interpretation:
   It does not prove Provider failure or authorize retry. Once that detail is durable, ordinary
   terminal Recovery cleanup remains allowed; local save failure keeps Recovery.
   Summary applies only to its frozen source/base; an existing same revision survives reload.
+  Manual-only Compaction reload finalizes its original manual turn without a Text `/requests`
+  POST. Applied manual Recovery retains the original delivery while ACK remains pending; local
+  Summary/Workspace and Recovery must be durable before the same ACK, and cleanup follows ACK
+  outbox completion. Automatic/preContinuation retain their original resume phase.
   A durable local ACK outbox repeats only the same ACK when its response is lost.
 - Confirmed independent Image intents keep the original request/local commit draft in IndexedDB;
   reload performs bounded GET retrieval. Cancellation stops automatic local apply. No new Provider

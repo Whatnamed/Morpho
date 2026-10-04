@@ -576,7 +576,7 @@
   ],
   "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main.",
   "receiptScope": "Original pre-fix blocker receipt preserved above; current bounded D1 fix is recorded in postFix.",
-  "currentP7b1Status": "validating / D1-D4 web accepted and closed; A-F accepted receipts retained; D5 bounded fix complete awaiting web review; G6 passes, G stops at new P7B-1-D6; remaining G not_run",
+  "currentP7b1Status": "L1b complete / awaiting web acceptance; D1-D5 accepted/closed, A-F accepted receipts retained, D6 bounded fix and complete G pass; P7 remains validating",
   "postFix": {
     "id": "P7B-1-D1",
     "status": "closed / bounded A+B pass; awaiting web review",
@@ -4352,5 +4352,479 @@
       "Local Auth has Windows single-listener compatibility shim"
     ],
     "stop": "D5 fix awaiting web review; D6 recorded without repair; P7B-1 incomplete, P7 validating; A-F not rerun, remaining G not_run; no main merge or later package."
+  },
+  "d6Fix": {
+    "date": "2026-10-04",
+    "reviewedBaseline": "dcde637670c898c1ede6474a6e5007acb8024986",
+    "mainAtFetch": "f852578f0d1303ff074f66db1e3919c3218a5561",
+    "fixSha": "ca6ea44d17a2440357df1914b83e4ddbc8feea40",
+    "acceptedReviews": {
+      "source": "User instruction",
+      "D1": "accepted / closed",
+      "D2": "accepted / closed",
+      "D3": "accepted / closed",
+      "D4": "accepted / closed",
+      "D5": "accepted / closed",
+      "A": "accepted",
+      "B": "accepted",
+      "C": "accepted",
+      "D": "accepted",
+      "E": "accepted",
+      "F": "accepted",
+      "G6": "pass"
+    },
+    "productContract": {
+      "owner": "Existing Runner metadata.compaction.mode === manual",
+      "manualRecovery": "Original action converges -> shared fresh manual finalization; never enter normal Text driver",
+      "appliedSummary": "Reuse original revision, no second apply or execution",
+      "durability": "Summary/Workspace and applied Recovery durable before same-result ACK",
+      "cleanup": "Retain applied manual delivery and Recovery while same ACK outbox is pending; clear after local durable finalization and ACK completion",
+      "automaticPreContinuation": "Captured normal Provider/continuation resume behavior unchanged",
+      "freshManual": "Shares the original finalization behavior",
+      "parallelManualStateMachine": false,
+      "lifecycleSqlSchemaMigrationRecoveryVersionRetryPolicyChanged": false,
+      "D5ReplayContractChanged": false
+    },
+    "G": {
+      "verdict": "pass",
+      "runIdentity": {
+        "runId": "2026-10-04T12-20-22.582Z-11124",
+        "sourceSha": "ca6ea44d17a2440357df1914b83e4ddbc8feea40",
+        "build": {
+          "schemaVersion": 2,
+          "sourceSha": "ca6ea44d17a2440357df1914b83e4ddbc8feea40",
+          "sourceTreeSha256": "dd13f67f842a4ab766844e125615e4d3e1b2859e8254735e7892255c23a6a298",
+          "sourceTreeFileCount": 1081,
+          "buildId": "Kc0zEWVZFFh2qk1yPva7w",
+          "artifactSha256": "4a62324d6432c02e11d2ab4d986bfb0811e8bc80f144955485dab8c62c6c74d2",
+          "artifactFileCount": 848,
+          "isDirty": false,
+          "nodeVersion": "v22.23.2",
+          "builtAt": "2026-10-04T12:20:48.807Z"
+        },
+        "contractVersion": "p7b-l1b-boundary-1",
+        "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f",
+        "databaseIdentity": "5ebb52e4-7137-49ba-a7e5-26b4e15d4440"
+      },
+      "rawOverallVerdict": "inconclusive",
+      "rawOverallReason": "G-only command retains A-F as not_run; accepted predecessor receipts plus the new complete G receipt compose L1b completion, no fabricated all-scenario fresh run",
+      "firstDivergence": null,
+      "cases": [
+        {
+          "name": "original-summary",
+          "verdict": "pass",
+          "seed": {
+            "projectId": "p7b-G-original-summary",
+            "sha256": "358c8c72697c60f9735d15f93ea25b3fcf77147cf3c19d5e10561a2788f96ffc",
+            "previousRevisionId": "conversation-summary-v3-cbe00b45410544355c031918561e8a299b8f3c2ae42e7eb612b66e23de6f098e",
+            "expectedSourceIds": [
+              "G-history-2",
+              "G-history-3"
+            ]
+          },
+          "preDelivery": {
+            "intentDurableBeforePost": true,
+            "exactBodyDurable": true,
+            "originalSummaryHashVerified": true,
+            "exactReplayNoExecution": true
+          },
+          "identity": {
+            "serverTurnId": "807d572a-ac7e-4954-9670-8e48d8cfa020",
+            "localProjectId": "p7b-G-original-summary",
+            "requestId": "compact:manual:00992f9d-0396-4499-a514-544afa5ac4af",
+            "stepSequence": 1,
+            "actionId": "compact:manual:00992f9d-0396-4499-a514-544afa5ac4af",
+            "clientRequestSha256": "756ab50fe8d9d2f97be3dfc06d597eff6252c7b64f2db0f83b2e7e86d3029559",
+            "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+            "effectId": "effect:c5da11b2673ca1e170d068f0cbabdea28d46633596e8731fb23bf540bb28f3f4",
+            "attemptId": "c9b2128a-e530-43ed-b9d4-4577383f877e",
+            "providerRequestDigest": "7ecccd98607cd2913af7109f3c03164daab4863f68ef9308a25744a90a52fc34",
+            "manifest": {
+              "kind": "compaction",
+              "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+              "version": 1,
+              "effectId": "effect:c5da11b2673ca1e170d068f0cbabdea28d46633596e8731fb23bf540bb28f3f4",
+              "mimeType": "application/json",
+              "resultId": "result:1f99b61d6c73a995dd4c7994e9cba2f04822450604c39144af18cd221124a824",
+              "expiresAt": "2026-10-05T20:21:28.188718+08:00",
+              "byteLength": 491,
+              "chunkCount": 1
+            },
+            "binding": {
+              "actionId": "compact:manual:00992f9d-0396-4499-a514-544afa5ac4af",
+              "requestId": "compact:manual:00992f9d-0396-4499-a514-544afa5ac4af",
+              "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+              "actionKind": "compaction",
+              "serverTurnId": "807d572a-ac7e-4954-9670-8e48d8cfa020",
+              "stepSequence": 1,
+              "localProjectId": "p7b-G-original-summary",
+              "requestContentSha256": "e2b4fc8772a72be96599c28946d724f15d56fba0c7f689265e06b638168e4315"
+            }
+          },
+          "canonicalReplay": {
+            "verdict": "pass",
+            "manifestUnchanged": true,
+            "noNewExecution": true
+          },
+          "durableApplication": {
+            "saveFailureAckPosts": 0,
+            "originalActionRetained": true,
+            "sameRevisionAfterCrash": true,
+            "revisionId": "conversation-summary-v3-13e66984634216cdc6c9fd9649d7cfd87be9bdfd259b3a93fc4a139a5e5389eb",
+            "newRevisionCount": 1,
+            "summaryDurableBeforeAck": true,
+            "recoveryAppliedBeforeAck": true,
+            "exactAck": {
+              "resultId": "result:1f99b61d6c73a995dd4c7994e9cba2f04822450604c39144af18cd221124a824",
+              "version": 1,
+              "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37"
+            },
+            "providerExecutions": 1
+          },
+          "textRequestPosts": 0,
+          "nativeCompactionPosts": 4,
+          "nativeAckAttempts": 3,
+          "controlledProviderExecutions": 1,
+          "acknowledgedAt": "2026-10-04T12:21:37.681Z"
+        },
+        {
+          "name": "source-changed",
+          "verdict": "pass",
+          "seed": {
+            "projectId": "p7b-G-source-changed",
+            "sha256": "521d0497e9199abaf03c3aff02f1bd70758fd3a738753d5c760901d84c64c342",
+            "previousRevisionId": "conversation-summary-v3-cbe00b45410544355c031918561e8a299b8f3c2ae42e7eb612b66e23de6f098e",
+            "expectedSourceIds": [
+              "G-history-2",
+              "G-history-3"
+            ]
+          },
+          "preDelivery": {
+            "intentDurableBeforePost": true,
+            "exactBodyDurable": true,
+            "originalSummaryHashVerified": true,
+            "exactReplayNoExecution": true
+          },
+          "identity": {
+            "serverTurnId": "8491d22e-5f03-4b9c-8437-cfe69ab9e957",
+            "localProjectId": "p7b-G-source-changed",
+            "requestId": "compact:manual:98a5e5b7-bc26-4dce-a9fe-a49e59ee2603",
+            "stepSequence": 1,
+            "actionId": "compact:manual:98a5e5b7-bc26-4dce-a9fe-a49e59ee2603",
+            "clientRequestSha256": "b10a16fa6dea20411f3f144e7eb02a6c7705ee0c098d42e0351bb8d8dd1ff2e4",
+            "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+            "effectId": "effect:8af30826f26ae4be0e2ddd43f924729fda677e70a5e915e6cb23d4deb6925eda",
+            "attemptId": "cd0b8cee-478c-4dcb-bffd-8fca66564d95",
+            "providerRequestDigest": "7ecccd98607cd2913af7109f3c03164daab4863f68ef9308a25744a90a52fc34",
+            "manifest": {
+              "kind": "compaction",
+              "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+              "version": 1,
+              "effectId": "effect:8af30826f26ae4be0e2ddd43f924729fda677e70a5e915e6cb23d4deb6925eda",
+              "mimeType": "application/json",
+              "resultId": "result:e4073fc1fc12651ca16c2b5078bb43fe97a8cd7bf69cf42c44b296afa084e602",
+              "expiresAt": "2026-10-05T20:22:14.785111+08:00",
+              "byteLength": 491,
+              "chunkCount": 1
+            },
+            "binding": {
+              "actionId": "compact:manual:98a5e5b7-bc26-4dce-a9fe-a49e59ee2603",
+              "requestId": "compact:manual:98a5e5b7-bc26-4dce-a9fe-a49e59ee2603",
+              "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+              "actionKind": "compaction",
+              "serverTurnId": "8491d22e-5f03-4b9c-8437-cfe69ab9e957",
+              "stepSequence": 1,
+              "localProjectId": "p7b-G-source-changed",
+              "requestContentSha256": "f5b93d586ba1edcbb046e8b8450696a7759ef0101f1b750974f44c17151b970c"
+            }
+          },
+          "currentness": {
+            "verdict": "pass",
+            "localConflict": "compaction_source_changed",
+            "sourceMutation": "source-changed",
+            "originalExternalSuccessRetained": true,
+            "noStaleOverwrite": true,
+            "ackPosts": 0,
+            "providerExecutions": 1
+          },
+          "textRequestPosts": 0,
+          "nativeCompactionPosts": 2,
+          "nativeAckAttempts": 0,
+          "controlledProviderExecutions": 1,
+          "acknowledgedAt": null
+        },
+        {
+          "name": "base-changed",
+          "verdict": "pass",
+          "seed": {
+            "projectId": "p7b-G-base-changed",
+            "sha256": "0aeea810bec2641f4fc706114e718bf9ba33feaa464314ca7d4dba912ba25e13",
+            "previousRevisionId": "conversation-summary-v3-cbe00b45410544355c031918561e8a299b8f3c2ae42e7eb612b66e23de6f098e",
+            "expectedSourceIds": [
+              "G-history-2",
+              "G-history-3"
+            ]
+          },
+          "preDelivery": {
+            "intentDurableBeforePost": true,
+            "exactBodyDurable": true,
+            "originalSummaryHashVerified": true,
+            "exactReplayNoExecution": true
+          },
+          "identity": {
+            "serverTurnId": "955c46a1-becd-4ed7-bf50-0a7052f4ad28",
+            "localProjectId": "p7b-G-base-changed",
+            "requestId": "compact:manual:56807cb9-9d4e-4ef7-b2a7-7840bb745953",
+            "stepSequence": 1,
+            "actionId": "compact:manual:56807cb9-9d4e-4ef7-b2a7-7840bb745953",
+            "clientRequestSha256": "289dc923073e55521a3b66a1a6092f95952bf6209cc1aa22895b29514b9a26ce",
+            "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+            "effectId": "effect:6b04f4293de4c580ea8bc61c3b1d2ca453953c325d32603608b7cfd3627d8266",
+            "attemptId": "1a01503f-91a0-472f-8212-bed6dba5610c",
+            "providerRequestDigest": "7ecccd98607cd2913af7109f3c03164daab4863f68ef9308a25744a90a52fc34",
+            "manifest": {
+              "kind": "compaction",
+              "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+              "version": 1,
+              "effectId": "effect:6b04f4293de4c580ea8bc61c3b1d2ca453953c325d32603608b7cfd3627d8266",
+              "mimeType": "application/json",
+              "resultId": "result:c4caf668a0bc9a975f7b5ae76a66774f43dabaeb442cefe1be1fcbefac1ba718",
+              "expiresAt": "2026-10-05T20:22:57.72799+08:00",
+              "byteLength": 491,
+              "chunkCount": 1
+            },
+            "binding": {
+              "actionId": "compact:manual:56807cb9-9d4e-4ef7-b2a7-7840bb745953",
+              "requestId": "compact:manual:56807cb9-9d4e-4ef7-b2a7-7840bb745953",
+              "actionHash": "5b2dfbfeedf830902ec086d75f4a4c7d91338dde4645eddc18a748876aa32e1c",
+              "actionKind": "compaction",
+              "serverTurnId": "955c46a1-becd-4ed7-bf50-0a7052f4ad28",
+              "stepSequence": 1,
+              "localProjectId": "p7b-G-base-changed",
+              "requestContentSha256": "987ada0142c64d0fc540408537249014a3ab7316a8094d359b1e67c8c32ccded"
+            }
+          },
+          "currentness": {
+            "verdict": "pass",
+            "localConflict": "summary_revision_conflict",
+            "sourceMutation": "base-changed",
+            "originalExternalSuccessRetained": true,
+            "noStaleOverwrite": true,
+            "ackPosts": 0,
+            "providerExecutions": 1
+          },
+          "textRequestPosts": 0,
+          "nativeCompactionPosts": 2,
+          "nativeAckAttempts": 0,
+          "controlledProviderExecutions": 1,
+          "acknowledgedAt": null
+        },
+        {
+          "name": "intent-failure",
+          "verdict": "pass",
+          "seed": {
+            "projectId": "p7b-G-intent-failure",
+            "sha256": "8239a265eeb5ddff1688417b9085f3928c0958c5f05b5b09e9ad0089e6c862f6",
+            "previousRevisionId": "conversation-summary-v3-cbe00b45410544355c031918561e8a299b8f3c2ae42e7eb612b66e23de6f098e",
+            "expectedSourceIds": [
+              "G-history-2",
+              "G-history-3"
+            ]
+          },
+          "intentFailure": {
+            "providerPosts": 0,
+            "compactionPosts": 0
+          },
+          "textRequestPosts": 0,
+          "nativeCompactionPosts": 0,
+          "nativeAckAttempts": 0,
+          "controlledProviderExecutions": 0,
+          "acknowledgedAt": null
+        }
+      ],
+      "textRequestPostsAcrossAllCases": 0,
+      "controlledProviderExecutions": 3,
+      "manualOriginal": {
+        "compactionExecutions": 1,
+        "clientCompactionPosts": 4,
+        "exactOriginalBodyAndIdentity": true,
+        "newRevisionCount": 1,
+        "revisionId": "conversation-summary-v3-13e66984634216cdc6c9fd9649d7cfd87be9bdfd259b3a93fc4a139a5e5389eb",
+        "summaryRevisionCountIncludingBase": 2,
+        "summaryAndAppliedRecoveryDurableBeforeAck": true,
+        "saveFailureAckPosts": 0,
+        "ackAttempts": 3,
+        "exactAck": {
+          "resultId": "result:1f99b61d6c73a995dd4c7994e9cba2f04822450604c39144af18cd221124a824",
+          "version": 1,
+          "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37"
+        },
+        "acknowledgedAt": "2026-10-04T12:21:37.681Z",
+        "recoveryClearCount": 1,
+        "localOutcome": "completed",
+        "textRequestPosts": 0
+      },
+      "coverage": {
+        "G1": "pass / intent durability failure 0 POST, normal exact action/body/source/base durable before POST",
+        "G2": "pass / original response loss and reload, no Text request or fresh execution",
+        "G3": "pass / immutable Summary bytes/chunks/hash and exact completed replay",
+        "G4": "pass / source and base mutation reject stale apply without ACK",
+        "G5": "pass / failed save ACK0, durable Summary+Recovery precede original result ACK",
+        "G6": "pass / changed content 409 and canonical/exact original replay",
+        "G7": "pass / same revision reused through crash/reload, same ACK identity, single execution per action"
+      }
+    },
+    "gates": {
+      "targetedAdjacent": "pass / 10 files, 386 tests, including seven new Runner regressions and D5/D1 route replay",
+      "typecheck": "pass",
+      "lint": "pass",
+      "cleanProductionBuild": "pass / real G executed clean source",
+      "diffCheck": "pass",
+      "frozenL1bP7AFilesLockAnd20MigrationHashes": "unchanged",
+      "fullUnitChromiumP7A": "not_run / bounded authorized gates"
+    },
+    "historicalEvidence": {
+      "priorFieldsExceptCurrentStatus": "unchanged",
+      "verifiedPriorArtifactHashesAndSizes": 273,
+      "originalD6RunRetained": "2026-10-04T11-59-25.097Z-27012",
+      "rawVerdictsOverwritten": false
+    },
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-base-changed-final.json",
+        "sha256": "5a8f068a8626f8991c1eaf82b847ae7fa5552bf393fa7a99a538b70594d419ce",
+        "byteLength": 57332
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-base-changed-final.png",
+        "sha256": "5f63be47c7bb4896e1f69e26d6d425658d0063bce78edff95f73c743d8d0c4e1",
+        "byteLength": 103205
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-base-changed-published-before-local-delivery.json",
+        "sha256": "b09c5b63074ce938c85cb18a2ed729f216a86aeaf141aef6d71ab86d79d4dcb6",
+        "byteLength": 32718
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-base-changed-stale-original-summary-rejected.json",
+        "sha256": "79602d894d9dd655b97a0d92054e37a15e6f214e0ef51e6beda0b411892b880d",
+        "byteLength": 41326
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-intent-failure-durability-failed.json",
+        "sha256": "98af28985b9640b0809cf20071fd5a574159db6a5639a48a6a9d1a0171047a92",
+        "byteLength": 23676
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-intent-failure-final.json",
+        "sha256": "98af28985b9640b0809cf20071fd5a574159db6a5639a48a6a9d1a0171047a92",
+        "byteLength": 23676
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-intent-failure-final.png",
+        "sha256": "69983858bc62dab19028b9e46ca0babd1d988f4a4fbf1f090c0bd353778aa197",
+        "byteLength": 116085
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-original-summary-changed-content-replay.json",
+        "sha256": "ff315f5add5c90445faa7d704a17ffbb4b83deb4ccf780ccdda2849e7b8b1825",
+        "byteLength": 28262
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-original-summary-final.json",
+        "sha256": "ea4244ed1aa20140a33194302663a93509abf0040e00f00e524918d836647d5e",
+        "byteLength": 135351
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-original-summary-final.png",
+        "sha256": "cb0366e1f35637256d2a15e419c98ce301f3ba0ffbaba59624aca4edda2cc31d",
+        "byteLength": 101633
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-original-summary-published-before-local-delivery.json",
+        "sha256": "ff315f5add5c90445faa7d704a17ffbb4b83deb4ccf780ccdda2849e7b8b1825",
+        "byteLength": 28262
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-original-summary-recovered-same-revision.json",
+        "sha256": "ea4244ed1aa20140a33194302663a93509abf0040e00f00e524918d836647d5e",
+        "byteLength": 135351
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-original-summary-result.json",
+        "sha256": "02219c5e407202f97f58a635e99e6087097da7cc765f53513f9ddd2b09de7f37",
+        "byteLength": 491
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-original-summary-summary-durable-before-ack-crash.json",
+        "sha256": "72162b2e6433615f8d6f8e64fa70fb27bd0b0ce0785af7e422291507c351df2d",
+        "byteLength": 74989
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-original-summary-summary-save-failed.json",
+        "sha256": "54296280920b1a9a376fd9ba0f003e1753a6cf29ab75518a6ceefbfec788b4a9",
+        "byteLength": 36155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-source-changed-final.json",
+        "sha256": "30e2a06e046ae87a2261c3a096a5b4fac4ff952f4c77fe4fbd94451f7a0922ae",
+        "byteLength": 52843
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-source-changed-final.png",
+        "sha256": "7257a29dba7d27c31e180d5c324d75f677d243ba46b911c93fe990ba5db2d23b",
+        "byteLength": 102556
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-source-changed-published-before-local-delivery.json",
+        "sha256": "db3e7f01689c72713c4579f00756bc96f27cdcd5c6009624ec69d9ea830d7d6e",
+        "byteLength": 30499
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/G-source-changed-stale-original-summary-rejected.json",
+        "sha256": "2b7613bf6d0c922a9bb1a74f346d4e8e5684ef3af401ec7f7770fb1e746e2fbd",
+        "byteLength": 38018
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/build.log",
+        "sha256": "137c19c3303f47641c975a4b8d0bdfd2c831983cffee1ea57025a95151f3fe65",
+        "byteLength": 1473
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/environment.json",
+        "sha256": "a829ce9ceef33dc2f5276dd8fd652456704a93d807ba6393b7f443e867fac021",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/scenario-G.json",
+        "sha256": "23c0e1c2e18fb437767a0485c34b52f4a215c79a679fffe6bc2472e69723aa28",
+        "byteLength": 26224
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/server.log",
+        "sha256": "697a9801d64fd54c494990980c6be39c3b5dd7265ee74d277d6617f855a5766b",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T12-20-22.582Z-11124/verdict.json",
+        "sha256": "beac34220fc09be00c1a728027d9390e7dbdee4552613e1496bbf5aa16dfd242",
+        "byteLength": 49281
+      }
+    ],
+    "rawArtifactsLocation": "ignored output/playwright/p7b-l1b",
+    "controlledProviderExecutionsThisTurn": 3,
+    "paidProviderSearchImageCalls": 0,
+    "paidCost": 0,
+    "productionDataSchemaWrites": 0,
+    "servicesStopped": true,
+    "limits": [
+      "Remote migration/schema state unverified: authentication failures",
+      "No production Journal fault injection",
+      "No L2/L3 or L4",
+      "No Kong/hosted Supabase/Vercel path",
+      "Local Auth has Windows single-listener compatibility shim"
+    ],
+    "status": "P7B-1 = L1b complete / awaiting web acceptance; P7 validating; no merge main or later package",
+    "acceptanceBasis": "User-accepted A-F historical receipts plus this complete G-only real run. T1/T3 full execution, remote hosted boundary, production Journal fault injection, L2 real model, L3 real image, L4 human handoff remain unverified/not_run."
   }
 }
