@@ -32,6 +32,8 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
   // Official Windows PostgREST dynamically loads libpq from the portable PostgreSQL bin.
   nativeEnv.PATH = resolve(tools,"node_modules/@embedded-postgres/windows-x64/native/bin") + ";" + (nativeEnv.PATH ?? "");
   const children = [];
+  // Test-owned scheduling barrier: preserve real RPC bytes, delay only their delivery.
+  const cancelResponseBarrier = { effectId: null, persisted: null, release: null };
   let db;
   let gateway;
   const pg = new EmbeddedPostgres({ databaseDir: resolve(output,"db"), user: "postgres", password, port: ports.db,
@@ -58,6 +60,7 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
     throw Error(`Isolated readiness timeout: ${child.safeLog}`);
   };
   const stop = async () => {
+    cancelResponseBarrier.release?.();
     if(gateway) await new Promise(r=>gateway.close(r));
     for(const child of children.reverse()) {
       if(child.exitCode===null) { child.kill(); await new Promise(r=>{ child.once("exit",r); setTimeout(r,2000); }); }
@@ -121,12 +124,26 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
       let body=""; for await(const chunk of request) body+=chunk;
       const payload=JSON.parse(body);
       const mode=stub.next;
-      stub.calls.push({id:randomUUID(),mode,bodySha256:sha256(body),bodyBytes:Buffer.byteLength(body)});
+      const call={id:randomUUID(),mode,bodySha256:sha256(body),bodyBytes:Buffer.byteLength(body)};
+      stub.calls.push(call);
       if(mode==="unknown") { request.socket.destroy(); return; }
       if(mode==="held") { await new Promise(r=>stub.held.push(r)); }
+      if(mode==="running-cancelled"||mode==="running-late-success") {
+        call.providerOutcome="running";
+        response.writeHead(200,{"Content-Type":"text/event-stream"});
+        response.write(`event: response.in_progress\ndata: ${JSON.stringify({type:"response.in_progress",response:{id:"resp-p7b-local",status:"in_progress"}})}\n\n`);
+        await new Promise(release=>{
+          stub.held.push(release);
+          response.once("close",()=>{
+            if(mode==="running-cancelled"&&!response.writableEnded) { call.providerOutcome="cancelled"; release(); }
+          });
+        });
+        if(call.providerOutcome==="cancelled") return;
+        call.providerOutcome="succeeded";
+      }
       const text="P7B controlled result";
       if(payload.stream) {
-        response.writeHead(200,{"Content-Type":"text/event-stream"});
+        if(!response.headersSent) response.writeHead(200,{"Content-Type":"text/event-stream"});
         response.end(`event: response.completed\ndata: ${JSON.stringify({type:"response.completed",response:responseObject(text)})}\n\n`);
       } else {
         response.writeHead(200,{"Content-Type":"application/json"});
@@ -144,8 +161,16 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
         const headers={...request.headers}; delete headers.host; delete headers.connection; delete headers["content-length"];
         const upstream=await fetch(`http://127.0.0.1:${isAuth?ports.auth:ports.rest}${path}`,{
           method:request.method,headers,...(["GET","HEAD"].includes(request.method)?{}:{body:Buffer.concat(body)}) });
+        const bytes=Buffer.from(await upstream.arrayBuffer());
+        if(isRest&&path==="/rpc/operate_external_effect"&&cancelResponseBarrier.effectId) {
+          const rpc=JSON.parse(Buffer.concat(body).toString("utf8"));
+          if(rpc.p_operation==="cancel"&&rpc.p_effect_id===cancelResponseBarrier.effectId) {
+            cancelResponseBarrier.persisted={status:upstream.status,data:JSON.parse(bytes.toString("utf8")),effectId:rpc.p_effect_id};
+            await new Promise(release=>{ cancelResponseBarrier.release=release; });
+          }
+        }
         response.writeHead(upstream.status,Object.fromEntries([...upstream.headers].filter(([k])=>!["content-encoding","content-length","transfer-encoding"].includes(k))));
-        response.end(Buffer.from(await upstream.arrayBuffer()));
+        response.end(bytes);
       })().catch(()=>{ response.writeHead(502); response.end(); });
     });
     await new Promise((r,j)=>{ gateway.once("error",j); gateway.listen(ports.gateway,"127.0.0.1",r); });
@@ -164,7 +189,7 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
       authPlatformShim:"cmd/serve_cmd.go: single net.ListenConfig; Unix SO_REUSEPORT only removed, no auth logic changes",
       postgrestVersion:"v16.4",remoteDatabaseAccess:false };
     await writeFile(resolve(output,"environment.json"),JSON.stringify(facts,null,2)+"\n");
-    return { db,keys,origin,appEnv,stub,facts,stop,launch,wait,output,
+    return { db,keys,origin,appEnv,stub,cancelResponseBarrier,facts,stop,launch,wait,output,
       serviceDiagnostics:()=>children.map(c=>({executable:c.localExecutable,exitCode:c.exitCode,log:c.safeLog})) };
   } catch(error) {
     await writeFile(resolve(output,"setup-failure.json"),JSON.stringify({verdict:"invalid_run",phase:"isolated setup",error:redact(error.message),
