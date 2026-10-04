@@ -46,6 +46,7 @@ globalThis.fetch=async(input,init)=>{
   if(fs.existsSync(path.join(root,"hard-blocker.json")))throw new Error("L2 run already stopped");
   const active=JSON.parse(fs.readFileSync(path.join(root,"active-trial.json"),"utf8"));
   const sourceBody=String(init.body),body=JSON.parse(sourceBody);
+  if(active.slice==="L2-1"&&!(body.tools??[]).some(t=>t.name==="create_research_analysis"))return hard("Required create_research_analysis omitted for frozen L2-1 explicit Research candidate request",{trial:active.key,observedTools:(body.tools??[]).map(t=>t.name),networkSent:false});
   if(body.model!==manifest.provider.model||body.reasoning?.effort!==manifest.provider.reasoning)return hard("Model/config drift",{model:body.model});
   if(body.prompt_cache_key||body.prompt_cache_retention)return hard("Cache configuration drift");
   if((body.tools??[]).some(t=>t.type!=="function"))return hard("Unexpected built-in paid Provider tool");

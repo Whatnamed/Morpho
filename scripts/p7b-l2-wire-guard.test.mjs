@@ -21,6 +21,9 @@ test("zero-paid production wire audit exposes missing required Research tool bef
   const h=harness({noPaid:true,slice:"L2-1"});await assert.rejects(h.fetch(),/Required create_research_analysis omitted/);
   assert.equal(h.calls.length,0);assert.equal(h.json("no-paid-server-wire.json").networkSent,false);assert.equal(h.json("hard-blocker.json").ledger.requests,0);
 });
+test("paid mode also rejects the known frozen Research authority failure before egress",async()=>{
+  const h=harness({slice:"L2-1"});await assert.rejects(h.fetch(),/Required create_research_analysis omitted/);assert.equal(h.calls.length,0);assert.equal(h.json("hard-blocker.json").ledger.requests,0);
+});
 test("normal wire preserves production content and only adds bounded output allocation",async()=>{
   const h=harness();await h.fetch();await h.settled();const w=h.json("request.json"),{max_output_tokens,...body}=w.finalWire;
   assert.deepEqual(body,w.productionBody);assert.equal(max_output_tokens,4096);assert.equal(h.json("ledger.json").inputTokens,50);assert.equal(h.calls.length,1);

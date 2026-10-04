@@ -1,0 +1,813 @@
+{
+  "version": "p7b-l2-evidence-1",
+  "branch": "codex/p7b-l2-limited-baseline",
+  "base": "0ac8cd6e604ed0d7c89df8d98715e8033bfafae4",
+  "status": "blocked / awaiting web review",
+  "programStatus": "validating",
+  "predecessors": {
+    "p7a": "accepted",
+    "p7b1": "ACCEPTED / closed; not re-audited"
+  },
+  "laterStages": "P7B-3/P7C/L4 not_started; no main merge",
+  "preregistration": {
+    "sourceSha": "c5225eb2866d4d15cb626444f7fc043c0878da40",
+    "manifestSha256": "ff33d548da41d4cfd93fb44df059277c96b9392a3869ff3243cd57c449f039cc",
+    "fixtureBundleSha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+    "manifestPath": "e2e/eval/p7b-l2-manifest.json",
+    "fixtureLockPath": "e2e/eval/p7b-l2-fixture-lock.json",
+    "frozenBeforePaid": true,
+    "originalP7FrozenFiles": {
+      "e2e/eval/contracts.ts": "2b67cbacce32bd923ded0d8231811b9a826cd47176700189d690d8dff4aa3247",
+      "e2e/eval/kitchen-materials.json": "3d9f388257b7cacb07399343db4f22f23d1fae0ad67008c0a9f483fff042e3e8",
+      "e2e/support/p7Seed.ts": "9f6880f94c460db4788aca7e09cef400b99a677359c6a7632d12000a56711521",
+      "src/domain/morpho/caseStudy/currentCaseWorkspace.generated.json": "75d01687f1b294accaf3ab3ef6738e13306dae77bd962157f31d7a79d3b5e931",
+      "src/domain/morpho/caseStudy/currentCaseAssets.generated.json": "bba61ccbff44f04983762992dc6eb43a5eb833c3e61317ec070cf03d925104c8"
+    }
+  },
+  "runIdentity": {
+    "runId": "2026-10-04T13-10-11.167Z-14384-preflight",
+    "sourceSha": "260895c26be1a28ba346161922ab92752659308a",
+    "build": {
+      "schemaVersion": 2,
+      "sourceSha": "260895c26be1a28ba346161922ab92752659308a",
+      "sourceTreeSha256": "bc9cbd93655a55ee7d5cd6b4a3c5bb85e2b7c30c4d4e56e1300b2d729778bd1b",
+      "sourceTreeFileCount": 1088,
+      "buildId": "hsL7kU60Kk3v5jcbC8zoh",
+      "artifactSha256": "23215a766bbcc6b37326032529530f82a0acd2586ccdbf96bc74a4903bc9fdbe",
+      "artifactFileCount": 848,
+      "isDirty": false,
+      "nodeVersion": "v22.23.2",
+      "builtAt": "2026-10-04T13:11:08.678Z"
+    },
+    "mode": "Zero-paid actual production Server egress audit; not a real model quality trial",
+    "environment": "local Windows x64; fresh isolated TCP PostgreSQL + real PostgREST + source-built Supabase Auth",
+    "databaseIdentity": "04dd4d5c-4cf9-4348-aff1-adbcab12b0a1"
+  },
+  "provider": {
+    "endpoint": "https://api.aijws.com/v1/responses",
+    "model": "gpt-6-sol",
+    "reasoning": "high",
+    "cacheKey": false,
+    "cacheRetention": null,
+    "temperature": "omitted",
+    "seed": "unsupported/omitted",
+    "serviceTier": "omitted/default",
+    "budgetTransportMaxOutputTokens": 4096
+  },
+  "pricing": {
+    "source": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+    "retrieved": "2026-10-04",
+    "officialUsdPerMillion": {
+      "input": 2,
+      "cachedInput": 0.2,
+      "cacheWrite": 2.5,
+      "output": 10
+    },
+    "userRule": "Official USD numerical rate relabeled CNY, multiply 0.15; no FX conversion",
+    "cnyPerMillion": {
+      "input": 0.3,
+      "cachedInput": 0.03,
+      "cacheWrite": 0.375,
+      "output": 1.5
+    },
+    "status": "Usage-based estimate under user-declared reseller tariff; no provider billing ledger assertion"
+  },
+  "budget": {
+    "trialsPerSlice": 2,
+    "agentInteractions": 16,
+    "textRequests": 64,
+    "inputTokens": 600000,
+    "outputTokensIncludingReasoning": 50000,
+    "costCny": 20,
+    "realImageCalls": 0,
+    "realSearchCalls": 0,
+    "automaticEvalRetries": 0
+  },
+  "blocker": {
+    "diagnostic": "P7B-2-D1",
+    "status": "confirmed / no product repair",
+    "frozenPrompt": "请基于选中资料创建一张研究分析卡：两份材料对折叠接缝是否更易清洁意见冲突。保留冲突和来源，把它转成影响结构、排水与清洁路径的设计取舍及可执行验证。台面尺寸未测、承重未验证，不要编造数值或将候选自动保留为关键结论。",
+    "strippedUserInstruction": "请基于选中 。保留冲突和来源，把它转成影响结构、排水与清洁路径的设计取舍及可执行验证。台面尺寸未测、承重未验证，不要编造数值或将候选自动保留为关键结论。",
+    "removedReferenceFrames": [
+      "资料创建一张研究分析卡：两份材料对折叠接缝是否更易清洁意见冲突"
+    ],
+    "explicitResearchActionDetected": false,
+    "omittedRequiredTool": "create_research_analysis",
+    "serverTools": [
+      "read_selected_context",
+      "read_project_memory",
+      "read_stage_record",
+      "search_project_conversation",
+      "submit_memory_update",
+      "read_workspace_source"
+    ],
+    "serverTaskContract": {
+      "version": 1,
+      "readContractVersion": 1,
+      "userGoal": "请基于选中资料创建一张研究分析卡：两份材料对折叠接缝是否更易清洁意见冲突。保留冲突和来源，把它转成影响结构、排水与清洁路径的设计取舍及可执行验证。台面尺寸未测、承重未验证，不要编造数值或将候选自动保留为关键结论。",
+      "primaryFocus": "discussion",
+      "execution": {
+        "taskMode": "chatAnalysis",
+        "taskModeSource": "autoRecommended",
+        "workIntent": "discussion",
+        "workIntentSource": "autoRecommended"
+      },
+      "activities": [
+        {
+          "id": "activity-1",
+          "kind": "historyAndMemory",
+          "instruction": "请基于选中 。保留冲突和来源，把它转成影响结构、排水与清洁路径的设计取舍及可执行验证。台面尺寸未测、承重未验证，不要编造数值或将候选自动保留为关键结论。",
+          "targetObjectIds": [
+            "notes"
+          ],
+          "sourceObjectIds": [
+            "notes"
+          ],
+          "referenceObjectIds": [],
+          "excludedObjectIds": [],
+          "includeDefaultReference": false,
+          "requiredFacts": [
+            "selectedObjectContent",
+            "currentProjectFacts"
+          ],
+          "effectGrants": [
+            {
+              "tool": "submit_memory_update",
+              "origin": "currentUserInstruction"
+            }
+          ],
+          "expectedOutputs": [
+            "chatAnswer",
+            "submit_memory_update"
+          ]
+        }
+      ],
+      "completionConditions": [
+        "activity-1:chatAnswer",
+        "activity-1:submit_memory_update"
+      ],
+      "requiredReads": []
+    },
+    "observedMemoryGrant": true,
+    "memoryGrantInterpretation": "Observed additional candidate-memory tool; no execution or authoritative mutation proved; D1 is grounded in required Research tool omission",
+    "attribution": "Deterministic user-instruction authority / routing, before model. Reference-frame stripping consumes actual instruction starting at 资料...：; positive Research rule also requires action verb immediately followed by 研究/调研/分析 and does not accept 一张.",
+    "paidRequests": 0,
+    "qualityTrials": 0,
+    "productFilesChanged": false,
+    "serverBodySha256": "2d559f7399c909d9cda4a1123273bf72d3358912bf068137d4b5bd317f2d4e7b",
+    "actualServerInputCaptured": true,
+    "networkSent": false,
+    "productFix": null
+  },
+  "actualExecution": {
+    "agentQualityInteractions": 0,
+    "diagnosticAgentInteractions": 1,
+    "textProviderRequests": 0,
+    "realImageCalls": 0,
+    "realSearchCalls": 0,
+    "inputTokens": 0,
+    "cachedInputTokens": 0,
+    "outputTokens": 0,
+    "estimatedCostCny": 0,
+    "productionWrites": 0,
+    "modelOutputs": 0,
+    "toolExecutions": 0,
+    "escrowResults": 0,
+    "acknowledgments": 0,
+    "journalReservedProviderCallCount": 1,
+    "journalCountMeaning": "Local Journal acquired one request before Eval egress stop; this reservation is not actual upstream execution or billed usage"
+  },
+  "slices": [
+    {
+      "id": "L2-1",
+      "checkpoint": "T1.2",
+      "dimensions": [
+        "Research → design",
+        "Evidence",
+        "User agency",
+        "Maturity fit"
+      ],
+      "preregisteredTrials": 2,
+      "trials": [
+        {
+          "trial": 1,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "Pre-paid authority gate blocked"
+        },
+        {
+          "trial": 2,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        }
+      ],
+      "firstAttempt": "not_measured",
+      "twoTrialConsistency": "not_measured",
+      "userRescue": 0
+    },
+    {
+      "id": "L2-2",
+      "checkpoint": "T1.3",
+      "dimensions": [
+        "Evidence",
+        "Design judgment",
+        "User agency"
+      ],
+      "preregisteredTrials": 2,
+      "trials": [
+        {
+          "trial": 1,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        },
+        {
+          "trial": 2,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        }
+      ],
+      "firstAttempt": "not_measured",
+      "twoTrialConsistency": "not_measured",
+      "userRescue": 0
+    },
+    {
+      "id": "L2-3",
+      "checkpoint": "T1.5",
+      "dimensions": [
+        "Divergence",
+        "Design judgment",
+        "Evidence",
+        "User agency"
+      ],
+      "preregisteredTrials": 2,
+      "trials": [
+        {
+          "trial": 1,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        },
+        {
+          "trial": 2,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        }
+      ],
+      "firstAttempt": "not_measured",
+      "twoTrialConsistency": "not_measured",
+      "userRescue": 0
+    },
+    {
+      "id": "L2-4",
+      "checkpoint": "T1.6",
+      "dimensions": [
+        "Continuity",
+        "Definition",
+        "Critique",
+        "User agency"
+      ],
+      "preregisteredTrials": 2,
+      "trials": [
+        {
+          "trial": 1,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        },
+        {
+          "trial": 2,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        }
+      ],
+      "firstAttempt": "not_measured",
+      "twoTrialConsistency": "not_measured",
+      "userRescue": 0
+    },
+    {
+      "id": "L2-5",
+      "checkpoint": "T2.1",
+      "dimensions": [
+        "Project Truth",
+        "Continuity",
+        "Critique",
+        "Maturity fit"
+      ],
+      "preregisteredTrials": 2,
+      "trials": [
+        {
+          "trial": 1,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        },
+        {
+          "trial": 2,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        }
+      ],
+      "firstAttempt": "not_measured",
+      "twoTrialConsistency": "not_measured",
+      "userRescue": 0
+    },
+    {
+      "id": "L2-6",
+      "checkpoint": "T3.3/T3.4",
+      "dimensions": [
+        "Continuity",
+        "history reason retention",
+        "Project Truth",
+        "Evidence"
+      ],
+      "preregisteredTrials": 2,
+      "trials": [
+        {
+          "trial": 1,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        },
+        {
+          "trial": 2,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        }
+      ],
+      "firstAttempt": "not_measured",
+      "twoTrialConsistency": "not_measured",
+      "userRescue": 0
+    },
+    {
+      "id": "L2-7",
+      "checkpoint": "T4.2/T4.3",
+      "dimensions": [
+        "Delivery narrative",
+        "Evidence",
+        "Maturity fit",
+        "User agency"
+      ],
+      "preregisteredTrials": 2,
+      "trials": [
+        {
+          "trial": 1,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        },
+        {
+          "trial": 2,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        }
+      ],
+      "firstAttempt": "not_measured",
+      "twoTrialConsistency": "not_measured",
+      "userRescue": 0
+    },
+    {
+      "id": "L2-8",
+      "checkpoint": "T2.2/reference understanding",
+      "dimensions": [
+        "Visual preservation",
+        "Critique",
+        "Evidence",
+        "User agency"
+      ],
+      "preregisteredTrials": 2,
+      "trials": [
+        {
+          "trial": 1,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        },
+        {
+          "trial": 2,
+          "status": "not_run",
+          "qualityVerdict": "ungraded",
+          "reason": "First genuine product blocker; no paid trials begun"
+        }
+      ],
+      "firstAttempt": "not_measured",
+      "twoTrialConsistency": "not_measured",
+      "userRescue": 0
+    }
+  ],
+  "attribution": {
+    "context": "No omission claim beyond captured authority failure; other slices' final input unverified",
+    "tool": "Required Research candidate tool omitted",
+    "model": "not_called; no capability quality conclusion",
+    "adapter": "No original model response to evaluate",
+    "executor": "No model-directed tool execution; not evaluated"
+  },
+  "validation": {
+    "wireGuardTests": "7/7 pass, mocked transport only",
+    "fixtureRepeat": "Two independent reconstructions byte-identical",
+    "actualProductionBoundary": "Isolated real Next/Auth/PostgREST/Journal; final Server input captured and stopped before external fetch",
+    "targetedLint": "pass",
+    "typecheck": "pass",
+    "cleanProductionBuild": "pass",
+    "frozenHashes": "unchanged",
+    "productSqlPredecessorContent": "unchanged",
+    "diffCheck": "pass",
+    "fullUnitChromiumL1b": "not rerun; no product changes"
+  },
+  "limits": [
+    "Not a completed L2 baseline or web acceptance",
+    "All 16 paid quality trials unexecuted",
+    "Delivery UI calibration correction not re-executed after independent D1 stop",
+    "No multimodal quality evidence",
+    "No independent human/judge grading",
+    "No real model/image/hosted/production acceptance",
+    "No provider billing ledger assertion"
+  ],
+  "artifactIndex": [
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/active-trial.json",
+      "bytes": 61,
+      "sha256": "ca815b3b1557829fb277d439923122651419bb5410e6311c87ca4ee9bf9222d3",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/build.log",
+      "bytes": 1476,
+      "sha256": "3bea589095466cca9fdf2e3c37c6a57f53069089e58e94ccb7e61b46a1e99619",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/classification.json",
+      "bytes": 430,
+      "sha256": "bbecf845e2151c034233d1c5dda063e38d4d9cfc23ce716d4c4d796a62e05b65",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/environment.json",
+      "bytes": 16029,
+      "sha256": "a369e611c1c50814cff1bdd1618937436b47f7e3ac6a0720e34f5da5c9f7ffc1",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/fixture-metadata.json",
+      "bytes": 6799,
+      "sha256": "365a5ba57da6ac7b5217612e1474a6bc9675dace6843d881bd0e9b142b176f47",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/fixtures.json",
+      "bytes": 3730591,
+      "sha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-1-trial-1-after.json",
+      "bytes": 37620,
+      "sha256": "99a0c9049794619c0eb5454748d986150b109d28d3c8b8904c3a9d43916df707",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-1-trial-1-before.json",
+      "bytes": 8508,
+      "sha256": "993f8e1f40813d68bb47b1f2fbd0d21fb25ca3607aa3658e573b613332f365fc",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-1-trial-1-journal.json",
+      "bytes": 350,
+      "sha256": "f11f8d2562c8e6ae3e8df8ae272e80a32afc75abcab074df38d6d13be9ee8383",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-1-trial-1-trial.json",
+      "bytes": 1398,
+      "sha256": "70e2458ea1bdd0d367f4e8e802ba9b7184aac6e065c172dd6b330359b0197a99",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-1-trial-1.png",
+      "bytes": 121049,
+      "sha256": "83566128b99105da6b3e4cd6d50a7eacef81d7016c908569684a4eb36be36e66",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-2-trial-1-after.json",
+      "bytes": 52632,
+      "sha256": "9149587e7fcce1f09955e366158dcc6d94cf3f3a18c0d41a0284c41d65764a46",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-2-trial-1-before.json",
+      "bytes": 10134,
+      "sha256": "bdbe06f4051b86432a8f2007ff0ba4b6084c88309af657a0ce915a69150c1d16",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-2-trial-1-journal.json",
+      "bytes": 350,
+      "sha256": "a685f00760ca1869805302ebe2c265e44c66fa55b7ce8dc82bb13e90204196e4",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-2-trial-1-trial.json",
+      "bytes": 1371,
+      "sha256": "8b66fc49e64c2b62f82a10827bf14be4b624ce1a8691d3d0d21b518fa6b69107",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-2-trial-1.png",
+      "bytes": 118746,
+      "sha256": "c231f3567eb4cdba3172cb451153ca27b6de38cf1ea29f1d52818f6ca5f9c3dd",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-3-trial-1-after.json",
+      "bytes": 130341,
+      "sha256": "141fb6d86855b201f81bda97345fe6e71fa89c479e11e007e9138c411a4e9bd6",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-3-trial-1-before.json",
+      "bytes": 59148,
+      "sha256": "b8b1809229972392e427921129b54e31f625158f083d59389936860abb031bec",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-3-trial-1-journal.json",
+      "bytes": 350,
+      "sha256": "3d239e853962a51283ecda797ffd6218f44b794a772ca1f38a571d6e302cf331",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-3-trial-1-trial.json",
+      "bytes": 1418,
+      "sha256": "7ec3b4b9776c8f144e66938f910b653a3a18955bf9bc923d582e979720523be4",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-3-trial-1.png",
+      "bytes": 161088,
+      "sha256": "cdbb1fd72bab25ab0fc2f70e84464433a193845fc0e24d1990c360fc1e953722",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-4-trial-1-after.json",
+      "bytes": 139684,
+      "sha256": "691766f3451aeeeae162df42d6679849a93ca105b5d3a49837e6d94d5292dde1",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-4-trial-1-before.json",
+      "bytes": 59201,
+      "sha256": "d2addf45b8b7041ead95e18a2d89e471eaca2cb4a19ab83a6035876333f8e2eb",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-4-trial-1-journal.json",
+      "bytes": 350,
+      "sha256": "52c17ee169e77046f2fef6b2225b4d67001c2b5746783a0b1d2690bdce0e1145",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-4-trial-1-trial.json",
+      "bytes": 1409,
+      "sha256": "7f929162483421b80f0e917977435a63fc83eeed1c2908340c0fb2906b0d60f5",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-4-trial-1.png",
+      "bytes": 160764,
+      "sha256": "8432a8cf06d9622a63ee708a1bfa93705b2515caec83cd2e8c383ac99e9cd8a6",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-5-trial-1-after.json",
+      "bytes": 3355463,
+      "sha256": "08b8894df0edd8f9a1812996461e76e64e1aae46216568dde45e3a42080bbb9d",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-5-trial-1-before.json",
+      "bytes": 2204195,
+      "sha256": "a060643a485be52aeb010bb86785d323c38dac561acd585351a8375bfb5200af",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-5-trial-1-journal.json",
+      "bytes": 350,
+      "sha256": "aad45d1046cac6b15ad8c86e58a50c3f6cbd6f64b8cac383a3f3e100d9ed1c12",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-5-trial-1-trial.json",
+      "bytes": 1484,
+      "sha256": "18a4064d1cec877d5d0b7ee0db8b91c268001a72e592e74af8283ad1293b7a8d",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-5-trial-1.png",
+      "bytes": 132545,
+      "sha256": "ba51d4e2f8d4bde907d24d4ab880ab399e3260174cf87ff8e2d30f00453cc9b6",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-6-trial-1-after.json",
+      "bytes": 142216,
+      "sha256": "6ff7e112d877762fc2be35f57f7a99e602d805c6227a09d26644627e73dc3a4e",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-6-trial-1-before.json",
+      "bytes": 63044,
+      "sha256": "3ee5c54f61efeede0f65c86d691d42314c79c643110d7081923eb1d9ebfd8743",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-6-trial-1-journal.json",
+      "bytes": 350,
+      "sha256": "4a5279372652cbbd90f086367c0353b3a887ecc9071e7797b401801f8df9d774",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-6-trial-1-trial.json",
+      "bytes": 1397,
+      "sha256": "bbe6b3f1d07e4785f61adb9ad85d6e0847b91a1137cefc1b3bb9279065dd4b7b",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-6-trial-1.png",
+      "bytes": 189951,
+      "sha256": "73eba44069b11900a32e86156648d42c080229825eae86ce6a2620aa4b42fb98",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-7-trial-1-before.json",
+      "bytes": 55491,
+      "sha256": "918e958896eba5e5640a7ea385475e73dddbab320c5f283950f78b48c1947ecd",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/L2-7-trial-1-trial.json",
+      "bytes": 392,
+      "sha256": "40bc1d04f77f81ef21a333a41fb323cffdc4ab7fae5c093cb374587f4b55c3c1",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/progress.json",
+      "bytes": 45464,
+      "sha256": "2ea69661a56966eb9dd1b3ca9ae7545045ac9daa48308af453868b47f69549d4",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/run-manifest.json",
+      "bytes": 36208,
+      "sha256": "f7b1e085e462a4b8e5b2a14cb0b1ce740ef91b31fd9015418539a55ad7c12e75",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/server.log",
+      "bytes": 155,
+      "sha256": "71cdccb65e339f5a1cb274fdebb885d32aefd8bcdd72a7509d71e2c36d356e1a",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T12-59-28.625Z-22660-preflight/verdict.json",
+      "bytes": 45580,
+      "sha256": "3e04d7582830b094dfe9a62e0af00f4c4e9886d03dd79c4ef2f8a52acf252917",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/active-trial.json",
+      "bytes": 61,
+      "sha256": "9710a87407d05b499f092534dab482c3ef6b9a8d02715bc57ec6672add29f804",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/authority-diagnostic.json",
+      "bytes": 3372,
+      "sha256": "9d97dc6382f4f55a24ec5bf8c567f5d830be919d4cea8529bf70461e292d2056",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/build.log",
+      "bytes": 1476,
+      "sha256": "21e075eb3dca09b6bbfad3e153b5e549ea9dc48c64aebd283432178f1d0d1adf",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/environment.json",
+      "bytes": 16029,
+      "sha256": "aa219c457825752e2562a8bc53c44bf19eaaf5ddf0b128083ff5cad85a547a1d",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/fixture-metadata.json",
+      "bytes": 6799,
+      "sha256": "365a5ba57da6ac7b5217612e1474a6bc9675dace6843d881bd0e9b142b176f47",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/fixtures.json",
+      "bytes": 3730591,
+      "sha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/hard-blocker.json",
+      "bytes": 539,
+      "sha256": "02777bb8d21a4b465124d92eacd81d92175fa5ac315c570333c226c075624513",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/L2-1-trial-1-after.json",
+      "bytes": 38382,
+      "sha256": "e3f953d9a974b653871e1b0ddba41260c3fe835c84b9772e426db2a5aa27afc6",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/L2-1-trial-1-before.json",
+      "bytes": 8508,
+      "sha256": "993f8e1f40813d68bb47b1f2fbd0d21fb25ca3607aa3658e573b613332f365fc",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/L2-1-trial-1-journal.json",
+      "bytes": 678,
+      "sha256": "a7b539b1486882b81ae5bed1c872becc019f050da328731007d55344e31b0fb3",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/L2-1-trial-1-trial.json",
+      "bytes": 1504,
+      "sha256": "973a81c0ad3ff3a2e45d475d415828c8c99c58d74bca32243a16445e5c710097",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/L2-1-trial-1.png",
+      "bytes": 128395,
+      "sha256": "78acaeb5ff471fb4df3f3ca1eb97052b8524b7caa5711dd61a5d82de43fe25e9",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/no-paid-server-wire.json",
+      "bytes": 27105,
+      "sha256": "99a475bbca9d05b5111a24be59dac605560800f7accc7b865e94edf9ec5dce8d",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/progress.json",
+      "bytes": 37129,
+      "sha256": "a1177f0f2114088f63d20f6f0f0a18de99f21bed20189414e2349419ebf364be",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/run-manifest.json",
+      "bytes": 36208,
+      "sha256": "5b71ab936b796da521ed5ad61047261b0c46137b03fcadf5f758ccc31048d81f",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/server.log",
+      "bytes": 155,
+      "sha256": "5a1b1cb7f1e0bde7fa563628d962bdc8a71a87f6d3bc711d4a4f6c7a686814bf",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/2026-10-04T13-10-11.167Z-14384-preflight/verdict.json",
+      "bytes": 37245,
+      "sha256": "752821deb7d5de31a9dd74a37320ac24ae8fdeecf9e26ec1a135702130f7739f",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/preflight/fixture-metadata.json",
+      "bytes": 6799,
+      "sha256": "365a5ba57da6ac7b5217612e1474a6bc9675dace6843d881bd0e9b142b176f47",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/preflight/fixtures.json",
+      "bytes": 3730591,
+      "sha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/preflight-repeat/fixture-metadata.json",
+      "bytes": 6799,
+      "sha256": "365a5ba57da6ac7b5217612e1474a6bc9675dace6843d881bd0e9b142b176f47",
+      "retainedInGit": false
+    },
+    {
+      "path": "output/playwright/p7b-l2/preflight-repeat/fixtures.json",
+      "bytes": 3730591,
+      "sha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+      "retainedInGit": false
+    }
+  ]
+}
