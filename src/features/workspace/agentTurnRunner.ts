@@ -577,8 +577,7 @@ async function driveSession(session: APlusSession): Promise<void> {
       await finalizeSession(session);
       return;
     }
-    if (lifecycle.serverExecutionStatus === "externallyCompleted" && lifecycle.persistence === "pending" &&
-      lifecycle.fault.kind === "none" && session.coordinator.getProviderOutputSnapshot()?.producedUserVisibleEffect) {
+    if (needsFinalProviderResultSave(session, lifecycle)) {
       await finalizeSession(session);
       return;
     }
@@ -892,8 +891,7 @@ async function reconcileRequestResult(
   }
   syncRecoveryRuntimeFacts(session);
   const currentLifecycle = session.coordinator.getLifecycleSnapshot();
-  const waitingForFinalTextSave = currentLifecycle?.phase !== "terminal" &&
-    currentLifecycle?.serverExecutionStatus === "externallyCompleted" && currentLifecycle.persistence === "pending";
+  const waitingForFinalTextSave = currentLifecycle && needsFinalProviderResultSave(session, currentLifecycle);
   if (waitingForFinalTextSave) session.recovery.updateMetadata(metadata => ({ ...metadata, localPersistence: "required" }));
   if (!await session.recovery.flush() && waitingForFinalTextSave) {
     await failRecoveryPersistence(session);
@@ -1156,12 +1154,18 @@ async function persistInitialWorkspace(session: APlusSession): Promise<void> {
   requireCoordinatorOk(session.coordinator.finalizeTurn());
 }
 
+function needsFinalProviderResultSave(session: APlusSession, lifecycle: AgentTurnLifecycleState): boolean {
+  const output = session.coordinator.getProviderOutputSnapshot();
+  return lifecycle.phase !== "terminal" && lifecycle.persistence === "pending" && lifecycle.fault.kind === "none" &&
+    Boolean(output && ((lifecycle.serverExecutionStatus === "externallyCompleted" && output.producedUserVisibleEffect) ||
+      (lifecycle.cancellation && (lifecycle.serverExecutionStatus === "externallyCompleted" ||
+        lifecycle.serverExecutionStatus === "awaitingNextRequest"))));
+}
+
 async function finalizeSession(session: APlusSession): Promise<void> {
   let lifecycle = session.coordinator.getLifecycleSnapshot();
   if (!lifecycle) return;
-  const finalTextSave = lifecycle.phase !== "terminal" && lifecycle.serverExecutionStatus === "externallyCompleted" &&
-    lifecycle.persistence === "pending" && lifecycle.fault.kind === "none" &&
-    session.coordinator.getProviderOutputSnapshot()?.producedUserVisibleEffect;
+  const finalTextSave = needsFinalProviderResultSave(session, lifecycle);
   let terminal: Extract<AgentTurnLifecycleState, { phase: "terminal" }>;
   if (finalTextSave) {
     // Prepare the final Workspace from the same pure reducer, without publishing completion.
@@ -1192,8 +1196,9 @@ async function finalizeSession(session: APlusSession): Promise<void> {
       workspace: current, reads: session.prepared.runtimeState.readReceipts, effects: session.prepared.runtimeState.effectReceipts,
       providerCompleted: terminal.serverExecutionStatus === "externallyCompleted" && Boolean(session.coordinator.getProviderOutputSnapshot()?.outputText.trim() || assistant?.body.trim()) });
     const notice = terminal.serverExecutionStatus === "externallyCompleted" ? taskFulfillmentNotice(fulfillment) : "";
-    const originalBody = finalTextSave && !assistant?.body.trim()
-      ? session.coordinator.getProviderOutputSnapshot()!.outputText : terminalAssistantBody(assistant, terminal);
+    const deliveredText = session.coordinator.getProviderOutputSnapshot()?.outputText;
+    const originalBody = finalTextSave && deliveredText?.trim() && (lifecycle.cancellation || !assistant?.body.trim())
+      ? deliveredText : terminalAssistantBody(assistant, terminal);
     const body = notice && !originalBody.includes(notice) ? `${originalBody}\n\n${notice}`.trim() : originalBody;
     let workspace = finalizeAgentTurn(current, {
       agentTurnId: session.prepared.localAgentTurnId,

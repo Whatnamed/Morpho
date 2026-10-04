@@ -1,8 +1,22 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：P7B-1-D1 / D2 / D3 web ACCEPTED / closed；A–D accepted pass；E 首个 PRODUCT BLOCKER P7B-1-D4。**
+**当前：P7B-1-D1 / D2 / D3 web ACCEPTED / closed；A–D accepted pass；D4 bounded fix 已实现，E rerun 待执行。**
 P7 继续 `validating`；F/G `not_run`；P7B-1 overall 未 PASS；
-P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main，未修 D4，停止等待网页 bounded review。
+P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main；以下原 D4 blocker / diagnostic receipts 保持历史事实。
+
+## D4 bounded client fix（2026-10-04）
+
+只改 Lifecycle / Coordinator / Runner：取消中的 exact original Provider output 可以被观察，phase
+继续 `cancelling`，外部状态按原 Journal 收敛。Canonical cancellation fact 冻结取消前 Provider effect，
+迟到交付本身不把 local cancelled 升为 partial；此前已提交 Tool/其他效果继续按既有 partial 规则处理。
+迟到 Tools 只保留在原 envelope，不创建 batch、confirmation 或 continuation。
+最终 cancelled/result conversation 先 durable 保存 Workspace，再发布 canonical persistence/finalization、
+flush Recovery，最后 ACK 同一 result。保存失败保留 cancellation-owned recovery 与原 envelope；reload
+只查询原 Journal / 重试本地保存，不分配新 request，也不重新执行 Provider。
+没有 SQL、migration、Journal/result schema、record version 或 retry-policy 变更。
+
+原 meaningful `2026-10-04T08-51-01.446Z-6776` 与 diagnostic `2026-10-04T08-47-50.176Z-23476`
+raw artifacts / 分类 / hashes 保留；post-fix 只运行 `--slice=E`，F/G 仍 `not_run`。
 
 ## E continuation / first divergence（2026-10-04）
 

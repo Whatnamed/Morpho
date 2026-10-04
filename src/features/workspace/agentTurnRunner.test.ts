@@ -53,6 +53,51 @@ afterEach(() => {
 });
 
 describe("A+ Agent turn runner", () => {
+  it.each([false, true])("late cancellation Text with tools=%s saves cancelled conversation before exact ACK", async tools => {
+    const f = finalTextFixture({ late: true, tools });
+    await runMorphoAgentTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    const before = structuredClone(f.fixture.fake.getWorkspace().objects);
+    expect(await cancelMorphoAgentTurn(LOCAL_PROJECT_ID, "user stopped")).toBe(true);
+    expect(latestAssistant(f.durable)).toMatchObject({ body: "durable final Text", status: "cancelled", agentTurnOutcome: "cancelledDuringProvider" });
+    expect(f.fixture.fake.getWorkspace().objects).toEqual(before);
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(f.fixture.fake.getEvents().filter(event => event.name === "confirmation")).toHaveLength(0);
+    expect(f.acks).toHaveLength(1); expect(f.fixture.store.record).toBeUndefined();
+  });
+  it("preserves a late Tool-only envelope through cancelled final save without executing it", async () => {
+    const f = finalTextFixture({ late: true, tools: true, toolOnly: true });
+    await runMorphoAgentTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    const before = structuredClone(f.fixture.fake.getWorkspace().objects);
+    await cancelMorphoAgentTurn(LOCAL_PROJECT_ID, "user stopped");
+    expect(latestAssistant(f.durable)).toMatchObject({ body: "当前 Agent 回合已取消，已有本地结果会保留。", status: "cancelled", agentTurnOutcome: "cancelledDuringProvider" });
+    expect(f.fixture.fake.getWorkspace().objects).toEqual(before);
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(f.acks).toHaveLength(1); expect(f.fixture.store.record).toBeUndefined();
+  });
+  it.each([false, true])("late cancellation save failure tools=%s reloads only original delivery and local save", async tools => {
+    const f = finalTextFixture({ late: true, tools });
+    await runMorphoAgentTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
+    f.failWorkspace = true;
+    await cancelMorphoAgentTurn(LOCAL_PROJECT_ID, "user stopped");
+    const envelope = structuredClone(f.fixture.store.record!.coordinator.latestProviderOutput);
+    expect(f.fixture.store.record?.coordinator.lifecycle).toMatchObject({ phase: "recovering", resumePhase: "cancelling",
+      serverExecutionStatus: tools ? "awaitingNextRequest" : "externallyCompleted", persistence: "failed", providerEffectProduced: true,
+      cancellation: { reason: "user stopped", providerEffectProducedBeforeCancellation: false } });
+    expect(f.acks).toHaveLength(0);
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    f.fixture.fake.commitWorkspace(() => ({ workspace: structuredClone(f.durable), value: undefined }));
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, f.fixture.host, f.fixture.dependencies)).toBe("pending");
+    expect(f.fixture.store.record?.coordinator.latestProviderOutput).toEqual(envelope);
+    expect(f.acks).toHaveLength(0);
+    f.failWorkspace = false;
+    detachMorphoAgentTurnForPageUnload(LOCAL_PROJECT_ID);
+    f.fixture.fake.commitWorkspace(() => ({ workspace: structuredClone(f.durable), value: undefined }));
+    expect(await recoverMorphoAgentTurn(LOCAL_PROJECT_ID, f.fixture.host, f.fixture.dependencies)).toBe("recovered");
+    expect(f.fixture.coordinatorHost.executions).toHaveLength(1);
+    expect(latestAssistant(f.durable)).toMatchObject({ body: "durable final Text", status: "cancelled", agentTurnOutcome: "cancelledDuringProvider" });
+    expect(f.acks).toHaveLength(1); expect(f.fixture.store.record).toBeUndefined();
+    expect(f.fixture.fake.getEvents().filter(event => event.name === "confirmation")).toHaveLength(0);
+  });
   it.each([false, true])("Text final-save failure=%s preserves local authority and ACK ordering", async (failSave) => {
     const f = finalTextFixture(); f.failWorkspace = failSave;
     await runMorphoAgentTurn(f.fixture.input, f.fixture.host, f.fixture.dependencies);
@@ -1589,6 +1634,13 @@ class CoordinatorHostFake implements AgentTurnCoordinatorHost {
       cancelRequestedAt: null, localAbortObservedAt: null, attemptId: TURN_ID, taskId: null, responseId: null } };
   }
 
+  setJournalResult(status: "externallyCompleted" | "awaitingNextRequest"): void {
+    this.setJournalStatus(status);
+    this.snapshot = { ...this.snapshot, externalEffect: { version: 1, effectId: finalTextDelivery.effectId,
+      kind: "text", requestDigest: "b".repeat(64), namespace: null, executionState: "succeeded",
+      cancelRequestedAt: "2026-10-04T00:00:00Z", localAbortObservedAt: null, attemptId: TURN_ID, taskId: null, responseId: "original" } };
+  }
+
   async cancelExternalRequest(): Promise<void> {
     this.cancelCalls += 1;
     this.snapshot = snapshotFor(
@@ -1702,8 +1754,23 @@ const finalTextDelivery: ExternalResultManifest = {
   sha256: "f".repeat(64), byteLength: 24, mimeType: "application/json", chunkCount: 1, expiresAt: "2099-01-01T00:00:00Z"
 };
 
-function finalTextFixture() {
-  const fixture = createFixture([{ status: "externallyCompleted", outputText: "durable final Text", delivery: finalTextDelivery }]);
+function finalTextFixture(options: { late?: boolean; tools?: boolean; toolOnly?: boolean } = {}) {
+  const fixture = createFixture([options.late ? { status: "providerRunning" } :
+    { status: "externallyCompleted", outputText: "durable final Text", delivery: finalTextDelivery }]);
+  const outcome = options.late ? "cancelled" : "completed";
+  const assistant = options.late ? { body: options.toolOnly ? "当前 Agent 回合已取消，已有本地结果会保留。" : "durable final Text", status: "cancelled", agentTurnOutcome: "cancelledDuringProvider" } :
+    { body: "durable final Text", status: "done", agentTurnOutcome: "success" };
+  if (options.late) {
+    fixture.coordinatorHost.cancelExternalRequest = async () => {
+      fixture.coordinatorHost.cancelCalls += 1;
+      fixture.coordinatorHost.setJournalResult(options.tools ? "awaitingNextRequest" : "externallyCompleted");
+    };
+    Object.assign(fixture.coordinatorHost, { readProviderResult: vi.fn(async (input: { requestId: string; stepSequence: number }) => ({
+      type: "providerOutput", ...input, outputText: options.toolOnly ? "" : "durable final Text", producedUserVisibleEffect: !options.toolOnly,
+      toolCalls: options.tools ? [researchToolCall("late-research")] : [],
+      toolCallIds: options.tools ? ["late-research"] : [], delivery: finalTextDelivery
+    })) });
+  }
   const values = new Map<string, string>();
   vi.stubGlobal("window", { localStorage: { getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) } });
@@ -1714,15 +1781,16 @@ function finalTextFixture() {
   };
   const save = fixture.store.save.bind(fixture.store);
   fixture.store.save = async record => {
-    if (record.coordinator.lifecycle.phase === "terminal" && record.coordinator.lifecycle.outcome.kind === "completed") {
-      expect(latestAssistant(state.durable)).toMatchObject({ body: "durable final Text", status: "done", agentTurnOutcome: "success" });
+    if (record.coordinator.lifecycle.phase === "terminal" && record.coordinator.lifecycle.outcome.kind === outcome) {
+      expect(latestAssistant(state.durable)).toMatchObject(assistant);
+      if (options.late) expect(record.coordinator.lifecycle.toolBatches).toEqual([]);
     }
     await save(record);
   };
   fixture.fake.setFetchRoute(`/api/ai/effects/${encodeURIComponent(finalTextDelivery.effectId)}/result`, async request => {
     expect(request.method).toBe("POST");
-    expect(latestAssistant(state.durable)).toMatchObject({ body: "durable final Text", status: "done", agentTurnOutcome: "success" });
-    expect(fixture.store.record?.coordinator.lifecycle).toMatchObject({ phase: "terminal", persistence: "succeeded", outcome: { kind: "completed" } });
+    expect(latestAssistant(state.durable)).toMatchObject(assistant);
+    expect(fixture.store.record?.coordinator.lifecycle).toMatchObject({ phase: "terminal", persistence: "succeeded", outcome: { kind: outcome } });
     state.acks.push(await request.json()); return Response.json({ acknowledged: true });
   });
   return state;

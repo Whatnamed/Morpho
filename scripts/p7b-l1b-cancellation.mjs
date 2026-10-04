@@ -148,10 +148,22 @@ export async function runCancellationScenario({ runtime, actor, row, output, set
         assert.equal(final.journal.results.filter(r=>r.effect_id===effectId).length,0);
       } else {
         assert.equal(finalEffect.execution_state,"succeeded");assert.equal(final.journal.turn[0].server_execution_status,"externally_completed");
-        assert.notEqual(assistant.agentTurnOutcome,"success","Cancel intent must not be erased by external success");
+        assert.equal(assistant.agentTurnOutcome,"cancelledDuringProvider","Late delivery cannot resume a user-cancelled Turn");
+        assert.equal(assistant.body,"P7B controlled result","The completed original Text must remain durable");
         const result=final.journal.results.find(r=>r.effect_id===effectId);
         assert.equal(result.binding.requestId,identity.requestId);assert.equal(result.binding.stepSequence,identity.stepSequence);
         assert.equal(final.client.acks.length,1);assert.deepEqual(final.client.acks[0].body,{resultId:result.manifest.resultId,version:result.manifest.version,sha256:result.manifest.sha256});
+        const ack=final.client.acks[0],lifecycle=ack.record.coordinator.lifecycle;
+        assert.equal(lifecycle.phase,"terminal");assert.equal(lifecycle.serverExecutionStatus,"externallyCompleted");
+        assert.equal(lifecycle.persistence,"succeeded");assert.equal(lifecycle.outcome.kind,"cancelled");
+        assert.equal(lifecycle.cancellation.providerEffectProducedBeforeCancellation,false);
+        assert.deepEqual(lifecycle.providerOutput,{kind:"received",requestId:identity.requestId,stepSequence:identity.stepSequence});
+        assert.deepEqual(lifecycle.toolBatches,[]);assert.equal(lifecycle.confirmation.kind,"none");
+        assert.equal(ack.record.metadata.localPersistence,"succeeded");assert.ok(!ack.record.metadata.pendingConfirmation);
+        assert.deepEqual(ack.durableWorkspace.ai.messages,cleared.durableWorkspace.ai.messages,"Final cancelled/result conversation is durable before ACK and cleanup");
+        assert.equal(cleared.record.coordinator.lifecycle.outcome.kind,"cancelled");
+        c.durability={workspaceBeforeAck:true,recoveryBeforeAck:true,canonicalCancelled:true,lateTextPreserved:true,
+          toolBatches:0,confirmations:0,continuations:0,sameResultAck:true};
         c.lateResult={manifest:result.manifest,binding:result.binding,acknowledgedAt:result.acknowledged_at};
       }
       c.terminal={serverStatus:final.journal.turn[0].server_execution_status,effectState:finalEffect.execution_state,

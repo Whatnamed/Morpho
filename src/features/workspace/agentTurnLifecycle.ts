@@ -125,6 +125,8 @@ type AgentTurnFacts = {
   externalRequest: ExternalRequestState;
   providerOutput: ProviderOutputState;
   providerEffectProduced: boolean;
+  /** Frozen when cancellation takes ownership; late delivery is not a resumed local effect. */
+  cancellation?: { reason: string; providerEffectProducedBeforeCancellation: boolean };
   persistence: "notRequired" | "pending" | "succeeded" | "failed";
   unresolvedWorkIds: readonly string[];
   streamActivitySequence: number;
@@ -157,7 +159,7 @@ export type AgentTurnLifecycleState =
       phase: "recovering";
       faultId: string;
       error: Extract<AgentTurnError, { kind: "retryable" }>;
-      resumePhase: ResumablePhase;
+      resumePhase: ResumablePhase | "cancelling";
     })
   | (AgentTurnFacts & { phase: "terminal"; outcome: OverallLocalAgentTurnOutcome });
 
@@ -352,6 +354,9 @@ export function parseAgentTurnLifecycleState(value: unknown): AgentTurnLifecycle
   ) return undefined;
   const toolBatches = value.toolBatches.map(parseFinalizedToolBatch);
   const compactions = value.compactions.map(parseCompactionFact);
+  if (value.cancellation !== undefined && (!isRecord(value.cancellation) ||
+    typeof value.cancellation.reason !== "string" || !value.cancellation.reason.trim() ||
+    typeof value.cancellation.providerEffectProducedBeforeCancellation !== "boolean")) return undefined;
   if (toolBatches.some((batch) => !batch) || compactions.some((fact) => !fact)) return undefined;
   const common: AgentTurnFacts = {
     turnId: value.turnId,
@@ -360,6 +365,10 @@ export function parseAgentTurnLifecycleState(value: unknown): AgentTurnLifecycle
     externalRequest,
     providerOutput,
     providerEffectProduced: value.providerEffectProduced,
+    ...(isRecord(value.cancellation) ? { cancellation: {
+      reason: value.cancellation.reason as string,
+      providerEffectProducedBeforeCancellation: value.cancellation.providerEffectProducedBeforeCancellation as boolean
+    } } : {}),
     persistence: value.persistence as AgentTurnFacts["persistence"],
     unresolvedWorkIds,
     streamActivitySequence: value.streamActivitySequence,
@@ -403,12 +412,15 @@ export function parseAgentTurnLifecycleState(value: unknown): AgentTurnLifecycle
     }
     case "cancelling":
       return typeof value.reason === "string" && value.reason.trim()
-        ? { ...common, phase: "cancelling", reason: value.reason }
+        ? { ...common, phase: "cancelling", reason: value.reason, cancellation: common.cancellation ?? {
+            reason: value.reason, providerEffectProducedBeforeCancellation: common.providerEffectProduced
+          } }
         : undefined;
     case "recovering": {
       const error = parseAgentTurnError(value.error);
       return typeof value.faultId === "string" && value.faultId.trim() &&
-        error?.kind === "retryable" && isResumablePhase(value.resumePhase)
+        error?.kind === "retryable" && (isResumablePhase(value.resumePhase) ||
+          (value.resumePhase === "cancelling" && common.cancellation !== undefined))
         ? {
             ...common,
             phase: "recovering",
@@ -571,12 +583,14 @@ export function reduceAgentTurnLifecycle(
         ? success({ ...state, streamActivitySequence: event.sequence })
         : transitionError("invalidEvent", "Stream activity sequence must increase.");
     case "PROVIDER_OUTPUT_RECEIVED":
-      return state.phase === "requestingProvider" &&
+      return (state.phase === "requestingProvider" || state.phase === "cancelling") &&
         state.serverExecutionStatus === "providerRunning" &&
         matchesExternalRequest(state, event.requestId, event.stepSequence, true)
         ? success({
             ...state,
-            phase: "continuing",
+            ...(state.phase === "cancelling"
+              ? { phase: "cancelling", reason: state.reason } as const
+              : { phase: "continuing" } as const),
             providerOutput: {
               kind: "received",
               requestId: event.requestId,
@@ -585,7 +599,7 @@ export function reduceAgentTurnLifecycle(
             providerEffectProduced:
               state.providerEffectProduced || event.producedUserVisibleEffect
           })
-        : state.phase === "requestingProvider" && state.serverExecutionStatus === "providerRunning"
+        : (state.phase === "requestingProvider" || state.phase === "cancelling") && state.serverExecutionStatus === "providerRunning"
           ? externalRequestMismatch(state, event.requestId, event.stepSequence)
           : illegal(state, event);
     case "PROVIDER_OUTPUT_UNAVAILABLE":
@@ -683,17 +697,18 @@ function deriveOverallOutcome(
 ): OverallLocalAgentTurnOutcome | null {
   const batches = state.toolBatches.map((batch) => batch.outcome);
   const hasSuccessfulEffect = Boolean(
-    state.providerEffectProduced ||
+    (state.cancellation?.providerEffectProducedBeforeCancellation ?? state.providerEffectProduced) ||
       batches.some((batch) => batch.executedCount > 0) ||
       state.compactions.length > 0
   );
   const hasEmptyExternalCompletion =
-    state.serverExecutionStatus === "externallyCompleted" && !hasSuccessfulEffect;
+    state.serverExecutionStatus === "externallyCompleted" && !hasSuccessfulEffect && !state.providerEffectProduced;
   const hasPending =
     state.confirmation.kind === "pending" &&
     batches.some((batch) => batch.pendingConfirmationCount > 0);
   const hasCancellation = Boolean(
     options.cancellationReason ||
+      state.cancellation?.reason ||
       (state.phase === "cancelling" && state.reason) ||
       state.serverExecutionStatus === "externallyCancelled" ||
       batches.some((batch) => batch.cancelledCount > 0)
@@ -714,7 +729,7 @@ function deriveOverallOutcome(
   const reasons = buildOutcomeReasons(
     state,
     batches,
-    options.cancellationReason ?? (state.phase === "cancelling" ? state.reason : undefined)
+    options.cancellationReason ?? state.cancellation?.reason ?? (state.phase === "cancelling" ? state.reason : undefined)
   );
 
   if (hasSuccessfulEffect && hasIncomplete) {
@@ -1036,7 +1051,8 @@ function startRecovery(
   if (
     state.phase !== "preparing" &&
     state.phase !== "requestingProvider" &&
-    state.phase !== "continuing"
+    state.phase !== "continuing" &&
+    state.phase !== "cancelling"
   ) {
     return illegal(state, event);
   }
@@ -1069,10 +1085,16 @@ function resolveRecovery(
     );
   }
   const recovered = { ...state, fault: { kind: "none" } as const };
-  if (state.serverExecutionStatus === "externallyCompleted" && state.providerEffectProduced &&
+  const resume = (): AgentTurnLifecycleState => {
+    const { faultId: _faultId, error: _error, resumePhase, ...facts } = recovered;
+    if (resumePhase === "cancelling") return { ...facts, phase: "cancelling", reason: state.cancellation!.reason };
+    return { ...facts, phase: resumePhase };
+  };
+  if (((state.serverExecutionStatus === "externallyCompleted" && (state.providerEffectProduced || state.cancellation)) ||
+      (state.cancellation && state.serverExecutionStatus === "awaitingNextRequest")) &&
     state.providerOutput.kind === "received" && state.persistence !== "succeeded") {
     // Querying external success cannot resolve a failed/pending local Text save.
-    return success({ ...recovered, phase: state.resumePhase });
+    return success(resume());
   }
   if (
     state.serverExecutionStatus === "externallyCompleted" ||
@@ -1087,18 +1109,17 @@ function resolveRecovery(
       }
     );
   }
-  return success({
-    ...recovered,
-    phase: state.serverExecutionStatus === "awaitingNextRequest"
-      ? "continuing"
-      : state.resumePhase
-  });
+  return success(state.resumePhase !== "cancelling" && state.serverExecutionStatus === "awaitingNextRequest"
+    ? { ...recovered, phase: "continuing" } : resume());
 }
 
 function requestCancellation(
   state: Exclude<AgentTurnLifecycleState, { phase: "terminal" }>,
   reason: string
 ): AgentTurnTransitionResult {
+  state = { ...state, cancellation: state.cancellation ?? {
+    reason, providerEffectProducedBeforeCancellation: state.providerEffectProduced
+  } };
   if (state.phase === "executingTools") {
     const completedCallIds = new Set(state.activeToolBatch.results.map((result) => result.callId));
     const results: ToolCallTerminalResult[] = [
@@ -1152,7 +1173,7 @@ function observeServerStatus(
   if (
     status === "awaitingNextRequest" &&
     (
-      state.phase !== "continuing" ||
+      (state.phase !== "continuing" && state.phase !== "cancelling") ||
       state.providerOutput.kind === "none" ||
       state.providerOutput.requestId !== requestId ||
       state.providerOutput.stepSequence !== stepSequence

@@ -855,6 +855,14 @@ Text Agent:
   the uncommitted completion draft and records retryable failed local persistence in the Lifecycle
   and Recovery; query/resume reuses the same verified envelope/result and can converge after storage
   recovers. Recovery metadata never becomes an outcome authority or authorizes new execution.
+  Cancellation can observe the exact original late Provider envelope while remaining `cancelling`.
+  Canonical cancellation facts freeze whether a Provider effect existed before cancellation;
+  late delivery alone does not turn a cancelled local outcome into partial completion, while prior
+  committed Tools/other effects retain partial semantics. Late Tool calls remain unconsumed: no
+  Tool Batch, confirmation or continuation is created. The original text and cancelled conversation
+  pass the same final Workspace/Recovery durability barrier before result ACK. A failed save resumes
+  cancellation-owned local persistence of that envelope; external success and original identity stay
+  intact. This is additive Lifecycle/Recovery data, without schema or record-version changes.
 - Journal reconciliation retains the allowlisted `external_execution_state_unknown` detail in
   canonical Lifecycle facts and outcome reasons. Administrative `externallyFailed` can coexist
   with an `unknown` effect; terminal conversation explicitly records uncertainty and no automatic

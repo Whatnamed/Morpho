@@ -1444,6 +1444,11 @@ Operational interpretation:
   Provider/Journal success stays intact. After storage recovers, reload/resume queries the original
   Journal and saves the same envelope/conversation before local completion and ACK; it never
   creates a new Provider request identity. An earlier Workspace save is not final save evidence.
+  Cancellation does not discard an original completed Text result or prove Provider cancellation.
+  Exact late delivery retains canonical cancellation ownership, suppresses Tools/confirmation/
+  continuation, and saves the original Text with cancelled local outcome before Recovery flush/ACK.
+  Prior committed effects keep partial-outcome semantics. Failed local save retains the same envelope
+  and cancellation facts; reload retries local persistence only, without another Provider request.
   A terminal Journal with `external_execution_state_unknown` preserves that bounded fact in
   canonical local reasons and durable conversation text, even when coarse outcome is `failed`.
   It does not prove Provider failure or authorize retry. Once that detail is durable, ordinary

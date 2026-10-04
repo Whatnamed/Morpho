@@ -42,6 +42,46 @@ const quotaError = {
   recoverable: false
 } satisfies AgentTurnError;
 
+describe("cancellation-owned late delivery", () => {
+  it.each(["externallyCompleted", "awaitingNextRequest"] as const)("preserves original output under %s without downstream work", status => {
+    let state = apply(startProviderRequest(requesting()), { type: "CANCELLATION_REQUESTED", reason: "user stopped" });
+    for (const identity of [{ ...request2, turnId }, { ...request1, stepSequence: 2, turnId }, { ...request1, turnId: "old-turn" }]) {
+      expect(reduceAgentTurnLifecycle(state, { type: "PROVIDER_OUTPUT_RECEIVED", ...identity, producedUserVisibleEffect: true }).ok).toBe(false);
+    }
+    state = apply(state, { type: "PROVIDER_OUTPUT_RECEIVED", ...request1, producedUserVisibleEffect: true });
+    expect(state).toMatchObject({ phase: "cancelling", reason: "user stopped", providerEffectProduced: true,
+      cancellation: { reason: "user stopped", providerEffectProducedBeforeCancellation: false } });
+    state = apply(state, { type: "SERVER_EXECUTION_STATUS_OBSERVED", ...request1, status });
+    expect(reduceAgentTurnLifecycle(state, { type: "TOOL_BATCH_STARTED", turnId, declaredCallIds: ["late-tool"] }).ok).toBe(false);
+    expect(reduceAgentTurnLifecycle(state, { type: "PROVIDER_REQUEST_STARTED", turnId, ...request2 }).ok).toBe(false);
+    state = apply(state, { type: "LOCAL_PERSISTENCE_REQUIRED" });
+    state = apply(state, { type: "LOCAL_PERSISTENCE_FAILED", faultId: fault1, error: retryableError });
+    state = apply(state, { type: "RECOVERY_STARTED", faultId: fault1 });
+    expect(state).toMatchObject({ phase: "recovering", resumePhase: "cancelling" });
+    const reloaded = parseAgentTurnLifecycleState(JSON.parse(JSON.stringify(state)));
+    expect(reloaded).toMatchObject({ phase: "recovering", resumePhase: "cancelling", cancellation: state.cancellation,
+      providerOutput: state.providerOutput, serverExecutionStatus: status, persistence: "failed" });
+    state = reloaded!;
+    state = apply(state, { type: "RECOVERY_RESOLVED", faultId: fault1 });
+    expect(state.phase).toBe("cancelling");
+    state = apply(state, { type: "LOCAL_PERSISTENCE_REQUIRED" });
+    state = apply(state, { type: "LOCAL_PERSISTENCE_SUCCEEDED" });
+    expect(apply(state, { type: "TURN_FINALIZED" })).toMatchObject({ phase: "terminal", serverExecutionStatus: status,
+      outcome: { kind: "cancelled", reasons: ["user stopped"] } });
+  });
+  it("keeps effects committed before cancellation partially completed", () => {
+    let state = withToolCallingOutput();
+    state = apply(state, { type: "TOOL_BATCH_STARTED", declaredCallIds: ["committed"] });
+    state = apply(state, { type: "TOOL_CALL_TERMINATED", result: executed("committed") });
+    state = apply(state, { type: "TOOL_BATCH_FINALIZED" });
+    state = startProviderRequest(state, request2);
+    state = apply(state, { type: "CANCELLATION_REQUESTED", reason: "user stopped" });
+    state = apply(state, { type: "PROVIDER_OUTPUT_RECEIVED", ...request2, producedUserVisibleEffect: true });
+    state = apply(state, { type: "SERVER_EXECUTION_STATUS_OBSERVED", ...request2, status: "externallyCompleted" });
+    expect(outcome(finalizeTurn(state))).toBe("partiallyCompleted");
+  });
+});
+
 describe("bounded Journal failure detail", () => {
   it.each(["external_execution_state_unknown", "provider_http_422", undefined, "raw secret " + "x".repeat(100)])(
     "retains only allowlisted unknown truth for failureCode %s", failureCode => {

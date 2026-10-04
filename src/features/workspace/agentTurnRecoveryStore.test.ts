@@ -23,6 +23,33 @@ import {
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("A+ local Recovery Store", () => {
+  it("round-trips cancellation-owned failed local save and the exact large late Tool envelope", async () => {
+    const fixture = createFixture(), record = recoveryRecordWithLargeProviderOutput();
+    let lifecycle = recoveryRecord("exact request").coordinator.lifecycle;
+    const events: import("./agentTurnLifecycle").AgentTurnEvent[] = [
+      { type: "PROVIDER_REQUEST_STARTED", turnId: TURN_ID, requestId: "request-1", stepSequence: 1 },
+      { type: "CANCELLATION_REQUESTED", turnId: TURN_ID, reason: "user stopped" },
+      { type: "PROVIDER_OUTPUT_RECEIVED", turnId: TURN_ID, requestId: "request-1", stepSequence: 1, producedUserVisibleEffect: false },
+      { type: "SERVER_EXECUTION_STATUS_OBSERVED", turnId: TURN_ID, requestId: "request-1", stepSequence: 1, status: "awaitingNextRequest" },
+      { type: "LOCAL_PERSISTENCE_REQUIRED", turnId: TURN_ID },
+      { type: "LOCAL_PERSISTENCE_FAILED", turnId: TURN_ID, faultId: "local-save", error: {
+        kind: "retryable", code: "final_text_persistence_failed", message: "local save failed", recoverable: true } },
+      { type: "RECOVERY_STARTED", turnId: TURN_ID, faultId: "local-save" }
+    ];
+    for (const event of events) {
+      const result = reduceAgentTurnLifecycle(lifecycle, event);
+      if (!result.ok) throw new Error(result.error.message);
+      lifecycle = result.state;
+    }
+    await fixture.store.save({ ...record, coordinator: { ...record.coordinator, lifecycle } });
+    const loaded = await fixture.store.load("project-test");
+    if (loaded.status !== "ok") throw new Error("Late result recovery must remain readable");
+    expect(loaded.record.coordinator.lifecycle).toMatchObject({ phase: "recovering", resumePhase: "cancelling",
+      cancellation: { reason: "user stopped", providerEffectProducedBeforeCancellation: false }, persistence: "failed" });
+    expect(loaded.record.coordinator.latestProviderOutput).toEqual(record.coordinator.latestProviderOutput);
+    expect(loaded.record.coordinator.lastRequest).toEqual(record.coordinator.lastRequest);
+    expect(loaded.record.coordinator.lifecycle.toolBatches).toEqual([]);
+  });
   it("round-trips terminal unknown detail without enriching legacy lifecycle records", async () => {
     const fixture = createFixture(), record = recoveryRecord("exact body");
     const started = reduceAgentTurnLifecycle(record.coordinator.lifecycle, { type: "PROVIDER_REQUEST_STARTED", turnId: TURN_ID,

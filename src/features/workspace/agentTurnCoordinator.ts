@@ -775,11 +775,16 @@ export class AgentTurnCoordinator {
     });
     if (observed.status === "denied") return observed;
     if (status === "awaitingNextRequest") {
+      if (this.lifecycle?.phase === "cancelling" && this.latestProviderOutput && this.lifecycle.fault.kind === "none") {
+        const required = this.markLocalPersistenceRequired();
+        if (required.status === "denied") return required;
+      }
       this.settleLocalRequest(requestId, stepSequence);
       return this.ok(this.lastRequest);
     }
-    if (status === "externallyCompleted" && this.latestProviderOutput?.producedUserVisibleEffect &&
-      this.lifecycle?.fault.kind === "none" && this.lifecycle.phase !== "cancelling") {
+    if (status === "externallyCompleted" && this.latestProviderOutput &&
+      (this.latestProviderOutput.producedUserVisibleEffect || this.lifecycle?.phase === "cancelling") &&
+      this.lifecycle?.fault.kind === "none") {
       // The earlier Workspace checkpoint does not certify the final Text conversation.
       const required = this.markLocalPersistenceRequired();
       if (required.status === "denied") return required;

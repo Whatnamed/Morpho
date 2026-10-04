@@ -130,6 +130,32 @@ describe("A+ AgentTurnCoordinator", () => {
     expect(host.executions).toHaveLength(kind === "initial" ? 1 : 2);
   });
 
+  it.each(["exact", "wrong-output", "wrong-sequence", "old-turn", "wrong-project"])("cancelling escrow reconciliation guards %s", async kind => {
+    const host = new FakeHost();
+    host.queueStarted({ status: "providerRunning", output: false, interrupted: true });
+    const output = { type: "providerOutput" as const, requestId: kind === "wrong-output" ? "old-request" : "request-1",
+      stepSequence: kind === "wrong-sequence" ? 2 : 1, outputText: "late original", producedUserVisibleEffect: true,
+      toolCallIds: [], toolCalls: [] };
+    const readProviderResult = vi.fn(async () => output);
+    const coordinator = new AgentTurnCoordinator({ localProjectId: "project-a", creationIdempotencyKey: "creation-a",
+      host: Object.assign(host, { readProviderResult }), createRequestId: () => "request-1", persistRequestIntent: () => true });
+    await coordinator.initialize(); await coordinator.startInitialRequest(providerRequest());
+    host.queryOverride = async () => snapshot({ status: "externallyCompleted", latestRequestId: "request-1", latestStepSequence: 1,
+      ...(kind === "old-turn" ? { serverTurnId: "old-turn" } : {}), ...(kind === "wrong-project" ? { localProjectId: "old-project" } : {}),
+      externalEffect: { version: 1, effectId: `effect:${"a".repeat(64)}`, kind: "text", requestDigest: "b".repeat(64), namespace: null,
+        executionState: "succeeded", cancelRequestedAt: "2026-10-04T00:00:00Z", localAbortObservedAt: null, attemptId: null, taskId: null, responseId: "original" } });
+    const result = await coordinator.requestCancellation("user stopped");
+    if (kind !== "exact") {
+      expect(result.status).toBe("denied"); expect(coordinator.getProviderOutputSnapshot()).toBeUndefined();
+    } else {
+      expect(result.status).toBe("ok");
+      expect(coordinator.getLifecycleSnapshot()).toMatchObject({ phase: "cancelling", reason: "user stopped",
+        serverExecutionStatus: "externallyCompleted", persistence: "pending", providerOutput: { kind: "received", requestId: "request-1", stepSequence: 1 } });
+      expect(coordinator.getProviderOutputSnapshot()).toEqual(output);
+    }
+    expect(host.executeExternalRequest).toHaveBeenCalledOnce();
+  });
+
   it("queries and redelivers the original Text result after a lost POST response without another POST", async () => {
     const host = new FakeHost();
     let durable: AgentTurnCoordinatorRecoverySnapshot | undefined;
