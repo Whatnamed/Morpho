@@ -131,7 +131,7 @@ export async function runDurableClientScenario({ runtime, actor, row, output, se
     await page.reload();
     if (fault) {
       await page.waitForFunction(() => sessionStorage.getItem("l1b-C-saveFailed") === "true", null, { timeout: 30_000 });
-      await page.locator(".recovery-pending-card, .failure-card").first().waitFor({ state: "visible", timeout: 30_000 });
+      await page.locator(".workspace-banner.is-error").waitFor({ state: "visible", timeout: 30_000 });
     } else {
       await page.waitForFunction(() => JSON.parse(sessionStorage.getItem("l1b-C-responses") ?? "[]").some(r => r.method === "POST" && r.url.includes("/effects/") && r.status === 200), null, { timeout: 30_000 });
     }
@@ -144,7 +144,13 @@ export async function runDurableClientScenario({ runtime, actor, row, output, se
       assert.equal(after.localSaveFailed, "true"); assert.equal(after.ackProofs.length, 0, "Failed local save cannot ACK");
       assert.ok(after.recoveries.length > 0, "Failed local save retains recoverable original envelope");
       assert.ok(!after.workspace.ai.messages.some(m => m.role === "assistant" && m.body.includes("P7B controlled result")), "Failed save must not claim durable full result");
-      row.localSaveFailure = { injected: true, ackPosts: 0, recoveryRetained: true, fullSuccessReported: false };
+      const record = JSON.parse(after.recoveries[0][1]);
+      row.localSaveFailure = { injected: true, ackPosts: 0, recoveryRetained: true,
+        recoveryPhase: record.coordinator.lifecycle.phase, overallLocalOutcome: record.coordinator.lifecycle.outcome,
+        lifecyclePersistence: record.coordinator.lifecycle.persistence, metadataLocalPersistence: record.metadata.localPersistence,
+        savedAssistantBodies: after.workspace.ai.messages.filter(m => m.role === "assistant").map(m => m.body) };
+      assert.notEqual(record.coordinator.lifecycle.outcome?.kind, "completed",
+        "Failed final conversation persistence must not retain completed Overall Local Turn Outcome / succeeded local persistence");
     } else for (const ack of after.ackProofs) {
       assert.equal(ack.outputReference?.sha256, ack.envelopeSha256, "Verified envelope must be durable before ACK");
       assert.equal(JSON.parse(ack.durableEnvelope).requestId, proof.requestId);

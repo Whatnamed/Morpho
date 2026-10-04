@@ -24,6 +24,7 @@ const verdict={schemaVersion:"p7b-l1b-run-1",runId,sourceSha,contractVersion:con
   verdict:"invalid_run",scenarios:[],firstDivergence:null,paidProviderCalls:0,paidCost:0,
   productionDataOrSchemaWrite:false,limits:["Remote migration/schema state unverified: authentication failures", "No production Journal fault injection", "No L2/L3 or L4", "No Kong/hosted Supabase/Vercel path", "Local Auth has Windows single-listener compatibility shim"]};
 let runtime;
+let server;
 let sliceComplete=false;
 try {
   runtime=await startIsolatedBoundary(process.argv[2]??"temp/p7b-l1b-tools",output);
@@ -34,7 +35,7 @@ try {
   if(buildExit!==0) throw Error("Isolated production build failed; see sanitized build.log");
   verdict.build=await readBuildProvenance();
   assert.equal(verdict.build.sourceSha,sourceSha); assert.equal(verdict.build.isDirty,false);
-  const server=runtime.launch(process.execPath,[resolve("node_modules/next/dist/bin/next"),"start","-p",String(ports.app),"-H","127.0.0.1"],{
+  server=runtime.launch(process.execPath,[resolve("node_modules/next/dist/bin/next"),"start","-p",String(ports.app),"-H","127.0.0.1"],{
     ...runtime.appEnv,NODE_OPTIONS:`--require ${resolve("scripts/p7b-l1b-network-guard.cjs")}`,
     MORPHO_BUILD_SOURCE_SHA:sourceSha,MORPHO_BUILD_ID:verdict.build.buildId,
     MORPHO_BUILD_SOURCE_TREE_SHA256:verdict.build.sourceTreeSha256,MORPHO_BUILD_ARTIFACT_SHA256:verdict.build.artifactSha256,
@@ -153,7 +154,9 @@ try {
 } catch(error) {
   verdict.setupError=error.message; verdict.verdict="invalid_run";
 } finally {
+  if(server) await writeFile(resolve(output,"server.log"),server.safeLog);
   if(runtime) await runtime.stop();
+  for(const s of contract.scenarios.filter(s=>!verdict.scenarios.some(row=>row.id===s.id))) verdict.scenarios.push({id:s.id,expected:s.expected,verdict:"not_run",reason:verdict.verdict==="invalid_run"?"Invalid harness/setup run":"Stopped at first product divergence"});
   verdict.sliceComplete=sliceComplete;
   if(boundedD1) verdict.boundedSlice={scenarios:["A","B"],verdict:sliceComplete?"pass":verdict.verdict};
   await writeFile(resolve(output,"verdict.json"),JSON.stringify(verdict,null,2)+"\n");
