@@ -576,7 +576,7 @@
   ],
   "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main.",
   "receiptScope": "Original pre-fix blocker receipt preserved above; current bounded D1 fix is recorded in postFix.",
-  "currentP7b1Status": "validating / D1-D2 web accepted; A-B-C retained; D3 bounded fix complete, D pass awaiting web review; E-F-G not_run; overall not passed",
+  "currentP7b1Status": "validating / D1-D3 web accepted; A-D accepted receipts retained; E fail at P7B-1-D4, F-G not_run; awaiting bounded web review",
   "postFix": {
     "id": "P7B-1-D1",
     "status": "closed / bounded A+B pass; awaiting web review",
@@ -2220,5 +2220,451 @@
     "rawArtifactsLocation": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748",
     "servicesStopped": true,
     "stop": "P7 validating; P7B-1 overall not passed; D3/D awaiting web review; E-F-G not_run; no main merge or subsequent packages."
+  },
+  "eContinuation": {
+    "date": "2026-10-04",
+    "reviewedBaseline": "aa7db12ebda07117e7772d04f583da4a7dc6a511",
+    "mainAtFetch": "f852578f0d1303ff074f66db1e3919c3218a5561",
+    "acceptedReviews": {
+      "source": "User web review instruction",
+      "D1": "accepted / closed",
+      "D2": "accepted / closed",
+      "D3": "accepted / closed",
+      "A": "pass / retained",
+      "B": "pass / retained",
+      "C": "pass / retained",
+      "D": "pass / retained"
+    },
+    "productChanges": false,
+    "schemaMigrationChanges": false,
+    "frozenExpectationsChanged": false,
+    "harnessCommits": [
+      "29180c42918c68354ab346a737f4b40c45ba7765",
+      "ec0b05b3e406d9b85dacfd3d9ec96145e543f4d1"
+    ],
+    "runIdentity": {
+      "runId": "2026-10-04T08-51-01.446Z-6776",
+      "sourceSha": "ec0b05b3e406d9b85dacfd3d9ec96145e543f4d1",
+      "build": {
+        "schemaVersion": 2,
+        "sourceSha": "ec0b05b3e406d9b85dacfd3d9ec96145e543f4d1",
+        "sourceTreeSha256": "509c87ced1f29237e2de78a7c89cd0e8e463fc2bedba8ba504902fa30d6d3662",
+        "sourceTreeFileCount": 1079,
+        "buildId": "V7kHdcv4D3g80ueKC0d_x",
+        "artifactSha256": "238728c5a975fd07a227985c6f9f27fef733901b93a8f81a874b1613b54da8c4",
+        "artifactFileCount": 840,
+        "isDirty": false,
+        "nodeVersion": "v22.23.2",
+        "builtAt": "2026-10-04T08:51:22.186Z"
+      },
+      "contractVersion": "p7b-l1b-boundary-1",
+      "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f"
+    },
+    "environment": {
+      "databaseIdentity": "cf3befc2-223a-4c43-a578-6900acd4e420",
+      "postgresVersion": "PostgreSQL 17.10 on x86_64-windows, compiled by msvc-19.44.35226, 64-bit",
+      "authVersion": "v2.197.0",
+      "postgrestVersion": "v16.4",
+      "migrationHashesUnchanged": true,
+      "remoteDatabaseAccess": false,
+      "authPlatformShim": "cmd/serve_cmd.go: single net.ListenConfig; Unix SO_REUSEPORT only removed, no auth logic changes"
+    },
+    "verdict": "product_blocker",
+    "scenarioVerdicts": {
+      "E": "fail / P7B-1-D4",
+      "F": "not_run",
+      "G": "not_run"
+    },
+    "E": {
+      "runningCancelAndConfirmedLateCancellation": {
+        "verdict": "pass",
+        "identity": {
+          "serverTurnId": "d8e618ef-c56d-44a0-8776-7a10965cc55f",
+          "localProjectId": "p7b-cancel-running-cancelled",
+          "requestId": "a9e3aa4c-9cdc-4f99-b58d-812c8669a55b",
+          "stepSequence": 1,
+          "effectId": "effect:b4d0800ddc4f8a43a51a0a8a45e9c1b1ad367dc706be487025d5aca33c171cd8",
+          "attemptId": "d0a838e5-31d3-4102-9a41-92a6d5eb2685",
+          "requestDigest": "d986ea15002a2c263e11de22a42d88e6f6c943d2398fed681a07b1646409b1ba"
+        },
+        "terminal": {
+          "serverStatus": "externally_cancelled",
+          "effectState": "cancelled",
+          "cancelRequestedAt": "2026-10-04T08:51:53.985Z",
+          "localAbortObservedAt": "2026-10-04T08:51:54.017Z",
+          "canonicalOutcome": {
+            "kind": "cancelled",
+            "reasons": [
+              "用户停止了当前 AI 任务。",
+              "externalExecutionCancelled"
+            ]
+          },
+          "assistantOutcome": "cancelledDuringProvider",
+          "providerExecutions": 1,
+          "requestPosts": 1,
+          "ackPosts": 0,
+          "recoveryCleared": true
+        },
+        "trustedLateObservation": {
+          "status": 200,
+          "data": {
+            "snapshot": {
+              "kind": "text",
+              "taskId": null,
+              "version": 1,
+              "effectId": "effect:b4d0800ddc4f8a43a51a0a8a45e9c1b1ad367dc706be487025d5aca33c171cd8",
+              "attemptId": "d0a838e5-31d3-4102-9a41-92a6d5eb2685",
+              "namespace": {
+                "baseUrl": "http://127.0.0.1:55435/provider/v1",
+                "provider": "openai-compatible",
+                "credentialScope": "6c52e68a2ce8526c8f08fa128a6691d7c51e1fc26929d4f5a1661083a0958970"
+              },
+              "responseId": "resp-p7b-local",
+              "requestDigest": "d986ea15002a2c263e11de22a42d88e6f6c943d2398fed681a07b1646409b1ba",
+              "executionState": "cancelled",
+              "cancelRequestedAt": "2026-10-04T16:51:53.985814+08:00",
+              "localAbortObservedAt": "2026-10-04T16:51:54.017977+08:00"
+            },
+            "executionGranted": false
+          },
+          "source": "Controlled Provider cancellation receipt / test-owned privileged real RPC observer"
+        },
+        "sourceLimit": "Controlled Provider receipt transported by test-owned privileged real PostgREST RPC observer. Does not claim a Text relay GET/cancel capability or browser observation authority."
+      },
+      "cancellationIdentityGuards": {
+        "verdict": "pass / exercised cancellation guard subset",
+        "cases": [
+          "wrong request",
+          "wrong sequence",
+          "wrong project",
+          "old or missing Turn with current project",
+          "unexpected effect field"
+        ],
+        "currentJournalUnchanged": true,
+        "resultAckAndLaterIsolationTrajectories": "not_run after E3 divergence"
+      },
+      "lateSuccessAfterDurableIntent": {
+        "verdict": "fail",
+        "identity": {
+          "serverTurnId": "2793c56b-5c04-48f5-b246-ee71457d9bb6",
+          "localProjectId": "p7b-cancel-running-late-success",
+          "requestId": "41dfcd42-43f3-4f88-9ad6-917533be9cce",
+          "stepSequence": 1,
+          "effectId": "effect:7be87839a4b89af14b3355a8113ba1bcea71845760d8fcb321af399c0b23f284",
+          "attemptId": "860b8ce1-771f-4d40-bb3d-d63291041ffe",
+          "requestDigest": "cd014f4a32635a35155e41125d3250c7ce2689252f39e7c8e8d4676381ee7339"
+        },
+        "serverJournalStatus": "externally_completed",
+        "effectState": "succeeded",
+        "cancelRequestedAt": "2026-10-04T08:52:24.993Z",
+        "localAbortObservedAt": null,
+        "cancelIntentBeforePublication": true,
+        "realCancelRouteOutcome": {
+          "accepted": true,
+          "observed": false,
+          "status": "providerRunning"
+        },
+        "publishedResult": {
+          "manifest": {
+            "kind": "text",
+            "sha256": "b43c2f15885032f3944565bae0f1513f73a1c84286459b9358b22bd5935d3497",
+            "version": 1,
+            "effectId": "effect:7be87839a4b89af14b3355a8113ba1bcea71845760d8fcb321af399c0b23f284",
+            "mimeType": "application/json",
+            "resultId": "result:b8c2d345dfa3539b8b70c4625fbe66a4d496eb1c6a07e84674b6cdbcf8ca8008",
+            "byteLength": 195,
+            "chunkCount": 1
+          },
+          "binding": {
+            "claims": [],
+            "status": "externallyCompleted",
+            "requestId": "41dfcd42-43f3-4f88-9ad6-917533be9cce",
+            "actorUserId": "7c36a04f-7968-4c44-8799-9e1319e85094",
+            "serverTurnId": "2793c56b-5c04-48f5-b246-ee71457d9bb6",
+            "stepSequence": 1,
+            "localProjectId": "p7b-cancel-running-late-success",
+            "requestContentSha256": "f1a07b8c4276a39b1e30804f1b39c4cd0eaf4593226c7c66791a5fa2f6cb4d04"
+          },
+          "publishedAt": "2026-10-04T08:52:25.176Z",
+          "acknowledgedAt": null
+        },
+        "clientCanonicalLifecycle": {
+          "phase": "cancelling",
+          "turnId": "2793c56b-5c04-48f5-b246-ee71457d9bb6",
+          "serverExecutionStatus": "providerRunning",
+          "externalRequest": {
+            "kind": "active",
+            "requestId": "41dfcd42-43f3-4f88-9ad6-917533be9cce",
+            "stepSequence": 1
+          },
+          "providerOutput": {
+            "kind": "none"
+          },
+          "providerEffectProduced": false,
+          "persistence": "succeeded",
+          "unresolvedWorkIds": [],
+          "streamActivitySequence": 0,
+          "fault": {
+            "kind": "present",
+            "faultId": "runtime:illegalTransition",
+            "error": {
+              "kind": "terminal",
+              "code": "illegalTransition",
+              "message": "PROVIDER_OUTPUT_RECEIVED is not legal from cancelling.",
+              "recoverable": false
+            }
+          },
+          "confirmation": {
+            "kind": "none"
+          },
+          "toolBatches": [],
+          "compactions": [],
+          "reason": "用户停止了当前 AI 任务。"
+        },
+        "clientServerSnapshotStatus": "externallyCompleted",
+        "durableMessages": [
+          {
+            "role": "user",
+            "body": "请只用简短文字回复，不调用工具。"
+          },
+          {
+            "role": "assistant",
+            "body": "",
+            "status": "streaming"
+          }
+        ],
+        "recoveryRetained": true,
+        "clientAckPosts": 0,
+        "clientRequestPosts": 1,
+        "providerExecutions": 1,
+        "journalProviderCounter": 1,
+        "sameAttemptAndDigest": true
+      }
+    },
+    "scheduling": "Gateway delays only the already-persisted real cancel RPC response; original controlled Provider completes and escrow/Journal settle before response release. No forged route/RPC status or client state.",
+    "firstDivergence": {
+      "id": "P7B-1-D4",
+      "scenario": "E3",
+      "title": "Late-success Text result reconciliation from cancelling triggers illegalTransition",
+      "assertion": "Original late-success Text result after durable cancel intent must reconcile without illegalTransition / PROVIDER_OUTPUT_RECEIVED from cancelling",
+      "layer": "Coordinator original-result delivery into canonical Lifecycle / cancellation finalization",
+      "minimalBoundary": [
+        "agentTurnCoordinator.ts:701 stores authoritative completed snapshot",
+        "agentTurnCoordinator.ts:705-712 retrieves original result and dispatches PROVIDER_OUTPUT_RECEIVED before status observation",
+        "agentTurnLifecycle.ts:573-590 only accepts Provider output from requestingProvider",
+        "agentTurnRunner.ts:1308-1333 records terminal fault while stale providerRunning keeps client non-terminal"
+      ],
+      "noObservedExternalTruthCorruption": true,
+      "noObservedDuplicateExecution": true,
+      "productNotFixed": true
+    },
+    "invalidRuns": [
+      {
+        "runId": "2026-10-04T08-47-50.176Z-23476",
+        "sourceSha": "29180c42918c68354ab346a737f4b40c45ba7765",
+        "rawVerdict": "invalid_run",
+        "reason": "Generic cleanup wait timed out after real client illegalTransition; raw artifacts preserved. Calibrated E run asserts the actual product divergence directly.",
+        "stubExecutions": 2,
+        "stubCountSource": "Original per-case final checkpoint stub receipts; invalid verdict omits the aggregate counter"
+      }
+    ],
+    "controlledProviderStubExecutions": {
+      "meaningfulRun": 2,
+      "diagnosticRun": 2,
+      "totalThisTask": 4,
+      "perIndependentRequest": 1
+    },
+    "paidProviderSearchImageCalls": 0,
+    "paidCost": 0,
+    "productionDataSchemaWrites": 0,
+    "gates": {
+      "modifiedHarnessSyntaxLint": "pass",
+      "cleanProductionBuild": "pass / both clean executed sources",
+      "diffCheck": "pass",
+      "productSqlSchemaConfig": "unchanged",
+      "frozenL1bAndP7AFilesAndLock": "unchanged",
+      "expandedUnitSqlFullChromiumP7A": "not_run / stop at first genuine product divergence"
+    },
+    "historicalEvidence": {
+      "priorFieldsExceptCurrentStatus": "unchanged",
+      "verifiedPriorArtifactHashesAndSizes": 125
+    },
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-cancelled-cancel-observed.json",
+        "sha256": "e45e1fd2fca92fbdd3b284e553ea6349fad68cd6b4cdaabf334a0f61925127ee",
+        "byteLength": 50229
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-cancelled-final.json",
+        "sha256": "3700bb5d01067b5443c90159f502cc1a20fb1784055174204b048474443c6023",
+        "byteLength": 76063
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-cancelled-final.png",
+        "sha256": "f280c0c27ed487f8d1415aa7351644a57c653f7d908daea0b44942248637c4a0",
+        "byteLength": 77654
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-cancelled-running.json",
+        "sha256": "2303a95db595637f1893b3f51bd80ecb7127d8455a9ad547b2fca1cacef1202a",
+        "byteLength": 45663
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-cancelled-terminal.json",
+        "sha256": "3700bb5d01067b5443c90159f502cc1a20fb1784055174204b048474443c6023",
+        "byteLength": 76063
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-late-success-cancel-observed.json",
+        "sha256": "fae2a9924a3286c8493daa856444c7b9612e47d29fef48c456c9c8e8e24afd83",
+        "byteLength": 52560
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-late-success-durable-intent.json",
+        "sha256": "25f03bdb736ac799d901e0b9d24c329ba0791bff4deb761402d6a51d0e3671e0",
+        "byteLength": 50079
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-late-success-final.json",
+        "sha256": "b6476aec8c27ef54cfc6a98781ea7938c75c100dfcdfd0fc4d5d0d44ec005bf6",
+        "byteLength": 60606
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-late-success-final.png",
+        "sha256": "7cea257137f5408b421b1b9e7c30d66fc2c0636829e226ff305a0d5773f29b4f",
+        "byteLength": 88522
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-late-success-late-success-before-cancel-response.json",
+        "sha256": "6be5aa45120329c1581e762f8e77b612b73afce84f215b265f0369814a7befa8",
+        "byteLength": 52095
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/E-running-late-success-running.json",
+        "sha256": "2a0c035557238e7ae01b49cddd6ab298d42a70cb785cafa0e3975045af729969",
+        "byteLength": 46169
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/build.log",
+        "sha256": "5587e31461a99c28032cc765cb335c19e111a30ecb7e0a2e77056d2cb23a7fef",
+        "byteLength": 1475
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/environment.json",
+        "sha256": "ee3f5a805cea5e5192663119488acd8989b54fb09dd1889ed0ad9a113957d292",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/scenario-E.json",
+        "sha256": "b3e011a97edb6da00c13bec7f41c5f142c4fbadaf54d6c5ab2ebf5b4bd3049bc",
+        "byteLength": 3754
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/server.log",
+        "sha256": "e7cf5a0a5722d54575dfe4a07debfa7585e8dc33a6f68bb8439f7264a240fcaf",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-47-50.176Z-23476/verdict.json",
+        "sha256": "ddd8c6b749abf0642b494b36bfb94c5ddf27724b9da3b318a56c169a35b09bd3",
+        "byteLength": 23914
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-cancelled-cancel-observed.json",
+        "sha256": "5e9c786a9dd2e812c7939564aeb947b60759e87aa9341cc4c8df31a05f7f0fc3",
+        "byteLength": 50229
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-cancelled-final.json",
+        "sha256": "6f1b0d32f5ee4d6d9828c9aa49d7dec4550f88d761947f0d3ee0f72aa06b9a82",
+        "byteLength": 77703
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-cancelled-final.png",
+        "sha256": "f280c0c27ed487f8d1415aa7351644a57c653f7d908daea0b44942248637c4a0",
+        "byteLength": 77654
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-cancelled-running.json",
+        "sha256": "bd3419ae74d68c222ec0255dd75e593dc7541559998edaa66eb6d64683f28457",
+        "byteLength": 45663
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-cancelled-terminal.json",
+        "sha256": "e8478d4164698369710014935ff7d585a7f2bc147665d1de87175b98d40c4c15",
+        "byteLength": 76063
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-late-success-cancel-observed.json",
+        "sha256": "ba5915cbc695db9b0e73f13fa4f9d4123df48f0c4b570b4fc1d73b1a25411b97",
+        "byteLength": 52560
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-late-success-durable-intent.json",
+        "sha256": "5baec875593a1c255d8af301adb143d5c41036d522e754dd7b22d9d8a18b598f",
+        "byteLength": 50079
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-late-success-final.json",
+        "sha256": "8088edf7c72f13bf712b1ae12c07dc644b1f65fd09ea811c20424e39ee7a463f",
+        "byteLength": 60552
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-late-success-final.png",
+        "sha256": "a7f53a0ef0e2dbee4d342e854ff1fd5a991babbf5faa54b36ab58a1bf6b4a3bb",
+        "byteLength": 88575
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-late-success-late-client-reconciliation.json",
+        "sha256": "8088edf7c72f13bf712b1ae12c07dc644b1f65fd09ea811c20424e39ee7a463f",
+        "byteLength": 60552
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-late-success-late-success-before-cancel-response.json",
+        "sha256": "f0b111ca1503b3e66ae6be4dfd3bd88adca6b1571acffee0b3527758224e2889",
+        "byteLength": 52095
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/E-running-late-success-running.json",
+        "sha256": "c0a5746b3f78b15d60b6ce304fbe01b2173a3527b34bb183e56579d673fd6ab1",
+        "byteLength": 46169
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/build.log",
+        "sha256": "d587a49c95cfdb25c1e1f4f931223205d4423fe52cf0d14ce7876cb0a9644b97",
+        "byteLength": 1474
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/environment.json",
+        "sha256": "e3e4ef618cb77e3f6d3ff0eae7d65886867ec39b9a5ad87a2058d13e76fdc9f4",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/scenario-E.json",
+        "sha256": "0549cda26a26a9e24f48f7749769418d31b0745fe3e18948dc5dc9f5fbeb936c",
+        "byteLength": 13216
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/server.log",
+        "sha256": "8a7fe8809ab02799da5ba65712e2e82ec75ae82850a019a082d6f2e354669fb0",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-51-01.446Z-6776/verdict.json",
+        "sha256": "12bddc6f26fd7d666cbd2067c42334d2cacce5f6e940609a7bcb8c13bc89fc0b",
+        "byteLength": 35191
+      }
+    ],
+    "rawArtifactsLocation": "output/playwright/p7b-l1b/",
+    "servicesStopped": true,
+    "limits": [
+      "Remote migration/schema state unverified: authentication failures",
+      "No production Journal fault injection",
+      "No L2/L3 or L4",
+      "No Kong/hosted Supabase/Vercel path",
+      "Local Auth has Windows single-listener compatibility shim"
+    ],
+    "stop": "P7 validating; P7B-1 overall not passed; D4 awaiting web review/bounded scope; F-G not_run; no P7B-2/P7B-3/P7C/L4; no main merge."
   }
 }

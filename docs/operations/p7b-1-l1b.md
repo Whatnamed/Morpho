@@ -1,10 +1,82 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：P7B-1-D1 / D2 web ACCEPTED / closed；A/B/C accepted pass；D3 bounded fix complete，post-fix D pass，待网页复审。**
-P7 继续 `validating`；E/F/G `not_run`；P7B-1 overall 未 PASS；
-P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main，未执行 E/F/G，停止等待网页复审。
+**当前：P7B-1-D1 / D2 / D3 web ACCEPTED / closed；A–D accepted pass；E 首个 PRODUCT BLOCKER P7B-1-D4。**
+P7 继续 `validating`；F/G `not_run`；P7B-1 overall 未 PASS；
+P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main，未修 D4，停止等待网页 bounded review。
 
-## D3 bounded fix / post-fix D（2026-10-04，待网页复审）
+## E continuation / first divergence（2026-10-04）
+
+Fetch 后 local / remote reviewed branch head 均为 `aa7db12ebda07117e7772d04f583da4a7dc6a511`；
+main 仍为 `f852578f0d1303ff074f66db1e3919c3218a5561`，工作树 clean。
+用户确认 D1/D2/D3 accepted / closed，A–D accepted real receipts 保留，本轮未重审或重跑。
+
+只增加 Eval E harness，使用 native Chromium / actual client Stop → production Next cancel route →
+real Auth / privileged PostgREST / fresh PostgreSQL / actual repository RPC → controlled local Provider。
+`running-cancelled` stub 显式采用断开后确认取消的策略，最初的 local abort observation 不代表 Provider cancelled。
+后续 controlled receipt 由 **test-owned privileged real PostgREST RPC observer** 送达，验证 trusted late
+observation；没有新增 browser authority，也不声称真实 Text relay 支持 GET/cancel lookup。
+
+E3 使用 test-owned gateway scheduling barrier：真实 cancel RPC 已写入 intent 后，只延迟其原始响应 bytes，
+不改 response/state；释放原 Provider 的 held response，让其成功并 publish escrow / settle Journal，
+然后放行 cancel RPC response。该正常竞争轨迹没有手工伪造 Journal/effect/client Lifecycle。
+
+| E trajectory | Verdict | Real facts |
+|---|---|---|
+| E1 running cancel / E2 late confirmed cancellation | pass | exact intent durable，local abort timestamp 与 Provider state 分离；controlled Provider receipt + privileged RPC 后才 effect cancelled；Journal externallyCancelled，canonical cancelled、ACK/result 0、Recovery cleared、execution 1 |
+| wrong cancellation identities（E4 的 cancel guard 子集） | pass | wrong request/sequence/project、old/missing Turn 与当前 project、unexpected effect field 分别 409/404/400；current Journal/effect 不变 |
+| E3 late success after durable cancel intent | fail / D4 | server/effect/escrow 成功且绑定原身份；client 从 cancelling 接收原结果时报 illegalTransition，未完成 local cancellation/result 收敛 |
+| F / G；其余 result ACK isolation trajectories | not_run | 首个 genuine product divergence 后停止，不代填 coverage |
+
+**P7B-1-D4 — late-success Text reconciliation from cancelling triggers illegalTransition**：
+
+- Turn `2793c56b-5c04-48f5-b246-ee71457d9bb6` / project `p7b-cancel-running-late-success` / request
+  `41dfcd42-43f3-4f88-9ad6-917533be9cce` / sequence `1`。
+- Effect `effect:7be87839a4b89af14b3355a8113ba1bcea71845760d8fcb321af399c0b23f284` /
+  attempt `860b8ce1-771f-4d40-bb3d-d63291041ffe`；frozen Provider digest
+  `cd014f4a32635a35155e41125d3250c7ce2689252f39e7c8e8d4676381ee7339`。
+- `cancel_requested_at` 在 result publication 前已 durable。Real Journal 为 **externally_completed**、
+  effect 为 **succeeded**，没有把外部 success 伪造为 cancelled。Cancel route 返回 accepted=true /
+  observed=false，因为原执行已经完成；原 Provider execution / Journal counter 均 **1**。
+- Original escrow result `result:b8c2d345dfa3539b8b70c4625fbe66a4d496eb1c6a07e84674b6cdbcf8ca8008` /
+  version `1` / SHA-256 `b43c2f15885032f3944565bae0f1513f73a1c84286459b9358b22bd5935d3497`，
+  binding 为原 request / sequence / Turn / project。Published result/chunks 的实际 GET 均成功，
+  `acknowledged_at = null`，client ACK **0**。
+- Durable Recovery 中 `phase = cancelling`、`serverExecutionStatus = providerRunning`、
+  `providerOutput.kind = none`，但保存的 `serverSnapshot.status = externallyCompleted`。
+  Terminal fault `illegalTransition`：**`PROVIDER_OUTPUT_RECEIVED is not legal from cancelling.`**
+  原 active request / Recovery 保留，没有 replacement Request。Meaningful checkpoint 的 durable assistant
+  body 仍为空 / streaming；diagnostic run 等待 30s 后仍未收敛，保存了该内部错误文本 / streaming。
+
+最小 boundary：`agentTurnCoordinator.ts:701–712` 在原 Journal 显示 completed 后，先取原 escrow 并调用
+`observeStreamEvent(output)`，尚未观察新的 server status；`agentTurnLifecycle.ts:573–590` 只允许
+`requestingProvider` 接收 `PROVIDER_OUTPUT_RECEIVED`，拒绝取消竞争中的原结果。
+`agentTurnRunner.ts:1308–1333` 记录 terminal fault，但 stale providerRunning 阻止 local terminalization。
+**未改产品、不选择新的取消/迟到交付政策，D4 只定位此非法 transition / 收敛缺口。**
+
+Meaningful run：**`2026-10-04T08-51-01.446Z-6776`**；clean executed source
+`ec0b05b3e406d9b85dacfd3d9ec96145e543f4d1`；build `V7kHdcv4D3g80ueKC0d_x`；
+source-tree SHA-256 `509c87ced1f29237e2de78a7c89cd0e8e463fc2bedba8ba504902fa30d6d3662`；
+artifact SHA-256 `238728c5a975fd07a227985c6f9f27fef733901b93a8f81a874b1613b54da8c4`。
+Fresh DB identity `cf3befc2-223a-4c43-a578-6900acd4e420`；PostgreSQL 17.10 / PostgREST 16.4 /
+Auth v2.197.0，20 项 actual repository migrations hashes 不变。
+
+保留 diagnostic **`2026-10-04T08-47-50.176Z-23476`**：raw `invalid_run`，原因是 generic cleanup wait
+超时；实际 artifacts 已记录同一 illegalTransition。校准 harness 为直接断言 bounded client fault 后，
+新 run 为 genuine product_blocker，未改 frozen expectation。Diagnostic verdict 未写 aggregate stub count，
+两份 per-case final checkpoint 的真实 stub receipts 各 1，完整保留并核对。
+
+Meaningful run stub **2**（独立 requests 各 1），diagnostic **2**，本轮合计 **4**；
+paid Provider/Search/Image calls / cost **0**，production DB/schema/data writes **0**。
+Modified harness syntax / targeted ESLint、两次 strict clean production build、diff check **pass**。
+`src/`、SQL/schema/config、frozen L1b / P7A files + lock 无改动。原 **125** 项 artifact hashes/sizes
+核验通过，本轮两 runs 追加 **33** 项 index；全部 D1/D2/D3 blocker/invalid/fix、A–D accepted receipts 原值保留。
+Raw 仅在 ignored `output/playwright/p7b-l1b/`；[machine evidence](./p7b-1-l1b-evidence.json) 的
+`eContinuation` 保留 attribution / run facts。服务已停止，55432–55436 无 listener。
+First divergence 后未扩大 unit/SQL/full Chromium/P7A gate。Remote hosted schema/migrations、production
+fault injection、hosted Kong/Vercel、real Provider quality/billing、L2/L3/L4 仍未验证；Windows Auth shim 保持。
+P7 `validating`，F/G `not_run`，未 merge main，停止等待网页 bounded review。
+
+## D3 bounded fix / post-fix D（2026-10-04，现已网页接受；以下保留原执行 receipt）
 
 Reviewed baseline `8505374d92fa8d147e0621db938e68469078b819`；fetch 后 remote / local branch 一致、工作树 clean，
 main 仍为 `f852578f0d1303ff074f66db1e3919c3218a5561`。
