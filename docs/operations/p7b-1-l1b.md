@@ -1,10 +1,60 @@
 # P7B-1 — L1b real routes / Journal / RPC（2026-10-03–04）
 
-**当前：P7B-1-D1 / D2 web ACCEPTED / closed；A/B/C accepted pass；D 首个 PRODUCT BLOCKER P7B-1-D3。**
+**当前：P7B-1-D1 / D2 web ACCEPTED / closed；A/B/C accepted pass；D3 bounded fix complete，post-fix D pass，待网页复审。**
 P7 继续 `validating`；E/F/G `not_run`；P7B-1 overall 未 PASS；
-P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main，未修 D3，等待网页复审 / bounded scope。
+P7B-2/P7B-3/P7C / L4 `not_started`；未 merge main，未执行 E/F/G，停止等待网页复审。
 
-## D continuation / first divergence（2026-10-04）
+## D3 bounded fix / post-fix D（2026-10-04，待网页复审）
+
+Reviewed baseline `8505374d92fa8d147e0621db938e68469078b819`；fetch 后 remote / local branch 一致、工作树 clean，
+main 仍为 `f852578f0d1303ff074f66db1e3919c3218a5561`。
+Fix / clean executed source：**`3109be63edbd83a822ee692d4bffdbe71bf6faf6`**。
+
+- 产品仅改 `agentTurnCoordinator.ts`、`agentTurnLifecycle.ts`、`agentTurnRunner.ts`。
+  Exact Journal `failureCode` 经 Coordinator → `SERVER_EXECUTION_STATUS_OBSERVED` → canonical
+  `serverFailureCode` / outcome reason → durable `agentTurnOutcomeSummary` / assistant detail。
+- Allowlist 只接纳 failed 行政状态的 `external_execution_state_unknown`，不透传任意 server 字符串。
+  Lifecycle parser 验证并保留 optional detail；旧 records 不补写、不重新解释。Recovery record version、
+  Workspace schema、Journal protocol、SQL/migrations 均未变；只有 additive client Lifecycle fact。
+- Overall outcome kinds 没有变化；unknown coarse outcome 仍为 `failed` / `failedDuringProvider`，
+  canonical reason 和 message summary 为 **`external_execution_state_unknown`**，不再是 generic
+  `externalExecutionFailed`。Durable assistant 明确说明无法确认外部执行且停止自动重试；已有文本保留并附加说明。
+- Unknown 不驱动 retryable/recovering，不改变 server `externallyFailed` 或 effect `unknown`，不生成 result。
+  Detail 成功保存和 Recovery flush 后，既有 terminal cleanup 可清理 Recovery；Workspace save 失败仍保留
+  terminal unknown detail / failed local persistence，不 ACK。D2 的 visible Text save-failure 同结果恢复 barrier 保持。
+- 新增 targeted regression：Journal-only reload、unknown vs confirmed/absent failure code、原 Request identity/
+  no retry、JSON/Recovery restore、旧记录兼容、错误 detail fail closed、保存后 cleanup；D1 replay/content conflict、
+  D2 final save failure/recovery、cancellation、Compaction、result/ACK 与 Provider ambiguity 相邻回归通过。
+  **13 files / 474 tests**、typecheck、lint、modified harness syntax/lint、diff check **pass**。
+
+Real bounded `--slice=D` run：**`2026-10-04T08-26-45.475Z-25748`**，两子场景均 **pass**，无新 divergence / invalid_run。
+Fresh isolated DB identity `fa8d49ab-7d00-4ddd-b72d-2c42bdf82f27`；PostgreSQL 17.10 /
+PostgREST 16.4 / Auth v2.197.0，实际 repository migrations hashes 保持，原 Windows Auth shim 不变。
+Clean production build `YDzno_xLnnzbXZzLKI2Te`；source-tree SHA-256
+`334527f8390cb0c1f552d5bb793cb7cc26f6f416a42da15a8684ccc53c73ad4f`；artifact SHA-256
+`59d6813dd031d803f4431907a9aae8c10475ded6187e1be285a558880f61467b`。
+
+| D subcase | Post-fix facts |
+|---|---|
+| admitted / detach / reload / late success | pass；original request/body durable before POST，query original Journal，exact replay 无新 grant，Provider execution 1，original result redelivery / durable conversation / ACK |
+| upstream socket loss / unknown / reload | pass；Journal externallyFailed + unknown code、effect unknown；canonical reason + durable summary 保留 unknown，明确 no retry text；detail durable 后 Recovery cleanup；result 0 / ACK 0 / Provider execution 1 |
+
+Unknown Turn `d7ee3677-1f29-403a-a7ec-5ea2bd66dc10` / request `4c489f5b-3722-4d19-8a50-871578bfa209` / sequence `1`；
+effect `effect:e936c8f2b6b5fee5dceaff3465cc83b87a7e6973744e9547112df7b9b23c9930`。
+Cleanup entry checkpoint 直接核对 durable Workspace 与 canonical terminal Recovery 的 unknown reason，
+之后确认 Recovery 已清理，正确 unknown detail 仍在最终 conversation。
+两个 case 各原始 client POST 1 + 显式 exact replay probe 1；原 attempt/digest 保持不变、Provider execution 各 1。
+本轮 controlled stub executions 共 **2**；paid Provider/Search/Image calls / cost **0**；production writes **0**。
+
+现有 bounded runner overall 仍为 **`inconclusive` / exit 1**（E/F/G 排除），不表示 D 失败或 P7B-1 overall PASS。
+原 meaningful D3 run `2026-10-04T08-05-06.244Z-7940`、setup invalid `2026-10-04T08-01-46.994Z-23244`、
+overstrict diagnostic `2026-10-04T08-02-10.954Z-32388` 及所有先前 receipts/raw verdicts 未覆盖或重分类。
+全部 **110** 项历史 artifact hashes/sizes 核对；[Machine evidence](./p7b-1-l1b-evidence.json) 的 `d3Fix`
+追加本轮 **15** 项 raw index。Raw 仅在 ignored `output/playwright/p7b-l1b/`，服务已停止。
+Frozen L1b contract、P7A files + lock 不变；SQL/full unit/full Chromium/P7A 无具体扩大理由，未机械重跑。
+P7 `validating`；D3 bounded fix complete / awaiting web review；E/F/G `not_run`，未 merge main，停止。
+
+## 原始 D continuation / first divergence（2026-10-04，历史 receipt 保留）
 
 Fetch 后 branch / remote reviewed head 均为 `b311464285acc80b1300c2dcd953906e7776e647`；main 仍为
 `f852578f0d1303ff074f66db1e3919c3218a5561`，主工作树 clean。用户本轮网页复审确认 D1、D2 accepted / closed，

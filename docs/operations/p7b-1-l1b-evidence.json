@@ -576,7 +576,7 @@
   ],
   "stop": "No C-G scenario execution or product fix after first meaningful divergence. Await web review; no merge main.",
   "receiptScope": "Original pre-fix blocker receipt preserved above; current bounded D1 fix is recorded in postFix.",
-  "currentP7b1Status": "validating / D1-D2 web accepted; accepted A-B-C retained; D fail at P7B-1-D3, E-F-G not_run; awaiting bounded web review",
+  "currentP7b1Status": "validating / D1-D2 web accepted; A-B-C retained; D3 bounded fix complete, D pass awaiting web review; E-F-G not_run; overall not passed",
   "postFix": {
     "id": "P7B-1-D1",
     "status": "closed / bounded A+B pass; awaiting web review",
@@ -1898,5 +1898,327 @@
       "Local Auth has Windows single-listener compatibility shim"
     ],
     "stop": "P7 validating; P7B-1 not passed; D3 awaiting web review/bounded scope; E-F-G not_run; no P7B-2/P7B-3/P7C/L4; no main merge."
+  },
+  "d3Fix": {
+    "id": "P7B-1-D3",
+    "status": "bounded fix complete / awaiting web review",
+    "date": "2026-10-04",
+    "reviewedBaseline": "8505374d92fa8d147e0621db938e68469078b819",
+    "fixCommit": "3109be63edbd83a822ee692d4bffdbe71bf6faf6",
+    "productFiles": [
+      "src/features/workspace/agentTurnLifecycle.ts",
+      "src/features/workspace/agentTurnCoordinator.ts",
+      "src/features/workspace/agentTurnRunner.ts"
+    ],
+    "contract": "Exact authoritative Journal failureCode flows through SERVER_EXECUTION_STATUS_OBSERVED into allowlisted serverFailureCode and canonical outcome reason. The durable message summary retains the exact unknown code and assistant text explicitly communicates unknown execution/no automatic retry. Known/absent failure code retains generic failure. Existing terminal cleanup occurs only after durable local detail; uncertainty alone never starts recovery or Provider retry.",
+    "overallOutcomeTaxonomyChanged": false,
+    "coarseUnknownOutcome": "failed / failedDuringProvider",
+    "clientLifecycleExtension": "optional serverFailureCode restricted to external_execution_state_unknown on externallyFailed; parser preserves and validates it; legacy records remain readable and un-enriched",
+    "workspaceSchemaChanges": false,
+    "sqlMigrationChanges": false,
+    "recoveryRecordVersionChanged": false,
+    "journalProtocolChanged": false,
+    "providerRetryChanges": false,
+    "serverExecutionSemanticsChanged": false,
+    "acceptedD1D2ContractsChanged": false,
+    "runIdentity": {
+      "runId": "2026-10-04T08-26-45.475Z-25748",
+      "sourceSha": "3109be63edbd83a822ee692d4bffdbe71bf6faf6",
+      "build": {
+        "schemaVersion": 2,
+        "sourceSha": "3109be63edbd83a822ee692d4bffdbe71bf6faf6",
+        "sourceTreeSha256": "334527f8390cb0c1f552d5bb793cb7cc26f6f416a42da15a8684ccc53c73ad4f",
+        "sourceTreeFileCount": 1078,
+        "buildId": "YDzno_xLnnzbXZzLKI2Te",
+        "artifactSha256": "59d6813dd031d803f4431907a9aae8c10475ded6187e1be285a558880f61467b",
+        "artifactFileCount": 825,
+        "isDirty": false,
+        "nodeVersion": "v22.23.2",
+        "builtAt": "2026-10-04T08:27:07.431Z"
+      },
+      "contractVersion": "p7b-l1b-boundary-1",
+      "contractSha256": "c039b8dc1b70561fbddd476b9a6f96a98cbb6f9bb0f716b21fd1b6354e024e1f"
+    },
+    "environment": {
+      "databaseIdentity": "fa8d49ab-7d00-4ddd-b72d-2c42bdf82f27",
+      "postgresVersion": "PostgreSQL 17.10 on x86_64-windows, compiled by msvc-19.44.35226, 64-bit",
+      "authVersion": "v2.197.0",
+      "postgrestVersion": "v16.4",
+      "migrationHashesUnchanged": true,
+      "remoteDatabaseAccess": false,
+      "authPlatformShim": "cmd/serve_cmd.go: single net.ListenConfig; Unix SO_REUSEPORT only removed, no auth logic changes"
+    },
+    "scenarioVerdict": "D pass",
+    "cases": [
+      {
+        "name": "client_detach_running_late_success",
+        "verdict": "pass",
+        "identity": {
+          "serverTurnId": "a29e516e-fb0b-409b-8428-5acecc033e71",
+          "requestId": "b51732f7-8b91-464b-b422-03d312998545",
+          "stepSequence": 1,
+          "exactBodySha256": "fc791bc43b87cc328d30a3b36fb4b865797689286401f211bdbf22fcbfb577f4",
+          "durableProviderBodySha256": "48096073b2ebfe9dc33df307f1372a623903f069c961444742c65aa85b12d2ed"
+        },
+        "effectId": "effect:83c62e9f7ccba489b6ec8c99d67734749bbe8329ff5a56897890e57e90e6b70a",
+        "attemptId": "cd81fcbf-f34b-481e-9cc0-3a09ae416456",
+        "requestDigest": "2f15ba260f9dd0f24b2f3e44e56a2ce93833377b8bd93c3d4340edae0ebf6fa1",
+        "serverStatus": "externally_completed",
+        "failureCode": null,
+        "effectState": "succeeded",
+        "preSendExactBodyDurable": true,
+        "originalJournalQueried": true,
+        "explicitExactReplayProbes": 1,
+        "exactReplayStatus": "providerRunning",
+        "noNewGrant": true,
+        "noReplacementIdentity": true,
+        "clientRequestPosts": 1,
+        "providerExecutions": 1,
+        "sameRequestDigestAndAttempt": true,
+        "lateSuccess": {
+          "sameRequest": true,
+          "sameEffect": "effect:83c62e9f7ccba489b6ec8c99d67734749bbe8329ff5a56897890e57e90e6b70a",
+          "providerExecutions": 1,
+          "durableConversation": true,
+          "exactResultAck": true
+        },
+        "result": {
+          "kind": "text",
+          "sha256": "a52ca3777f586d904c54bdc1f2a508307e9196cd0f00688438c76a6136425c3f",
+          "version": 1,
+          "effectId": "effect:83c62e9f7ccba489b6ec8c99d67734749bbe8329ff5a56897890e57e90e6b70a",
+          "mimeType": "application/json",
+          "resultId": "result:47df0d0e49cd240192973a474ea0746f203fdadb933fdc287c5a4166181786ab",
+          "byteLength": 195,
+          "chunkCount": 1
+        },
+        "acknowledgedAt": "2026-10-04T08:27:34.874Z",
+        "cleanupProof": {
+          "lifecycle": {
+            "phase": "terminal",
+            "persistence": "succeeded",
+            "outcome": {
+              "kind": "completed",
+              "reasons": []
+            }
+          },
+          "durableMessages": [
+            {
+              "role": "user",
+              "body": "请只用简短文字回复，不调用工具。",
+              "outcome": "success"
+            },
+            {
+              "role": "assistant",
+              "body": "P7B controlled result",
+              "status": "done",
+              "outcome": "success"
+            }
+          ],
+          "clearCount": 1
+        }
+      },
+      {
+        "name": "upstream_accepted_response_unknown",
+        "verdict": "pass",
+        "identity": {
+          "serverTurnId": "d7ee3677-1f29-403a-a7ec-5ea2bd66dc10",
+          "requestId": "4c489f5b-3722-4d19-8a50-871578bfa209",
+          "stepSequence": 1,
+          "exactBodySha256": "457eedcd4466e93f7c122f808a30d910ff00a2ea9489295002d357c35a32a7b8",
+          "durableProviderBodySha256": "9a09b32986004d9afcae98d6fad615f7215bf0a41c457a5e19b62a22ec3b2b18"
+        },
+        "effectId": "effect:e936c8f2b6b5fee5dceaff3465cc83b87a7e6973744e9547112df7b9b23c9930",
+        "attemptId": "563e69c1-650f-4e45-a615-f31189163346",
+        "requestDigest": "7f3385083e2a7d69c6db5b563a875a781eb64cc7721fef6c2b9a30b73a32136d",
+        "serverStatus": "externally_failed",
+        "failureCode": "external_execution_state_unknown",
+        "effectState": "unknown",
+        "preSendExactBodyDurable": true,
+        "originalJournalQueried": true,
+        "explicitExactReplayProbes": 1,
+        "exactReplayStatus": "externallyFailed",
+        "noNewGrant": true,
+        "noReplacementIdentity": true,
+        "clientRequestPosts": 1,
+        "providerExecutions": 1,
+        "sameRequestDigestAndAttempt": true,
+        "terminalUnknown": {
+          "outcome": {
+            "kind": "failed",
+            "reasons": [
+              "external_execution_state_unknown"
+            ]
+          },
+          "serverFailureCode": "external_execution_state_unknown",
+          "durableAssistant": {
+            "body": "无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。",
+            "status": "failed",
+            "outcome": "failedDuringProvider",
+            "summary": "external_execution_state_unknown"
+          },
+          "detailBeforeCleanup": true,
+          "recoveryCleared": true,
+          "providerExecutions": 1,
+          "ackPosts": 0,
+          "resultCount": 0
+        },
+        "cleanupProof": {
+          "lifecycle": {
+            "phase": "terminal",
+            "persistence": "succeeded",
+            "serverFailureCode": "external_execution_state_unknown",
+            "outcome": {
+              "kind": "failed",
+              "reasons": [
+                "external_execution_state_unknown"
+              ]
+            }
+          },
+          "durableMessages": [
+            {
+              "role": "user",
+              "body": "请只用简短文字回复，不调用工具。",
+              "outcome": "failedDuringProvider",
+              "summary": "external_execution_state_unknown"
+            },
+            {
+              "role": "assistant",
+              "body": "无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。",
+              "status": "failed",
+              "outcome": "failedDuringProvider",
+              "summary": "external_execution_state_unknown"
+            }
+          ],
+          "clearCount": 1
+        }
+      }
+    ],
+    "overallVerdict": "inconclusive",
+    "harnessExitCode": 1,
+    "exitReason": "Existing bounded D runner keeps overall inconclusive / exit 1 because E-F-G are excluded; D passed both subcases with no invalid run or new divergence.",
+    "firstDivergence": null,
+    "newInvalidRuns": [],
+    "subsequentScenarios": [
+      {
+        "id": "E",
+        "verdict": "not_run"
+      },
+      {
+        "id": "F",
+        "verdict": "not_run"
+      },
+      {
+        "id": "G",
+        "verdict": "not_run"
+      }
+    ],
+    "controlledProviderStubExecutions": 2,
+    "perIndependentRequest": 1,
+    "paidProviderSearchImageCalls": 0,
+    "paidCost": 0,
+    "productionDataSchemaWrites": 0,
+    "gates": {
+      "targetedUnit": {
+        "files": 13,
+        "tests": 474,
+        "verdict": "pass",
+        "coverage": "Lifecycle/Coordinator/Runner/Recovery/HTTP/result/ACK/Compaction/Provider ambiguity and D1-D2 adjacent; known/absent code, no paid retry, durable detail before cleanup, parser legacy compatibility"
+      },
+      "typecheck": "pass",
+      "lint": "pass",
+      "modifiedHarnessSyntaxLint": "pass",
+      "cleanProductionBuild": "pass",
+      "diffCheck": "pass",
+      "frozenL1bAndP7AFilesAndLock": "unchanged",
+      "sqlFullUnitFullChromiumP7A": "not_run / no SQL change or further concrete cross-surface risk"
+    },
+    "historicalEvidencePreserved": {
+      "originalD3Run": "2026-10-04T08-05-06.244Z-7940",
+      "setupInvalidRun": "2026-10-04T08-01-46.994Z-23244",
+      "diagnosticInvalidRun": "2026-10-04T08-02-10.954Z-32388",
+      "allPriorFieldsExceptCurrentStatus": "unchanged",
+      "verifiedArtifactHashesAndSizes": 110
+    },
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-held-before-reload.json",
+        "sha256": "042aca4889d31e7ec801a34f52326a8802dde7f61d37e57e756634fe2a91c25f",
+        "byteLength": 44299
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-held-final.json",
+        "sha256": "1dfd93adb7d3c6e67315038733e83e4a34495dd8a576c141570ca10c77c55e4a",
+        "byteLength": 75345
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-held-final.png",
+        "sha256": "dab011fb9871b46f000eb0c15a1f24113c0ce5c3e39949775588c6797745bec1",
+        "byteLength": 76189
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-held-late-success.json",
+        "sha256": "1dfd93adb7d3c6e67315038733e83e4a34495dd8a576c141570ca10c77c55e4a",
+        "byteLength": 75345
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-held-query-original.json",
+        "sha256": "b69e600be036ece4da2df38efc7f9a57a60804d06d843282e3d4154c6154a60b",
+        "byteLength": 46925
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-unknown-before-reload.json",
+        "sha256": "44077e2a6156be91445e18c6c03487f826d5e2f8a1abe4c96cad48d6afe81b51",
+        "byteLength": 46524
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-unknown-durable-unknown.json",
+        "sha256": "b7516cdcf8941bee1c823ae6da7f3b814dd7f6976eea3a7a4ce787c9db31488a",
+        "byteLength": 72550
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-unknown-final.json",
+        "sha256": "b7516cdcf8941bee1c823ae6da7f3b814dd7f6976eea3a7a4ce787c9db31488a",
+        "byteLength": 72550
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-unknown-final.png",
+        "sha256": "5fb6d72d4461dd75a2984a019b21b5d316ec184761b714b092dfba85f2b80478",
+        "byteLength": 81623
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/D-unknown-query-original.json",
+        "sha256": "b7516cdcf8941bee1c823ae6da7f3b814dd7f6976eea3a7a4ce787c9db31488a",
+        "byteLength": 72550
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/build.log",
+        "sha256": "c2afa46836ecc98c43b55c7e4e8592a2af1546804333b902da5066eadae62730",
+        "byteLength": 1475
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/environment.json",
+        "sha256": "7afdc7f4ff6310a8039be5702a9f391859ef7a40fd71c0666ca1b118472cb1ba",
+        "byteLength": 16029
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/scenario-D.json",
+        "sha256": "967231f99aa922467bfb64ca1217a56f8e547ffbb508428f130f41ca35070086",
+        "byteLength": 19326
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/server.log",
+        "sha256": "8bfe69a7cad930b9374aedeb93352d0a1657d4a84b90efc3401bf7132bec74b0",
+        "byteLength": 155
+      },
+      {
+        "path": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748/verdict.json",
+        "sha256": "c80e1b6884aee3a4beef967e8dc8d6829f59bbcc19b26b298a14629a29baf01c",
+        "byteLength": 41584
+      }
+    ],
+    "rawArtifactsLocation": "output/playwright/p7b-l1b/2026-10-04T08-26-45.475Z-25748",
+    "servicesStopped": true,
+    "stop": "P7 validating; P7B-1 overall not passed; D3/D awaiting web review; E-F-G not_run; no main merge or subsequent packages."
   }
 }
