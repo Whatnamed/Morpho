@@ -1,8 +1,8 @@
 {
   "version": "p7b-l3-evidence-1",
-  "status": "L3 controlled real-image smoke complete / awaiting web acceptance",
+  "status": "accepted_with_limits / closed",
   "p7": "validating",
-  "webAcceptance": "awaiting web acceptance",
+  "webAcceptance": "ACCEPTED_WITH_LIMITS / closed",
   "base": "9cbe42c4389c9bf9c78876d089e388a4f0363879",
   "preregistrationSha": "9128c24abad81236d065c0eb50d0ea5ee866ad32",
   "calibrationSha": "ba1d177ed8ebdd4e68b5c9bacec51cccce39d85a",
@@ -3092,5 +3092,62 @@
         "sha256": "9eb9716114d3fa27eff9a0eeba7081e01a22fd6b3cb4b3fb9a4259177e0ac0fd"
       }
     ]
+  },
+  "closeout": {
+    "version": "p7b-l3-web-closeout-1",
+    "status": "accepted_with_limits / closed",
+    "reviewedImplementationEvidenceHead": "e6a006577cd55f54a1188694c1829acc6c035f44",
+    "mainBase": "9cbe42c4389c9bf9c78876d089e388a4f0363879",
+    "d1": "ACCEPTED / closed",
+    "d2": "ACCEPTED / closed",
+    "d3": "ACCEPTED / closed",
+    "acceptedScope": [
+      "fresh post-fix 8/8 real-image attempts execution/evidence",
+      "in-scope image execution infrastructure, reference authority, lineage, delivery, persistence, reopen and ACK contracts: 8/8 gates pass"
+    ],
+    "capabilities": {
+      "cmf": [
+        "pass",
+        "pass"
+      ],
+      "maintenance": [
+        "pass",
+        "pass"
+      ],
+      "explicitDefaultReferenceExclusion": [
+        "pass",
+        "pass"
+      ],
+      "anotherAngle": {
+        "results": [
+          "pass",
+          "fail"
+        ],
+        "consistency": "variable",
+        "trial2RequestedChange": 1,
+        "reliableCapabilityAccepted": false
+      }
+    },
+    "grading": "Root-Agent preliminary Eval review; not independent human/L4; 7/8 image pass is not overall visual-model acceptance",
+    "ledger": {
+      "cumulativePaidSubmissions": 9,
+      "historicalDiagnosticSubmissions": 1,
+      "freshCapabilitySubmissions": 8,
+      "tariffEstimateCny": 0.27,
+      "actualBilling": "unknown",
+      "newPaidRequestsDuringCloseout": 0
+    },
+    "p7": "validating",
+    "p7b2": "partial evidence / blocked_external_provider",
+    "p7c": "not_started",
+    "l4": "not_started",
+    "gptImage25": "unverified",
+    "limits": [
+      "One T2 product and two attempts per class; small sample.",
+      "No engineering scale, structure or material performance proof.",
+      "Hosted/production and overall P7 acceptance are not established."
+    ],
+    "preserved": "All historical diagnostic and D1-D3 raw verdicts, CMF1 append-only reconciliation, fresh8 results, artifact hashes and original limits unchanged; d3Continuation is the pre-closeout evidence snapshot.",
+    "integration": "docs-only closeout; ff-only main integration preserving all commits; no squash/history rewrite"
   }
 }

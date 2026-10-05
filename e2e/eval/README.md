@@ -62,7 +62,7 @@ does not prove model understanding. No production Journal/real Provider/human ac
 
 P7B-3 controlled L3 runner: `node scripts/verify-p7b-l3.mjs --preflight` captures the final production
 image wire with zero paid egress. The command without that flag performs real paid submissions;
-do not rerun the blocked baseline without new execution authorization. Frozen plans/config/budget
+the accepted baseline budget is exhausted, so do not rerun paid attempts. Frozen plans/config/budget
 for the historical diagnostic are in `p7b-l3-manifest.json` and `p7b-l3-fixture-lock.json`;
 fresh post-fix execution uses `p7b-l3-postfix-manifest.json` (eight new attempts, cumulative nine
 including the historical submission, unchanged CNY 0.50 ceiling); guard checks run via
@@ -86,6 +86,12 @@ remains unchanged. `node scripts/reconcile-p7b-l3-cmf.mjs` appends zero-paid ori
 for the delivered formal CMF trial1; it never generates or reconstructs an old intent.
 The authorized continuation used `MORPHO_L3_RECONCILIATION=<absolute reconciliation.json path>`
 with `node scripts/verify-p7b-l3.mjs`: validated prior ledger2/fresh1 carried forward, only seven
-remaining frozen attempts sent. The fresh8 baseline is complete / awaiting web acceptance,
+remaining frozen attempts sent. Final web review: P7B-3 `accepted_with_limits / closed`, reviewed
+implementation/evidence HEAD `e6a006577cd55f54a1188694c1829acc6c035f44`. Fresh8 execution/evidence and
+in-scope authority/lineage/delivery/persistence/reopen/ACK contracts are accepted. Another-angle
+remains pass/fail, variable, and is not accepted as reliable; 7/8 preliminary quality passes do not
+establish overall visual-model acceptance or independent human/L4 judgement. P7 stays validating;
+P7C/L4 not_started, P7B-2 stays partial/blocked_external_provider, gpt-image-2.5 unverified,
+actual billing unknown, single-product/small-sample and engineering limits remain. Ledger:
 cumulative paid9 / CNY0.27 estimate; no more paid submissions are permitted in this envelope.
 All pixel/profile/receipt artifacts stay ignored; only concise verdicts, identities and hashes enter Git.
