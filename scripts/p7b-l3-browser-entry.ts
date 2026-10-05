@@ -34,7 +34,7 @@ async function initialize(next:Seed){
   seed=next;if(!localStorage.getItem(seed.workspaceKey)){localStorage.setItem(seed.catalogKey,seed.catalogValue);localStorage.setItem(seed.workspaceKey,seed.workspaceValue);}
   const parsed=parseWorkspace(localStorage.getItem(seed.workspaceKey)!);if(parsed.status!=="ok")throw Error(parsed.reason);workspace=parsed.workspace;
   for(const a of seed.assets){let blob=await indexedDbBlobStore.get(a.runtimeStorageKey);if(!blob){blob=await(await fetch(a.publicPath)).blob();await indexedDbBlobStore.put(a.runtimeStorageKey,blob);}if(await bytesHash(blob)!==a.contentHash)throw Error("Reference pixel hash mismatch");}
-  return{workspace,images:await imageFacts(workspace)};
+  return{workspace:JSON.parse(JSON.stringify(workspace)),images:await imageFacts(workspace)};
 }
 
 async function execute(attempt:{user:string;plan:VisualGenerationPlan},aliases:{parent:string}){

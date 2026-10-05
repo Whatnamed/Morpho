@@ -64,7 +64,9 @@ try{
       assert.equal(generated.length,1,"Success must create one new object");const image=generated[0],asset=facts.workspace.assets[image.assetId],pixel=facts.images.find(a=>a.objectId===image.id);assert.ok(!initial.workspace.assets[asset.id]);
       assert.equal(image.generation.lineage.identityParent.objectId,fixture.seed.aliases.parent);assert.equal(image.directionId,fixture.seed.aliases.direction);assert.equal(image.visualBranchId,fixture.seed.aliases.branch);
       assert.deepEqual(image.generation.lineage,request.visualLineage);assert.deepEqual(image.generation.providerInputs,request.visualProviderInputs);
-      assert.deepEqual(image.generation.providerInputs.references.filter(r=>r.status==="sent").map(r=>({id:r.source.objectId,hash:r.pixelHash,role:r.role,index:r.payloadIndex})),[{id:fixture.seed.aliases.parent,hash:metadata.sourceAsset.contentHash,role:"identity",index:0}]);
+      // Product pixelHash binds the exact data URL; decoded bytes were independently checked above.
+      const frozenDataUrl="data:"+metadata.sourceAsset.mimeType+";base64,"+(await readFile(resolve("public",metadata.sourceAsset.publicPath.slice(1)))).toString("base64");
+      assert.deepEqual(image.generation.providerInputs.references.filter(r=>r.status==="sent").map(r=>({id:r.source.objectId,hash:r.pixelHash,role:r.role,index:r.payloadIndex})),[{id:fixture.seed.aliases.parent,hash:hash(frozenDataUrl),role:"identity",index:0}]);
       assert.deepEqual(facts.workspace.relations.filter(r=>r.kind==="version"&&r.toObjectId===image.id).map(r=>r.fromObjectId),[fixture.seed.aliases.parent]);
       const delivery=image.generation.delivery;assert.equal(pixel.sha256,delivery.sha256);assert.ok(pixel.width>0&&pixel.height>0);assert.equal(pixel.bytes,delivery.byteLength);
       const ack=facts.wire.filter(w=>w.method==="POST"&&w.url.includes("/result?"));assert.equal(ack.length,1);assert.equal(ack[0].status,200);assert.deepEqual(ack[0].durableAtAck.workspace.objects[image.id],image);assert.equal(ack[0].durableAtAck.images.find(a=>a.objectId===image.id).sha256,delivery.sha256);
