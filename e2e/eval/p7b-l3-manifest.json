@@ -1,0 +1,179 @@
+{
+  "version": "p7b-l3-controlled-smoke-1",
+  "base": "9cbe42c4389c9bf9c78876d089e388a4f0363879",
+  "fixtureVersion": "p7b-l3-buoy-copy-1",
+  "trajectoryVersion": "p7-trajectories-1/T2-independent-checkpoints",
+  "rubricVersion": "p7-rubric-1/l3-anchors-1",
+  "planning": "Frozen deterministic visual intents compiled by production compileVisualGenerationPlan; no real Text/Agent planning request",
+  "execution": "production executeWorkspaceVisualGenerationPlan in Chromium, native persistence controller/IndexedDB, independent /api/ai/image, real isolated Journal/effect/result RPC and GrsAI",
+  "provider": {
+    "adapter": "src/server/image/grsProvider.ts / unified v1/api/generate + GET v1/api/result",
+    "baseUrl": "https://grsai.dakka.com.cn",
+    "fallbackBaseUrls": [
+      "https://grsaiapi.com"
+    ],
+    "imageHostAllowlist": [
+      "file1.aitohumanize.com"
+    ],
+    "allowlistAuthority": "User supplied exact host; Eval process only, no .env/system changes",
+    "model": "gpt-image-2",
+    "aspectRatio": "1:1",
+    "providerAspectRatio": "1024x1024",
+    "sizeOption": "1K",
+    "providerImageSize": "omitted by production gptImage2 profile",
+    "replyType": "json",
+    "quality": "omitted/default",
+    "seed": "omitted/unsupported"
+  },
+  "pricing": {
+    "source": "https://grsai.com/zh/dashboard/models",
+    "retrieved": "2026-10-05 Asia/Shanghai before execution",
+    "cnyPerSubmission": 0.03,
+    "pointsPerSubmission": 600,
+    "qualification": "Published model tariff estimate, not an account billing ledger. Failures/refunds are not credited to the conservative run budget.",
+    "recordedAt": "2026-10-05T04:55:55.502Z",
+    "readingMethod": "GrsAI official models page via web primary source; Jina Reader unavailable; current base read-only /v1/models returned 404, no paid model probe"
+  },
+  "budget": {
+    "paidSubmissions": 8,
+    "directEstimatedCostCny": 0.5,
+    "estimatedAllEightCny": 0.24,
+    "trialsPerClass": 2,
+    "paidTextRequests": 0,
+    "automaticPaidRetries": 0,
+    "replacementAttempts": 0
+  },
+  "preserveOracle": [
+    {
+      "id": "tower",
+      "claim": "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions"
+    },
+    {
+      "id": "ring",
+      "claim": "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture"
+    },
+    {
+      "id": "lowerDevice",
+      "claim": "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways"
+    },
+    {
+      "id": "solarHierarchy",
+      "claim": "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it"
+    },
+    {
+      "id": "serviceHatch",
+      "claim": "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+    }
+  ],
+  "grader": {
+    "anchors": {
+      "0": "Wrong/unusable or essential identity lost",
+      "1": "Useful fragment but substantial visual rescue required",
+      "2": "Usable controlled result with explicit gaps",
+      "3": "Specific requested change with strong preserved identity and little rescue"
+    },
+    "pass": "Each applicable essential dimension at least 2; N/A only for angle-occluded details, not false preservation",
+    "dimensions": [
+      "Visual preservation",
+      "requested change completion",
+      "Scenario / detail",
+      "User agency / reference authority",
+      "Maturity fit"
+    ],
+    "quality": "Root Agent evidence review against frozen anchors, not independent human designer/L4",
+    "policy": "All attempts retained; quality failures continue, no best-of-N or prompt/fixture/oracle edits"
+  },
+  "hardStop": [
+    "Final Provider references/content differ from frozen authority",
+    "Source overwrite or lineage/persistence corruption",
+    "Duplicate or ambiguous paid execution",
+    "Completed result cannot be safely attributed/delivered",
+    "Invalid fixture/evidence",
+    "Submission or money ceiling",
+    "Other product/infrastructure blocker invalidates later evidence"
+  ],
+  "classes": [
+    {
+      "id": "L3-1",
+      "kind": "CMF only",
+      "role": "cmfStudy",
+      "user": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+      "changeGoals": [
+        "中央塔体浅暖灰哑光、浮圈深橄榄绿、少量赭黄安全标记"
+      ],
+      "allowToChange": [
+        "外表颜色、哑光表面和小面积标记"
+      ],
+      "materialsAndCmf": [
+        "浅暖灰哑光塔体",
+        "深橄榄绿浮圈",
+        "小面积赭黄安全标记"
+      ],
+      "viewpoint": "沿用参考图视角与构图",
+      "environmentAndLighting": [
+        "沿用原中性背景与软光"
+      ]
+    },
+    {
+      "id": "L3-2",
+      "kind": "Another angle",
+      "role": "conceptImage",
+      "user": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+      "changeGoals": [
+        "水平转约90度的另一三分之四侧视，机位略低"
+      ],
+      "allowToChange": [
+        "视角、正常遮挡、随视角变化的可见表面"
+      ],
+      "materialsAndCmf": [
+        "保留原图蓝绿色主体、黄色点缀和金属舱门"
+      ],
+      "viewpoint": "原图相对水平转约90度，略低机位三分之四侧视",
+      "environmentAndLighting": [
+        "中性背景与软光"
+      ]
+    },
+    {
+      "id": "L3-3",
+      "kind": "Usage / maintenance scene",
+      "role": "sceneVisual",
+      "user": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+      "changeGoals": [
+        "港口检修平台与侧面技术员触达既有舱门把手的检查动作"
+      ],
+      "allowToChange": [
+        "环境、人物、维护支撑架与说明尺度的构图"
+      ],
+      "materialsAndCmf": [
+        "保留原图蓝绿色主体、黄色点缀和金属舱门"
+      ],
+      "viewpoint": "能同时看到塔体、浮圈、下部装置、技术员手与舱门的三分之四视角",
+      "environmentAndLighting": [
+        "港口检修平台",
+        "设备稳定支撑以留出下部装置空间",
+        "自然日光",
+        "技术员侧面站立，不在水中悬浮"
+      ]
+    },
+    {
+      "id": "L3-4",
+      "kind": "Explicit default-reference exclusion",
+      "role": "conceptImage",
+      "user": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+      "changeGoals": [
+        "暗灰无纹理背景与柔和轮廓光"
+      ],
+      "allowToChange": [
+        "背景和照明"
+      ],
+      "materialsAndCmf": [
+        "保留原图蓝绿色主体、黄色点缀和金属舱门"
+      ],
+      "viewpoint": "沿用原图视角与整体构图",
+      "environmentAndLighting": [
+        "暗灰无纹理背景",
+        "柔和轮廓光，不增加无关物体"
+      ]
+    }
+  ]
+}

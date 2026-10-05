@@ -1,0 +1,1862 @@
+{
+  "version": "p7b-l3-buoy-copy-1",
+  "bundleSha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656",
+  "seedSha256": "6230a0d1fc815236137360bf3229e23a5b85d9d609a9a138b2acd039f86bfda3",
+  "aliases": {
+    "parent": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+    "material": "image-generated-asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
+    "excluded": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+    "defaultReference": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+    "direction": "direction-proposal-direction-1783671299082-1",
+    "branch": "p7-a-branch"
+  },
+  "sourceAsset": {
+    "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+    "contentHash": "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+    "mimeType": "image/jpeg",
+    "publicPath": "/case-study/current/assets/c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc.jpg",
+    "runtimeStorageKey": "case-study:current:asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+    "size": 444892,
+    "sha256": "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc"
+  },
+  "assets": [
+    {
+      "assetId": "asset-73398ac0fdbbfb4dc080443a67ad7257-jpg-a5293b00-c6e5-4e36-a419-83e46f840154",
+      "sha256": "35c8fea122cd5003db1d47f0526a00da722c39b3205e83594b7a7f7c2d497681",
+      "size": 151140
+    },
+    {
+      "assetId": "asset-7add87e4d5b3af015eefc40e5cbdd858-jpg-f7b04d18-548d-4abf-b19e-e06d7ee8c933",
+      "sha256": "6233c25d79fb185063ea81f17e0657de5e7cfb915a4bb37dca68f6252931024e",
+      "size": 14484
+    },
+    {
+      "assetId": "asset-8735393f661c7b763aab851f51ec9515-jpg-62496dcd-5275-4f6f-9315-66088de12ee8",
+      "sha256": "bc9ce0d9aaddc2969b22d7f4605d2516e524d07fe24932fd5e99b025c3888c25",
+      "size": 35083
+    },
+    {
+      "assetId": "asset-c8f9eefd0dc341b9cb432945fb811cd7-jpg-c885c98b-32da-45df-a668-8bf9eb20c9b8",
+      "sha256": "e579129b12fd957e6cfa1fcfc017c0b1f42dc709a62bd114cce04dfcac67cc0a",
+      "size": 120523
+    },
+    {
+      "assetId": "asset-cc4786dd96012fd9156c2d5e901a8414-jpg-4491f369-be21-4b56-ba4b-92c1e9ad766d",
+      "sha256": "33bd110be0235626d81524289f43e2c176149c7109030e259503cb8afe54c6f6",
+      "size": 13180
+    },
+    {
+      "assetId": "asset-f27b01e25d7b34487408433f26241c95-jpg-7a65cfe1-69f0-4771-9f79-9133faab973d",
+      "sha256": "b7e83328a1c4572595616d0a5ba0930a37fc9216292c1524f27def0e59bcd3cc",
+      "size": 72621
+    },
+    {
+      "assetId": "asset-grok-pdf-f3ae3b84-a07f-46a8-80d3-920b4aa670a4",
+      "sha256": "7e95517771095dbb08f2d0f955d745b54435b08f6abcd82818f7da0de55340ab",
+      "size": 4871565
+    },
+    {
+      "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+      "sha256": "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+      "size": 444892
+    },
+    {
+      "assetId": "asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+      "sha256": "d30fd3aa9a0bf57a0761f9ab152bafae9419935ed261f7cd984a6e16335aad99",
+      "size": 508781
+    },
+    {
+      "assetId": "asset-grs-result-1783682287791-jpg-d4f07c12-7497-4067-ad09-15baa6449672",
+      "sha256": "6a93dafc2584937c3ce0a251ee9113ffd8ad7fa087a89c5492b88cef7f99a033",
+      "size": 463105
+    },
+    {
+      "assetId": "asset-grs-result-1783686487536-jpg-b2c5686a-cacc-45ab-981b-d63ea576c131",
+      "sha256": "1cea2ee855a0c5fbd38f41f46b372e6f42a808832751d1ab869738f5675eb08e",
+      "size": 464991
+    },
+    {
+      "assetId": "asset-grs-result-1783686836365-jpg-bd78734a-811a-4f87-a526-9a8e1862008e",
+      "sha256": "0116b683e410406b943d14fc0660faa29e88aaaee11c96ffb90808c2f2d2f7c3",
+      "size": 466392
+    },
+    {
+      "assetId": "asset-grs-result-1783696461343-jpg-a7e57f25-1c72-4a46-a87a-c5364f38c79a",
+      "sha256": "5955aff073ce861298c6e9020355cbebf6742b2b983d950bf140df24ba3d5625",
+      "size": 545157
+    },
+    {
+      "assetId": "asset-grs-result-1783696671929-jpg-b9c740ba-38db-4901-b771-631ba4e96464",
+      "sha256": "4963978d8389b0c05aac34a5970da2ab9cb3ea1a32c70d96da0d63bea0bb1b15",
+      "size": 571221
+    },
+    {
+      "assetId": "asset-grs-result-1783696937588-jpg-721675ec-7336-47de-894b-73f827a617ae",
+      "sha256": "ec5255f56abaa5ca91ca2b650e118b6519ecfc92693d915a60fa43625ab89276",
+      "size": 497505
+    },
+    {
+      "assetId": "asset-grs-result-1783696973466-jpg-54f46fc4-284d-44bf-b483-3f470fed0a6f",
+      "sha256": "9a5445d4f5350a489e29156a788d7e0a6e660df9f9e3d273c69a419e380769c7",
+      "size": 498232
+    },
+    {
+      "assetId": "asset-grs-result-1783855353992-png-03cabcf6-e36e-4e6d-893d-46f0f6cdc146",
+      "sha256": "c41bb5bb8015ca2daf5a5f7fba5115274042f12c4e7fc10423266250f9357a81",
+      "size": 1688004
+    },
+    {
+      "assetId": "asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+      "sha256": "6359e9e78c696712130d70cbd19bd714098721237fed21d54028b3a6c4bb2c4d",
+      "size": 1779324
+    },
+    {
+      "assetId": "asset-grs-result-1783860534073-png-a896841d-2804-4ebc-885e-51bc95e6056f",
+      "sha256": "418920e8ec67677282ed67e13725441f695b033209ec584a12ecc0302ad8fae8",
+      "size": 1561116
+    },
+    {
+      "assetId": "asset-grs-result-1783860809826-png-c73887dc-9d04-420f-af1b-771c1e2c146f",
+      "sha256": "906aa554bc8f1e0546ebd87e53c8e2eea14d307f80b553b99141ac4e4c4ff642",
+      "size": 1552154
+    },
+    {
+      "assetId": "asset-grs-result-1783889212798-png-18d08576-b883-4acc-b413-e98d58f29139",
+      "sha256": "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+      "size": 88
+    },
+    {
+      "assetId": "asset-grs-result-1783889911958-png-2e05109c-693c-4f6f-bf8a-c62b70c92b83",
+      "sha256": "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+      "size": 88
+    },
+    {
+      "assetId": "asset-grs-result-1783889912204-png-45bffe65-2dfd-4f34-87ce-ebf9ec6a1ead",
+      "sha256": "cc2e327868e192cdfab93e6f2f088194eee0b56d6712b99d2d281db93d58fdf0",
+      "size": 88
+    },
+    {
+      "assetId": "asset-here-is-how-it-works-sc2026-extract--ab253b30-2f69-4293-be50-759eb9a42e71",
+      "sha256": "82421cf7d89becc22ca99d43d3edc60709df07a1803c5676c603a99c63bdc6f7",
+      "size": 7044
+    },
+    {
+      "assetId": "asset-here-is-how-it-works-sc2026-pdf-b718325e-9d7f-493e-82e3-bc777042af71",
+      "sha256": "5d01088f515aadbd42e1fcf209dfc0dc3efd54c5d3aa92552fbd897cecb0b5d2",
+      "size": 19713943
+    },
+    {
+      "assetId": "asset-jpg-cf696804-574f-4489-a970-de5cff405dfb",
+      "sha256": "6448012a33bca8ee873910a4fb6a93b181a01dd62e177fa41ed092708805503c",
+      "size": 4760215
+    },
+    {
+      "assetId": "asset-m-extract-txt-9c71dbcc-d1c8-4648-b465-bb230a0c00e6",
+      "sha256": "d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7",
+      "size": 39615
+    },
+    {
+      "assetId": "asset-m-md-558df8e4-89d9-4df5-9f7e-3e4444e06b4f",
+      "sha256": "d8b431db0aa1b64c7dc828a50175d871ca8e2334d80d9399da2ab78d85d802d7",
+      "size": 39615
+    }
+  ],
+  "attempts": [
+    {
+      "key": "L3-1-trial-1",
+      "classId": "L3-1",
+      "trial": 1,
+      "user": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+      "intent": {
+        "id": "L3-1-trial-1",
+        "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+        "title": "CMF only controlled smoke",
+        "purpose": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+        "requestedReferenceObjectIds": [],
+        "referenceBindings": [],
+        "excludedReferenceObjectIds": [
+          "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+          "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+        ],
+        "excludeDefaultReference": true,
+        "changeGoals": [
+          "中央塔体浅暖灰哑光、浮圈深橄榄绿、少量赭黄安全标记"
+        ],
+        "preserve": [
+          "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+          "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+          "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+          "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+          "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+        ],
+        "allowToChange": [
+          "外表颜色、哑光表面和小面积标记"
+        ],
+        "materialsAndCmf": [
+          "浅暖灰哑光塔体",
+          "深橄榄绿浮圈",
+          "小面积赭黄安全标记"
+        ],
+        "viewpoint": "沿用参考图视角与构图",
+        "environmentAndLighting": [
+          "沿用原中性背景与软光"
+        ],
+        "productForm": [],
+        "avoid": [
+          "不要改变产品身份或生成第二个产品",
+          "不要显示或猜测不可见内部",
+          "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+        ],
+        "role": "cmfStudy"
+      },
+      "plan": {
+        "kind": "visualDevelopment",
+        "items": [
+          {
+            "id": "L3-1-trial-1",
+            "userInstruction": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+            "lineage": {
+              "version": 1,
+              "identityParent": {
+                "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                "title": "A",
+                "incarnationId": "00000000-0000-4000-8000-000000000024",
+                "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "parentSource": "explicitTask",
+              "direction": {
+                "objectId": "direction-proposal-direction-1783671299082-1",
+                "title": "方向 1｜守望塔：长期驻留型声学浮标",
+                "incarnationId": "00000000-0000-4000-8000-000000000021"
+              },
+              "directionSource": "identityParent",
+              "branch": {
+                "id": "p7-a-branch",
+                "directionId": "direction-proposal-direction-1783671299082-1",
+                "label": "守望塔 A 历史路线",
+                "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "branchSource": "identityParent"
+            },
+            "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+            "visualBranchId": "p7-a-branch",
+            "title": "CMF only controlled smoke",
+            "purpose": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+            "prompt": "任务：CMF only controlled smoke\n\n目的：只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。\n\n设计意图优先于渲染装饰：先保证结构、比例、部件关系和使用情境正确，再谈灯光、背景与风格；不要无意义地堆砌 studio lighting、premium render、futuristic 之类的装饰词。\n\n图片角色：CMF 研究\n\n图像编辑能力：定向修改（基于参考图的提示词编辑）\n\n重点比较材料、颜色、表面工艺和分区关系，保持产品几何与关键部件位置稳定。\n\n任务模板：定向修改。通过提示词尽量改变 changeGoals 指定内容并保留其余结构、比例、材质和构图；当前链路没有蒙版，不能承诺像素级局部锁定。\n\n当前用户要求（最高优先级）：只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。\n\n本轮要改变：中央塔体浅暖灰哑光、浮圈深橄榄绿、少量赭黄安全标记\n\n必须保留：One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions；Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture；Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways；Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it；Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible\n\n允许变化：外表颜色、哑光表面和小面积标记\n\n视角：沿用参考图视角与构图\n\n材料与 CMF：浅暖灰哑光塔体；深橄榄绿浮圈；小面积赭黄安全标记\n\n环境与光线：沿用原中性背景与软光\n\n避免：不要改变产品身份或生成第二个产品；不要显示或猜测不可见内部；不要把生态、声学、承载或耐久当成图像已证明的工程事实\n\n目标方向：方向 1｜守望塔：长期驻留型声学浮标\n方向策略：采用深吃水的稳定主浮体与上部细长设备塔分层布局：水下声学舱与配重位于低重心区域，能源、通信与维护接口集中于上部密封舱。通过可更换的功能环或检修舱支持多年期维护；风险信息以环形灯带、顶部航标灯和简洁状态编码对外传达，船端接收更细的行动建议。\n方向差异点：结构策略：深吃水低重心浮体 + 上部设备塔，优先抗浪稳定与长期驻留。；使用方式：按固定点位长期布设，由专业维护船定期靠泊或吊装检修。；产品气质：安静、可信、公共设施感强，像一座为海洋生态守望的微型灯塔。\n方向视觉信号：厚实环形浮圈与细长顶部塔体形成明确比例；太阳能顶盖、通信天线与航标灯整合为克制的冠部；水面以上采用雾白、深海蓝与安全琥珀的低饱和编码；水下感知舱以独立深色模块下沉，强调重心与功能分层\n\n当前 Design Brief：\n- 核心问题：现有噪声风险往往以分散数据或事后报告呈现，船舶运营者与海域管理者难以在风险发生时获得可信、可理解且可行动的提示。\n- 设计原则：闭环优先：每次风险提示必须对应明确的建议动作、责任角色和记录结果。\n- 设计原则：分层呈现：水下感知、海面信号、后台管理各自只承载当下所需信息。\n- 设计原则：多物种导向：以生态敏感度和栖息情境分级，不将产品叙事绑定单一动物。\n- 设计原则：可信而克制：用风险等级、置信度和复核状态表达不确定性，不制造绝对安全承诺。\n- 设计原则：低维护部署：结构、供能、通信和回收策略应从开放海况与长期值守出发。\n- 约束：海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。\n- 约束：声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。\n- 约束：浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。\n- 约束：避免增加船员操作负担或在航行安全信息之外制造干扰。\n- 避免项：避免把产品做成只展示实时声波的科研仪器界面。\n- 避免项：避免以单一鲸豚形象替代完整生态影响范围。\n- 避免项：避免承诺浮标可独立执法、自动强制船舶改道或保证零干扰。\n- 避免项：避免用高频告警造成告警疲劳或掩盖真正紧急事件。\n- 项目目标：在生态热点海域建立从水下声学监测到海面提示与后台处置的最小闭环，降低航运和局部海上作业对敏感生物栖息活动的干扰。\n- 目标用户：近海航运船长与调度员\n- 目标用户：海洋保护区与港航管理人员\n- 目标用户：生态监测与科研团队\n- 核心场景：船舶进入已知或预测生态热点前，接收航速与航线风险建议\n- 核心场景：浮标检测到异常声学风险时，通过海面状态信号提示附近船只，并向后台发出事件记录\n- 核心场景：管理人员在后台查看风险地图、设备健康状态与处置建议，决定是否发布临时管控\n- 机会：将海山、峡谷、大陆架边缘和海洋锋面等可预测热点转为浮标布设与巡航优先级。\n- 机会：以可视化海面状态和数字通告连接现场船只与后台决策，形成可被理解的风险语言。\n- 机会：建立事件—建议—响应—结果的数据链，为后续保护措施评估提供依据。\n\n参考图与实际 images[] 顺序一一对应：\n参考图 1：A（产品身份、比例和关键结构的唯一直接父图）\n\n本轮明确排除项目默认参考。\n\n模型适配：使用明确的空间、材质、光线和保留/变化边界描述；文字元素仅在用户明确要求时出现。\n\n只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。",
+            "referenceObjectIds": [
+              "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            ],
+            "role": "cmfStudy",
+            "editMode": "directedEdit",
+            "visualIntent": {
+              "id": "L3-1-trial-1",
+              "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "CMF only controlled smoke",
+              "purpose": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+              "requestedReferenceObjectIds": [],
+              "referenceBindings": [],
+              "excludedReferenceObjectIds": [
+                "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+              ],
+              "excludeDefaultReference": true,
+              "changeGoals": [
+                "中央塔体浅暖灰哑光、浮圈深橄榄绿、少量赭黄安全标记"
+              ],
+              "preserve": [
+                "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+                "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+                "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+                "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+                "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+              ],
+              "allowToChange": [
+                "外表颜色、哑光表面和小面积标记"
+              ],
+              "materialsAndCmf": [
+                "浅暖灰哑光塔体",
+                "深橄榄绿浮圈",
+                "小面积赭黄安全标记"
+              ],
+              "viewpoint": "沿用参考图视角与构图",
+              "environmentAndLighting": [
+                "沿用原中性背景与软光"
+              ],
+              "productForm": [],
+              "avoid": [
+                "不要改变产品身份或生成第二个产品",
+                "不要显示或猜测不可见内部",
+                "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+              ],
+              "role": "cmfStudy",
+              "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+              "visualBranchId": "p7-a-branch"
+            },
+            "referenceResolution": {
+              "resolvedObjectIds": [
+                "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              ],
+              "candidates": [
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "identityParent",
+                  "priority": 0,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": true
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "selectedSource",
+                  "priority": 2,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "branchRoot",
+                  "priority": 3,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "directionRepresentative",
+                  "priority": 4,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "defaultReference",
+                  "priority": 5,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                }
+              ],
+              "providerLimit": 4,
+              "defaultReferenceExcluded": true
+            },
+            "promptContractVersion": "morpho-image-prompt-v4"
+          }
+        ]
+      },
+      "planSha256": "04a5247df080b788616954c0fa260ba17cbc11a7676a2f91ffbaf97dc47a9db5"
+    },
+    {
+      "key": "L3-1-trial-2",
+      "classId": "L3-1",
+      "trial": 2,
+      "user": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+      "intent": {
+        "id": "L3-1-trial-2",
+        "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+        "title": "CMF only controlled smoke",
+        "purpose": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+        "requestedReferenceObjectIds": [],
+        "referenceBindings": [],
+        "excludedReferenceObjectIds": [
+          "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+          "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+        ],
+        "excludeDefaultReference": true,
+        "changeGoals": [
+          "中央塔体浅暖灰哑光、浮圈深橄榄绿、少量赭黄安全标记"
+        ],
+        "preserve": [
+          "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+          "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+          "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+          "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+          "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+        ],
+        "allowToChange": [
+          "外表颜色、哑光表面和小面积标记"
+        ],
+        "materialsAndCmf": [
+          "浅暖灰哑光塔体",
+          "深橄榄绿浮圈",
+          "小面积赭黄安全标记"
+        ],
+        "viewpoint": "沿用参考图视角与构图",
+        "environmentAndLighting": [
+          "沿用原中性背景与软光"
+        ],
+        "productForm": [],
+        "avoid": [
+          "不要改变产品身份或生成第二个产品",
+          "不要显示或猜测不可见内部",
+          "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+        ],
+        "role": "cmfStudy"
+      },
+      "plan": {
+        "kind": "visualDevelopment",
+        "items": [
+          {
+            "id": "L3-1-trial-2",
+            "userInstruction": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+            "lineage": {
+              "version": 1,
+              "identityParent": {
+                "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                "title": "A",
+                "incarnationId": "00000000-0000-4000-8000-000000000024",
+                "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "parentSource": "explicitTask",
+              "direction": {
+                "objectId": "direction-proposal-direction-1783671299082-1",
+                "title": "方向 1｜守望塔：长期驻留型声学浮标",
+                "incarnationId": "00000000-0000-4000-8000-000000000021"
+              },
+              "directionSource": "identityParent",
+              "branch": {
+                "id": "p7-a-branch",
+                "directionId": "direction-proposal-direction-1783671299082-1",
+                "label": "守望塔 A 历史路线",
+                "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "branchSource": "identityParent"
+            },
+            "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+            "visualBranchId": "p7-a-branch",
+            "title": "CMF only controlled smoke",
+            "purpose": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+            "prompt": "任务：CMF only controlled smoke\n\n目的：只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。\n\n设计意图优先于渲染装饰：先保证结构、比例、部件关系和使用情境正确，再谈灯光、背景与风格；不要无意义地堆砌 studio lighting、premium render、futuristic 之类的装饰词。\n\n图片角色：CMF 研究\n\n图像编辑能力：定向修改（基于参考图的提示词编辑）\n\n重点比较材料、颜色、表面工艺和分区关系，保持产品几何与关键部件位置稳定。\n\n任务模板：定向修改。通过提示词尽量改变 changeGoals 指定内容并保留其余结构、比例、材质和构图；当前链路没有蒙版，不能承诺像素级局部锁定。\n\n当前用户要求（最高优先级）：只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。\n\n本轮要改变：中央塔体浅暖灰哑光、浮圈深橄榄绿、少量赭黄安全标记\n\n必须保留：One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions；Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture；Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways；Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it；Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible\n\n允许变化：外表颜色、哑光表面和小面积标记\n\n视角：沿用参考图视角与构图\n\n材料与 CMF：浅暖灰哑光塔体；深橄榄绿浮圈；小面积赭黄安全标记\n\n环境与光线：沿用原中性背景与软光\n\n避免：不要改变产品身份或生成第二个产品；不要显示或猜测不可见内部；不要把生态、声学、承载或耐久当成图像已证明的工程事实\n\n目标方向：方向 1｜守望塔：长期驻留型声学浮标\n方向策略：采用深吃水的稳定主浮体与上部细长设备塔分层布局：水下声学舱与配重位于低重心区域，能源、通信与维护接口集中于上部密封舱。通过可更换的功能环或检修舱支持多年期维护；风险信息以环形灯带、顶部航标灯和简洁状态编码对外传达，船端接收更细的行动建议。\n方向差异点：结构策略：深吃水低重心浮体 + 上部设备塔，优先抗浪稳定与长期驻留。；使用方式：按固定点位长期布设，由专业维护船定期靠泊或吊装检修。；产品气质：安静、可信、公共设施感强，像一座为海洋生态守望的微型灯塔。\n方向视觉信号：厚实环形浮圈与细长顶部塔体形成明确比例；太阳能顶盖、通信天线与航标灯整合为克制的冠部；水面以上采用雾白、深海蓝与安全琥珀的低饱和编码；水下感知舱以独立深色模块下沉，强调重心与功能分层\n\n当前 Design Brief：\n- 核心问题：现有噪声风险往往以分散数据或事后报告呈现，船舶运营者与海域管理者难以在风险发生时获得可信、可理解且可行动的提示。\n- 设计原则：闭环优先：每次风险提示必须对应明确的建议动作、责任角色和记录结果。\n- 设计原则：分层呈现：水下感知、海面信号、后台管理各自只承载当下所需信息。\n- 设计原则：多物种导向：以生态敏感度和栖息情境分级，不将产品叙事绑定单一动物。\n- 设计原则：可信而克制：用风险等级、置信度和复核状态表达不确定性，不制造绝对安全承诺。\n- 设计原则：低维护部署：结构、供能、通信和回收策略应从开放海况与长期值守出发。\n- 约束：海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。\n- 约束：声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。\n- 约束：浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。\n- 约束：避免增加船员操作负担或在航行安全信息之外制造干扰。\n- 避免项：避免把产品做成只展示实时声波的科研仪器界面。\n- 避免项：避免以单一鲸豚形象替代完整生态影响范围。\n- 避免项：避免承诺浮标可独立执法、自动强制船舶改道或保证零干扰。\n- 避免项：避免用高频告警造成告警疲劳或掩盖真正紧急事件。\n- 项目目标：在生态热点海域建立从水下声学监测到海面提示与后台处置的最小闭环，降低航运和局部海上作业对敏感生物栖息活动的干扰。\n- 目标用户：近海航运船长与调度员\n- 目标用户：海洋保护区与港航管理人员\n- 目标用户：生态监测与科研团队\n- 核心场景：船舶进入已知或预测生态热点前，接收航速与航线风险建议\n- 核心场景：浮标检测到异常声学风险时，通过海面状态信号提示附近船只，并向后台发出事件记录\n- 核心场景：管理人员在后台查看风险地图、设备健康状态与处置建议，决定是否发布临时管控\n- 机会：将海山、峡谷、大陆架边缘和海洋锋面等可预测热点转为浮标布设与巡航优先级。\n- 机会：以可视化海面状态和数字通告连接现场船只与后台决策，形成可被理解的风险语言。\n- 机会：建立事件—建议—响应—结果的数据链，为后续保护措施评估提供依据。\n\n参考图与实际 images[] 顺序一一对应：\n参考图 1：A（产品身份、比例和关键结构的唯一直接父图）\n\n本轮明确排除项目默认参考。\n\n模型适配：使用明确的空间、材质、光线和保留/变化边界描述；文字元素仅在用户明确要求时出现。\n\n只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。",
+            "referenceObjectIds": [
+              "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            ],
+            "role": "cmfStudy",
+            "editMode": "directedEdit",
+            "visualIntent": {
+              "id": "L3-1-trial-2",
+              "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "CMF only controlled smoke",
+              "purpose": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+              "requestedReferenceObjectIds": [],
+              "referenceBindings": [],
+              "excludedReferenceObjectIds": [
+                "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+              ],
+              "excludeDefaultReference": true,
+              "changeGoals": [
+                "中央塔体浅暖灰哑光、浮圈深橄榄绿、少量赭黄安全标记"
+              ],
+              "preserve": [
+                "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+                "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+                "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+                "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+                "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+              ],
+              "allowToChange": [
+                "外表颜色、哑光表面和小面积标记"
+              ],
+              "materialsAndCmf": [
+                "浅暖灰哑光塔体",
+                "深橄榄绿浮圈",
+                "小面积赭黄安全标记"
+              ],
+              "viewpoint": "沿用参考图视角与构图",
+              "environmentAndLighting": [
+                "沿用原中性背景与软光"
+              ],
+              "productForm": [],
+              "avoid": [
+                "不要改变产品身份或生成第二个产品",
+                "不要显示或猜测不可见内部",
+                "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+              ],
+              "role": "cmfStudy",
+              "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+              "visualBranchId": "p7-a-branch"
+            },
+            "referenceResolution": {
+              "resolvedObjectIds": [
+                "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              ],
+              "candidates": [
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "identityParent",
+                  "priority": 0,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": true
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "selectedSource",
+                  "priority": 2,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "branchRoot",
+                  "priority": 3,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "directionRepresentative",
+                  "priority": 4,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "defaultReference",
+                  "priority": 5,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                }
+              ],
+              "providerLimit": 4,
+              "defaultReferenceExcluded": true
+            },
+            "promptContractVersion": "morpho-image-prompt-v4"
+          }
+        ]
+      },
+      "planSha256": "7395def2f59233122f51a98943642e0324bbcf7ddb6b960eb8533bf9e926bf68"
+    },
+    {
+      "key": "L3-2-trial-1",
+      "classId": "L3-2",
+      "trial": 1,
+      "user": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+      "intent": {
+        "id": "L3-2-trial-1",
+        "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+        "title": "Another angle controlled smoke",
+        "purpose": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+        "requestedReferenceObjectIds": [],
+        "referenceBindings": [],
+        "excludedReferenceObjectIds": [
+          "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+          "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+        ],
+        "excludeDefaultReference": true,
+        "changeGoals": [
+          "水平转约90度的另一三分之四侧视，机位略低"
+        ],
+        "preserve": [
+          "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+          "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+          "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+          "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+          "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+        ],
+        "allowToChange": [
+          "视角、正常遮挡、随视角变化的可见表面"
+        ],
+        "materialsAndCmf": [
+          "保留原图蓝绿色主体、黄色点缀和金属舱门"
+        ],
+        "viewpoint": "原图相对水平转约90度，略低机位三分之四侧视",
+        "environmentAndLighting": [
+          "中性背景与软光"
+        ],
+        "productForm": [],
+        "avoid": [
+          "不要改变产品身份或生成第二个产品",
+          "不要显示或猜测不可见内部",
+          "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+        ],
+        "role": "conceptImage"
+      },
+      "plan": {
+        "kind": "visualDevelopment",
+        "items": [
+          {
+            "id": "L3-2-trial-1",
+            "userInstruction": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+            "lineage": {
+              "version": 1,
+              "identityParent": {
+                "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                "title": "A",
+                "incarnationId": "00000000-0000-4000-8000-000000000024",
+                "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "parentSource": "explicitTask",
+              "direction": {
+                "objectId": "direction-proposal-direction-1783671299082-1",
+                "title": "方向 1｜守望塔：长期驻留型声学浮标",
+                "incarnationId": "00000000-0000-4000-8000-000000000021"
+              },
+              "directionSource": "identityParent",
+              "branch": {
+                "id": "p7-a-branch",
+                "directionId": "direction-proposal-direction-1783671299082-1",
+                "label": "守望塔 A 历史路线",
+                "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "branchSource": "identityParent"
+            },
+            "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+            "visualBranchId": "p7-a-branch",
+            "title": "Another angle controlled smoke",
+            "purpose": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+            "prompt": "任务：Another angle controlled smoke\n\n目的：只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。\n\n设计意图优先于渲染装饰：先保证结构、比例、部件关系和使用情境正确，再谈灯光、背景与风格；不要无意义地堆砌 studio lighting、premium render、futuristic 之类的装饰词。\n\n图片角色：方向预览 / 继续发展\n\n图像编辑能力：图生图\n\n清楚展示方向的产品架构、比例和形态语言差异，避免只换背景、颜色或灯光。\n\n任务模板：按本轮结构化视觉意图生成一个新的、可追溯的项目图像对象。\n\n当前用户要求（最高优先级）：只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。\n\n本轮要改变：水平转约90度的另一三分之四侧视，机位略低\n\n必须保留：One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions；Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture；Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways；Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it；Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible\n\n允许变化：视角、正常遮挡、随视角变化的可见表面\n\n视角：原图相对水平转约90度，略低机位三分之四侧视\n\n材料与 CMF：保留原图蓝绿色主体、黄色点缀和金属舱门\n\n环境与光线：中性背景与软光\n\n避免：不要改变产品身份或生成第二个产品；不要显示或猜测不可见内部；不要把生态、声学、承载或耐久当成图像已证明的工程事实\n\n目标方向：方向 1｜守望塔：长期驻留型声学浮标\n方向策略：采用深吃水的稳定主浮体与上部细长设备塔分层布局：水下声学舱与配重位于低重心区域，能源、通信与维护接口集中于上部密封舱。通过可更换的功能环或检修舱支持多年期维护；风险信息以环形灯带、顶部航标灯和简洁状态编码对外传达，船端接收更细的行动建议。\n方向差异点：结构策略：深吃水低重心浮体 + 上部设备塔，优先抗浪稳定与长期驻留。；使用方式：按固定点位长期布设，由专业维护船定期靠泊或吊装检修。；产品气质：安静、可信、公共设施感强，像一座为海洋生态守望的微型灯塔。\n方向视觉信号：厚实环形浮圈与细长顶部塔体形成明确比例；太阳能顶盖、通信天线与航标灯整合为克制的冠部；水面以上采用雾白、深海蓝与安全琥珀的低饱和编码；水下感知舱以独立深色模块下沉，强调重心与功能分层\n\n当前 Design Brief：\n- 核心问题：现有噪声风险往往以分散数据或事后报告呈现，船舶运营者与海域管理者难以在风险发生时获得可信、可理解且可行动的提示。\n- 设计原则：闭环优先：每次风险提示必须对应明确的建议动作、责任角色和记录结果。\n- 设计原则：分层呈现：水下感知、海面信号、后台管理各自只承载当下所需信息。\n- 设计原则：多物种导向：以生态敏感度和栖息情境分级，不将产品叙事绑定单一动物。\n- 设计原则：可信而克制：用风险等级、置信度和复核状态表达不确定性，不制造绝对安全承诺。\n- 设计原则：低维护部署：结构、供能、通信和回收策略应从开放海况与长期值守出发。\n- 约束：海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。\n- 约束：声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。\n- 约束：浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。\n- 约束：避免增加船员操作负担或在航行安全信息之外制造干扰。\n- 避免项：避免把产品做成只展示实时声波的科研仪器界面。\n- 避免项：避免以单一鲸豚形象替代完整生态影响范围。\n- 避免项：避免承诺浮标可独立执法、自动强制船舶改道或保证零干扰。\n- 避免项：避免用高频告警造成告警疲劳或掩盖真正紧急事件。\n- 项目目标：在生态热点海域建立从水下声学监测到海面提示与后台处置的最小闭环，降低航运和局部海上作业对敏感生物栖息活动的干扰。\n- 目标用户：近海航运船长与调度员\n- 目标用户：海洋保护区与港航管理人员\n- 目标用户：生态监测与科研团队\n- 核心场景：船舶进入已知或预测生态热点前，接收航速与航线风险建议\n- 核心场景：浮标检测到异常声学风险时，通过海面状态信号提示附近船只，并向后台发出事件记录\n- 核心场景：管理人员在后台查看风险地图、设备健康状态与处置建议，决定是否发布临时管控\n- 机会：将海山、峡谷、大陆架边缘和海洋锋面等可预测热点转为浮标布设与巡航优先级。\n- 机会：以可视化海面状态和数字通告连接现场船只与后台决策，形成可被理解的风险语言。\n- 机会：建立事件—建议—响应—结果的数据链，为后续保护措施评估提供依据。\n\n参考图与实际 images[] 顺序一一对应：\n参考图 1：A（产品身份、比例和关键结构的唯一直接父图）\n\n本轮明确排除项目默认参考。\n\n模型适配：使用明确的空间、材质、光线和保留/变化边界描述；文字元素仅在用户明确要求时出现。\n\n只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。",
+            "referenceObjectIds": [
+              "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            ],
+            "role": "conceptImage",
+            "editMode": "imageToImage",
+            "visualIntent": {
+              "id": "L3-2-trial-1",
+              "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "Another angle controlled smoke",
+              "purpose": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+              "requestedReferenceObjectIds": [],
+              "referenceBindings": [],
+              "excludedReferenceObjectIds": [
+                "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+              ],
+              "excludeDefaultReference": true,
+              "changeGoals": [
+                "水平转约90度的另一三分之四侧视，机位略低"
+              ],
+              "preserve": [
+                "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+                "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+                "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+                "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+                "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+              ],
+              "allowToChange": [
+                "视角、正常遮挡、随视角变化的可见表面"
+              ],
+              "materialsAndCmf": [
+                "保留原图蓝绿色主体、黄色点缀和金属舱门"
+              ],
+              "viewpoint": "原图相对水平转约90度，略低机位三分之四侧视",
+              "environmentAndLighting": [
+                "中性背景与软光"
+              ],
+              "productForm": [],
+              "avoid": [
+                "不要改变产品身份或生成第二个产品",
+                "不要显示或猜测不可见内部",
+                "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+              ],
+              "role": "conceptImage",
+              "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+              "visualBranchId": "p7-a-branch"
+            },
+            "referenceResolution": {
+              "resolvedObjectIds": [
+                "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              ],
+              "candidates": [
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "identityParent",
+                  "priority": 0,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": true
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "selectedSource",
+                  "priority": 2,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "branchRoot",
+                  "priority": 3,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "directionRepresentative",
+                  "priority": 4,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "defaultReference",
+                  "priority": 5,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                }
+              ],
+              "providerLimit": 4,
+              "defaultReferenceExcluded": true
+            },
+            "promptContractVersion": "morpho-image-prompt-v4"
+          }
+        ]
+      },
+      "planSha256": "d67eaf6ef606b17138a35cbce89bacac86ed42050ce3ec58a4a741fab1f1e3a7"
+    },
+    {
+      "key": "L3-2-trial-2",
+      "classId": "L3-2",
+      "trial": 2,
+      "user": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+      "intent": {
+        "id": "L3-2-trial-2",
+        "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+        "title": "Another angle controlled smoke",
+        "purpose": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+        "requestedReferenceObjectIds": [],
+        "referenceBindings": [],
+        "excludedReferenceObjectIds": [
+          "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+          "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+        ],
+        "excludeDefaultReference": true,
+        "changeGoals": [
+          "水平转约90度的另一三分之四侧视，机位略低"
+        ],
+        "preserve": [
+          "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+          "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+          "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+          "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+          "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+        ],
+        "allowToChange": [
+          "视角、正常遮挡、随视角变化的可见表面"
+        ],
+        "materialsAndCmf": [
+          "保留原图蓝绿色主体、黄色点缀和金属舱门"
+        ],
+        "viewpoint": "原图相对水平转约90度，略低机位三分之四侧视",
+        "environmentAndLighting": [
+          "中性背景与软光"
+        ],
+        "productForm": [],
+        "avoid": [
+          "不要改变产品身份或生成第二个产品",
+          "不要显示或猜测不可见内部",
+          "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+        ],
+        "role": "conceptImage"
+      },
+      "plan": {
+        "kind": "visualDevelopment",
+        "items": [
+          {
+            "id": "L3-2-trial-2",
+            "userInstruction": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+            "lineage": {
+              "version": 1,
+              "identityParent": {
+                "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                "title": "A",
+                "incarnationId": "00000000-0000-4000-8000-000000000024",
+                "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "parentSource": "explicitTask",
+              "direction": {
+                "objectId": "direction-proposal-direction-1783671299082-1",
+                "title": "方向 1｜守望塔：长期驻留型声学浮标",
+                "incarnationId": "00000000-0000-4000-8000-000000000021"
+              },
+              "directionSource": "identityParent",
+              "branch": {
+                "id": "p7-a-branch",
+                "directionId": "direction-proposal-direction-1783671299082-1",
+                "label": "守望塔 A 历史路线",
+                "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "branchSource": "identityParent"
+            },
+            "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+            "visualBranchId": "p7-a-branch",
+            "title": "Another angle controlled smoke",
+            "purpose": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+            "prompt": "任务：Another angle controlled smoke\n\n目的：只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。\n\n设计意图优先于渲染装饰：先保证结构、比例、部件关系和使用情境正确，再谈灯光、背景与风格；不要无意义地堆砌 studio lighting、premium render、futuristic 之类的装饰词。\n\n图片角色：方向预览 / 继续发展\n\n图像编辑能力：图生图\n\n清楚展示方向的产品架构、比例和形态语言差异，避免只换背景、颜色或灯光。\n\n任务模板：按本轮结构化视觉意图生成一个新的、可追溯的项目图像对象。\n\n当前用户要求（最高优先级）：只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。\n\n本轮要改变：水平转约90度的另一三分之四侧视，机位略低\n\n必须保留：One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions；Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture；Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways；Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it；Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible\n\n允许变化：视角、正常遮挡、随视角变化的可见表面\n\n视角：原图相对水平转约90度，略低机位三分之四侧视\n\n材料与 CMF：保留原图蓝绿色主体、黄色点缀和金属舱门\n\n环境与光线：中性背景与软光\n\n避免：不要改变产品身份或生成第二个产品；不要显示或猜测不可见内部；不要把生态、声学、承载或耐久当成图像已证明的工程事实\n\n目标方向：方向 1｜守望塔：长期驻留型声学浮标\n方向策略：采用深吃水的稳定主浮体与上部细长设备塔分层布局：水下声学舱与配重位于低重心区域，能源、通信与维护接口集中于上部密封舱。通过可更换的功能环或检修舱支持多年期维护；风险信息以环形灯带、顶部航标灯和简洁状态编码对外传达，船端接收更细的行动建议。\n方向差异点：结构策略：深吃水低重心浮体 + 上部设备塔，优先抗浪稳定与长期驻留。；使用方式：按固定点位长期布设，由专业维护船定期靠泊或吊装检修。；产品气质：安静、可信、公共设施感强，像一座为海洋生态守望的微型灯塔。\n方向视觉信号：厚实环形浮圈与细长顶部塔体形成明确比例；太阳能顶盖、通信天线与航标灯整合为克制的冠部；水面以上采用雾白、深海蓝与安全琥珀的低饱和编码；水下感知舱以独立深色模块下沉，强调重心与功能分层\n\n当前 Design Brief：\n- 核心问题：现有噪声风险往往以分散数据或事后报告呈现，船舶运营者与海域管理者难以在风险发生时获得可信、可理解且可行动的提示。\n- 设计原则：闭环优先：每次风险提示必须对应明确的建议动作、责任角色和记录结果。\n- 设计原则：分层呈现：水下感知、海面信号、后台管理各自只承载当下所需信息。\n- 设计原则：多物种导向：以生态敏感度和栖息情境分级，不将产品叙事绑定单一动物。\n- 设计原则：可信而克制：用风险等级、置信度和复核状态表达不确定性，不制造绝对安全承诺。\n- 设计原则：低维护部署：结构、供能、通信和回收策略应从开放海况与长期值守出发。\n- 约束：海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。\n- 约束：声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。\n- 约束：浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。\n- 约束：避免增加船员操作负担或在航行安全信息之外制造干扰。\n- 避免项：避免把产品做成只展示实时声波的科研仪器界面。\n- 避免项：避免以单一鲸豚形象替代完整生态影响范围。\n- 避免项：避免承诺浮标可独立执法、自动强制船舶改道或保证零干扰。\n- 避免项：避免用高频告警造成告警疲劳或掩盖真正紧急事件。\n- 项目目标：在生态热点海域建立从水下声学监测到海面提示与后台处置的最小闭环，降低航运和局部海上作业对敏感生物栖息活动的干扰。\n- 目标用户：近海航运船长与调度员\n- 目标用户：海洋保护区与港航管理人员\n- 目标用户：生态监测与科研团队\n- 核心场景：船舶进入已知或预测生态热点前，接收航速与航线风险建议\n- 核心场景：浮标检测到异常声学风险时，通过海面状态信号提示附近船只，并向后台发出事件记录\n- 核心场景：管理人员在后台查看风险地图、设备健康状态与处置建议，决定是否发布临时管控\n- 机会：将海山、峡谷、大陆架边缘和海洋锋面等可预测热点转为浮标布设与巡航优先级。\n- 机会：以可视化海面状态和数字通告连接现场船只与后台决策，形成可被理解的风险语言。\n- 机会：建立事件—建议—响应—结果的数据链，为后续保护措施评估提供依据。\n\n参考图与实际 images[] 顺序一一对应：\n参考图 1：A（产品身份、比例和关键结构的唯一直接父图）\n\n本轮明确排除项目默认参考。\n\n模型适配：使用明确的空间、材质、光线和保留/变化边界描述；文字元素仅在用户明确要求时出现。\n\n只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。",
+            "referenceObjectIds": [
+              "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            ],
+            "role": "conceptImage",
+            "editMode": "imageToImage",
+            "visualIntent": {
+              "id": "L3-2-trial-2",
+              "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "Another angle controlled smoke",
+              "purpose": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+              "requestedReferenceObjectIds": [],
+              "referenceBindings": [],
+              "excludedReferenceObjectIds": [
+                "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+              ],
+              "excludeDefaultReference": true,
+              "changeGoals": [
+                "水平转约90度的另一三分之四侧视，机位略低"
+              ],
+              "preserve": [
+                "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+                "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+                "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+                "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+                "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+              ],
+              "allowToChange": [
+                "视角、正常遮挡、随视角变化的可见表面"
+              ],
+              "materialsAndCmf": [
+                "保留原图蓝绿色主体、黄色点缀和金属舱门"
+              ],
+              "viewpoint": "原图相对水平转约90度，略低机位三分之四侧视",
+              "environmentAndLighting": [
+                "中性背景与软光"
+              ],
+              "productForm": [],
+              "avoid": [
+                "不要改变产品身份或生成第二个产品",
+                "不要显示或猜测不可见内部",
+                "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+              ],
+              "role": "conceptImage",
+              "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+              "visualBranchId": "p7-a-branch"
+            },
+            "referenceResolution": {
+              "resolvedObjectIds": [
+                "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              ],
+              "candidates": [
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "identityParent",
+                  "priority": 0,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": true
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "selectedSource",
+                  "priority": 2,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "branchRoot",
+                  "priority": 3,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "directionRepresentative",
+                  "priority": 4,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "defaultReference",
+                  "priority": 5,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                }
+              ],
+              "providerLimit": 4,
+              "defaultReferenceExcluded": true
+            },
+            "promptContractVersion": "morpho-image-prompt-v4"
+          }
+        ]
+      },
+      "planSha256": "5ab18e97f6ae8777c68205e52676f161a27c2429d7b2d3ec9d0f5fee38c85126"
+    },
+    {
+      "key": "L3-3-trial-1",
+      "classId": "L3-3",
+      "trial": 1,
+      "user": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+      "intent": {
+        "id": "L3-3-trial-1",
+        "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+        "title": "Usage / maintenance scene controlled smoke",
+        "purpose": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+        "requestedReferenceObjectIds": [],
+        "referenceBindings": [],
+        "excludedReferenceObjectIds": [
+          "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+          "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+        ],
+        "excludeDefaultReference": true,
+        "changeGoals": [
+          "港口检修平台与侧面技术员触达既有舱门把手的检查动作"
+        ],
+        "preserve": [
+          "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+          "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+          "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+          "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+          "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+        ],
+        "allowToChange": [
+          "环境、人物、维护支撑架与说明尺度的构图"
+        ],
+        "materialsAndCmf": [
+          "保留原图蓝绿色主体、黄色点缀和金属舱门"
+        ],
+        "viewpoint": "能同时看到塔体、浮圈、下部装置、技术员手与舱门的三分之四视角",
+        "environmentAndLighting": [
+          "港口检修平台",
+          "设备稳定支撑以留出下部装置空间",
+          "自然日光",
+          "技术员侧面站立，不在水中悬浮"
+        ],
+        "productForm": [],
+        "avoid": [
+          "不要改变产品身份或生成第二个产品",
+          "不要显示或猜测不可见内部",
+          "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+        ],
+        "role": "sceneVisual"
+      },
+      "plan": {
+        "kind": "visualDevelopment",
+        "items": [
+          {
+            "id": "L3-3-trial-1",
+            "userInstruction": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+            "lineage": {
+              "version": 1,
+              "identityParent": {
+                "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                "title": "A",
+                "incarnationId": "00000000-0000-4000-8000-000000000024",
+                "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "parentSource": "explicitTask",
+              "direction": {
+                "objectId": "direction-proposal-direction-1783671299082-1",
+                "title": "方向 1｜守望塔：长期驻留型声学浮标",
+                "incarnationId": "00000000-0000-4000-8000-000000000021"
+              },
+              "directionSource": "identityParent",
+              "branch": {
+                "id": "p7-a-branch",
+                "directionId": "direction-proposal-direction-1783671299082-1",
+                "label": "守望塔 A 历史路线",
+                "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "branchSource": "identityParent"
+            },
+            "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+            "visualBranchId": "p7-a-branch",
+            "title": "Usage / maintenance scene controlled smoke",
+            "purpose": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+            "prompt": "任务：Usage / maintenance scene controlled smoke\n\n目的：只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。\n\n设计意图优先于渲染装饰：先保证结构、比例、部件关系和使用情境正确，再谈灯光、背景与风格；不要无意义地堆砌 studio lighting、premium render、futuristic 之类的装饰词。\n\n图片角色：使用场景\n\n图像编辑能力：图生图\n\n让环境、人物和光线解释真实使用情境，同时保持产品主体可辨识且不改变核心结构。场景要体现尺度、动作和人与产品的真实关系（谁在用、在哪里、怎么拿/放/操作），不是把产品放进漂亮背景。\n\n任务模板：使用场景。用真实环境、人物关系与光线解释使用情境，同时维持产品主体、比例和关键结构。\n\n当前用户要求（最高优先级）：只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。\n\n本轮要改变：港口检修平台与侧面技术员触达既有舱门把手的检查动作\n\n必须保留：One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions；Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture；Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways；Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it；Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible\n\n允许变化：环境、人物、维护支撑架与说明尺度的构图\n\n视角：能同时看到塔体、浮圈、下部装置、技术员手与舱门的三分之四视角\n\n材料与 CMF：保留原图蓝绿色主体、黄色点缀和金属舱门\n\n环境与光线：港口检修平台；设备稳定支撑以留出下部装置空间；自然日光；技术员侧面站立，不在水中悬浮\n\n避免：不要改变产品身份或生成第二个产品；不要显示或猜测不可见内部；不要把生态、声学、承载或耐久当成图像已证明的工程事实\n\n目标方向：方向 1｜守望塔：长期驻留型声学浮标\n方向策略：采用深吃水的稳定主浮体与上部细长设备塔分层布局：水下声学舱与配重位于低重心区域，能源、通信与维护接口集中于上部密封舱。通过可更换的功能环或检修舱支持多年期维护；风险信息以环形灯带、顶部航标灯和简洁状态编码对外传达，船端接收更细的行动建议。\n方向差异点：结构策略：深吃水低重心浮体 + 上部设备塔，优先抗浪稳定与长期驻留。；使用方式：按固定点位长期布设，由专业维护船定期靠泊或吊装检修。；产品气质：安静、可信、公共设施感强，像一座为海洋生态守望的微型灯塔。\n方向视觉信号：厚实环形浮圈与细长顶部塔体形成明确比例；太阳能顶盖、通信天线与航标灯整合为克制的冠部；水面以上采用雾白、深海蓝与安全琥珀的低饱和编码；水下感知舱以独立深色模块下沉，强调重心与功能分层\n\n当前 Design Brief：\n- 核心问题：现有噪声风险往往以分散数据或事后报告呈现，船舶运营者与海域管理者难以在风险发生时获得可信、可理解且可行动的提示。\n- 设计原则：闭环优先：每次风险提示必须对应明确的建议动作、责任角色和记录结果。\n- 设计原则：分层呈现：水下感知、海面信号、后台管理各自只承载当下所需信息。\n- 设计原则：多物种导向：以生态敏感度和栖息情境分级，不将产品叙事绑定单一动物。\n- 设计原则：可信而克制：用风险等级、置信度和复核状态表达不确定性，不制造绝对安全承诺。\n- 设计原则：低维护部署：结构、供能、通信和回收策略应从开放海况与长期值守出发。\n- 约束：海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。\n- 约束：声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。\n- 约束：浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。\n- 约束：避免增加船员操作负担或在航行安全信息之外制造干扰。\n- 避免项：避免把产品做成只展示实时声波的科研仪器界面。\n- 避免项：避免以单一鲸豚形象替代完整生态影响范围。\n- 避免项：避免承诺浮标可独立执法、自动强制船舶改道或保证零干扰。\n- 避免项：避免用高频告警造成告警疲劳或掩盖真正紧急事件。\n- 项目目标：在生态热点海域建立从水下声学监测到海面提示与后台处置的最小闭环，降低航运和局部海上作业对敏感生物栖息活动的干扰。\n- 目标用户：近海航运船长与调度员\n- 目标用户：海洋保护区与港航管理人员\n- 目标用户：生态监测与科研团队\n- 核心场景：船舶进入已知或预测生态热点前，接收航速与航线风险建议\n- 核心场景：浮标检测到异常声学风险时，通过海面状态信号提示附近船只，并向后台发出事件记录\n- 核心场景：管理人员在后台查看风险地图、设备健康状态与处置建议，决定是否发布临时管控\n- 机会：将海山、峡谷、大陆架边缘和海洋锋面等可预测热点转为浮标布设与巡航优先级。\n- 机会：以可视化海面状态和数字通告连接现场船只与后台决策，形成可被理解的风险语言。\n- 机会：建立事件—建议—响应—结果的数据链，为后续保护措施评估提供依据。\n\n参考图与实际 images[] 顺序一一对应：\n参考图 1：A（产品身份、比例和关键结构的唯一直接父图）\n\n本轮明确排除项目默认参考。\n\n模型适配：使用明确的空间、材质、光线和保留/变化边界描述；文字元素仅在用户明确要求时出现。\n\n只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。",
+            "referenceObjectIds": [
+              "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            ],
+            "role": "sceneVisual",
+            "editMode": "imageToImage",
+            "visualIntent": {
+              "id": "L3-3-trial-1",
+              "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "Usage / maintenance scene controlled smoke",
+              "purpose": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+              "requestedReferenceObjectIds": [],
+              "referenceBindings": [],
+              "excludedReferenceObjectIds": [
+                "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+              ],
+              "excludeDefaultReference": true,
+              "changeGoals": [
+                "港口检修平台与侧面技术员触达既有舱门把手的检查动作"
+              ],
+              "preserve": [
+                "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+                "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+                "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+                "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+                "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+              ],
+              "allowToChange": [
+                "环境、人物、维护支撑架与说明尺度的构图"
+              ],
+              "materialsAndCmf": [
+                "保留原图蓝绿色主体、黄色点缀和金属舱门"
+              ],
+              "viewpoint": "能同时看到塔体、浮圈、下部装置、技术员手与舱门的三分之四视角",
+              "environmentAndLighting": [
+                "港口检修平台",
+                "设备稳定支撑以留出下部装置空间",
+                "自然日光",
+                "技术员侧面站立，不在水中悬浮"
+              ],
+              "productForm": [],
+              "avoid": [
+                "不要改变产品身份或生成第二个产品",
+                "不要显示或猜测不可见内部",
+                "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+              ],
+              "role": "sceneVisual",
+              "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+              "visualBranchId": "p7-a-branch"
+            },
+            "referenceResolution": {
+              "resolvedObjectIds": [
+                "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              ],
+              "candidates": [
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "identityParent",
+                  "priority": 0,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": true
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "selectedSource",
+                  "priority": 2,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "branchRoot",
+                  "priority": 3,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "directionRepresentative",
+                  "priority": 4,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "defaultReference",
+                  "priority": 5,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                }
+              ],
+              "providerLimit": 4,
+              "defaultReferenceExcluded": true
+            },
+            "promptContractVersion": "morpho-image-prompt-v4"
+          }
+        ]
+      },
+      "planSha256": "161bc358cb82c9527119b0b0fd4b84f3dfacf5cb3837b25956860bacae58a79d"
+    },
+    {
+      "key": "L3-3-trial-2",
+      "classId": "L3-3",
+      "trial": 2,
+      "user": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+      "intent": {
+        "id": "L3-3-trial-2",
+        "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+        "title": "Usage / maintenance scene controlled smoke",
+        "purpose": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+        "requestedReferenceObjectIds": [],
+        "referenceBindings": [],
+        "excludedReferenceObjectIds": [
+          "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+          "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+        ],
+        "excludeDefaultReference": true,
+        "changeGoals": [
+          "港口检修平台与侧面技术员触达既有舱门把手的检查动作"
+        ],
+        "preserve": [
+          "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+          "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+          "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+          "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+          "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+        ],
+        "allowToChange": [
+          "环境、人物、维护支撑架与说明尺度的构图"
+        ],
+        "materialsAndCmf": [
+          "保留原图蓝绿色主体、黄色点缀和金属舱门"
+        ],
+        "viewpoint": "能同时看到塔体、浮圈、下部装置、技术员手与舱门的三分之四视角",
+        "environmentAndLighting": [
+          "港口检修平台",
+          "设备稳定支撑以留出下部装置空间",
+          "自然日光",
+          "技术员侧面站立，不在水中悬浮"
+        ],
+        "productForm": [],
+        "avoid": [
+          "不要改变产品身份或生成第二个产品",
+          "不要显示或猜测不可见内部",
+          "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+        ],
+        "role": "sceneVisual"
+      },
+      "plan": {
+        "kind": "visualDevelopment",
+        "items": [
+          {
+            "id": "L3-3-trial-2",
+            "userInstruction": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+            "lineage": {
+              "version": 1,
+              "identityParent": {
+                "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                "title": "A",
+                "incarnationId": "00000000-0000-4000-8000-000000000024",
+                "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "parentSource": "explicitTask",
+              "direction": {
+                "objectId": "direction-proposal-direction-1783671299082-1",
+                "title": "方向 1｜守望塔：长期驻留型声学浮标",
+                "incarnationId": "00000000-0000-4000-8000-000000000021"
+              },
+              "directionSource": "identityParent",
+              "branch": {
+                "id": "p7-a-branch",
+                "directionId": "direction-proposal-direction-1783671299082-1",
+                "label": "守望塔 A 历史路线",
+                "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "branchSource": "identityParent"
+            },
+            "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+            "visualBranchId": "p7-a-branch",
+            "title": "Usage / maintenance scene controlled smoke",
+            "purpose": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+            "prompt": "任务：Usage / maintenance scene controlled smoke\n\n目的：只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。\n\n设计意图优先于渲染装饰：先保证结构、比例、部件关系和使用情境正确，再谈灯光、背景与风格；不要无意义地堆砌 studio lighting、premium render、futuristic 之类的装饰词。\n\n图片角色：使用场景\n\n图像编辑能力：图生图\n\n让环境、人物和光线解释真实使用情境，同时保持产品主体可辨识且不改变核心结构。场景要体现尺度、动作和人与产品的真实关系（谁在用、在哪里、怎么拿/放/操作），不是把产品放进漂亮背景。\n\n任务模板：使用场景。用真实环境、人物关系与光线解释使用情境，同时维持产品主体、比例和关键结构。\n\n当前用户要求（最高优先级）：只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。\n\n本轮要改变：港口检修平台与侧面技术员触达既有舱门把手的检查动作\n\n必须保留：One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions；Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture；Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways；Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it；Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible\n\n允许变化：环境、人物、维护支撑架与说明尺度的构图\n\n视角：能同时看到塔体、浮圈、下部装置、技术员手与舱门的三分之四视角\n\n材料与 CMF：保留原图蓝绿色主体、黄色点缀和金属舱门\n\n环境与光线：港口检修平台；设备稳定支撑以留出下部装置空间；自然日光；技术员侧面站立，不在水中悬浮\n\n避免：不要改变产品身份或生成第二个产品；不要显示或猜测不可见内部；不要把生态、声学、承载或耐久当成图像已证明的工程事实\n\n目标方向：方向 1｜守望塔：长期驻留型声学浮标\n方向策略：采用深吃水的稳定主浮体与上部细长设备塔分层布局：水下声学舱与配重位于低重心区域，能源、通信与维护接口集中于上部密封舱。通过可更换的功能环或检修舱支持多年期维护；风险信息以环形灯带、顶部航标灯和简洁状态编码对外传达，船端接收更细的行动建议。\n方向差异点：结构策略：深吃水低重心浮体 + 上部设备塔，优先抗浪稳定与长期驻留。；使用方式：按固定点位长期布设，由专业维护船定期靠泊或吊装检修。；产品气质：安静、可信、公共设施感强，像一座为海洋生态守望的微型灯塔。\n方向视觉信号：厚实环形浮圈与细长顶部塔体形成明确比例；太阳能顶盖、通信天线与航标灯整合为克制的冠部；水面以上采用雾白、深海蓝与安全琥珀的低饱和编码；水下感知舱以独立深色模块下沉，强调重心与功能分层\n\n当前 Design Brief：\n- 核心问题：现有噪声风险往往以分散数据或事后报告呈现，船舶运营者与海域管理者难以在风险发生时获得可信、可理解且可行动的提示。\n- 设计原则：闭环优先：每次风险提示必须对应明确的建议动作、责任角色和记录结果。\n- 设计原则：分层呈现：水下感知、海面信号、后台管理各自只承载当下所需信息。\n- 设计原则：多物种导向：以生态敏感度和栖息情境分级，不将产品叙事绑定单一动物。\n- 设计原则：可信而克制：用风险等级、置信度和复核状态表达不确定性，不制造绝对安全承诺。\n- 设计原则：低维护部署：结构、供能、通信和回收策略应从开放海况与长期值守出发。\n- 约束：海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。\n- 约束：声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。\n- 约束：浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。\n- 约束：避免增加船员操作负担或在航行安全信息之外制造干扰。\n- 避免项：避免把产品做成只展示实时声波的科研仪器界面。\n- 避免项：避免以单一鲸豚形象替代完整生态影响范围。\n- 避免项：避免承诺浮标可独立执法、自动强制船舶改道或保证零干扰。\n- 避免项：避免用高频告警造成告警疲劳或掩盖真正紧急事件。\n- 项目目标：在生态热点海域建立从水下声学监测到海面提示与后台处置的最小闭环，降低航运和局部海上作业对敏感生物栖息活动的干扰。\n- 目标用户：近海航运船长与调度员\n- 目标用户：海洋保护区与港航管理人员\n- 目标用户：生态监测与科研团队\n- 核心场景：船舶进入已知或预测生态热点前，接收航速与航线风险建议\n- 核心场景：浮标检测到异常声学风险时，通过海面状态信号提示附近船只，并向后台发出事件记录\n- 核心场景：管理人员在后台查看风险地图、设备健康状态与处置建议，决定是否发布临时管控\n- 机会：将海山、峡谷、大陆架边缘和海洋锋面等可预测热点转为浮标布设与巡航优先级。\n- 机会：以可视化海面状态和数字通告连接现场船只与后台决策，形成可被理解的风险语言。\n- 机会：建立事件—建议—响应—结果的数据链，为后续保护措施评估提供依据。\n\n参考图与实际 images[] 顺序一一对应：\n参考图 1：A（产品身份、比例和关键结构的唯一直接父图）\n\n本轮明确排除项目默认参考。\n\n模型适配：使用明确的空间、材质、光线和保留/变化边界描述；文字元素仅在用户明确要求时出现。\n\n只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。",
+            "referenceObjectIds": [
+              "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            ],
+            "role": "sceneVisual",
+            "editMode": "imageToImage",
+            "visualIntent": {
+              "id": "L3-3-trial-2",
+              "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "Usage / maintenance scene controlled smoke",
+              "purpose": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+              "requestedReferenceObjectIds": [],
+              "referenceBindings": [],
+              "excludedReferenceObjectIds": [
+                "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+              ],
+              "excludeDefaultReference": true,
+              "changeGoals": [
+                "港口检修平台与侧面技术员触达既有舱门把手的检查动作"
+              ],
+              "preserve": [
+                "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+                "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+                "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+                "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+                "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+              ],
+              "allowToChange": [
+                "环境、人物、维护支撑架与说明尺度的构图"
+              ],
+              "materialsAndCmf": [
+                "保留原图蓝绿色主体、黄色点缀和金属舱门"
+              ],
+              "viewpoint": "能同时看到塔体、浮圈、下部装置、技术员手与舱门的三分之四视角",
+              "environmentAndLighting": [
+                "港口检修平台",
+                "设备稳定支撑以留出下部装置空间",
+                "自然日光",
+                "技术员侧面站立，不在水中悬浮"
+              ],
+              "productForm": [],
+              "avoid": [
+                "不要改变产品身份或生成第二个产品",
+                "不要显示或猜测不可见内部",
+                "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+              ],
+              "role": "sceneVisual",
+              "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+              "visualBranchId": "p7-a-branch"
+            },
+            "referenceResolution": {
+              "resolvedObjectIds": [
+                "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              ],
+              "candidates": [
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "identityParent",
+                  "priority": 0,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": true
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "selectedSource",
+                  "priority": 2,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "branchRoot",
+                  "priority": 3,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "directionRepresentative",
+                  "priority": 4,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "defaultReference",
+                  "priority": 5,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                }
+              ],
+              "providerLimit": 4,
+              "defaultReferenceExcluded": true
+            },
+            "promptContractVersion": "morpho-image-prompt-v4"
+          }
+        ]
+      },
+      "planSha256": "4c5d3d268d612b96cba5214f493553570fb1874bbc76dfe76b2a482b60a7408c"
+    },
+    {
+      "key": "L3-4-trial-1",
+      "classId": "L3-4",
+      "trial": 1,
+      "user": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+      "intent": {
+        "id": "L3-4-trial-1",
+        "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+        "title": "Explicit default-reference exclusion controlled smoke",
+        "purpose": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+        "requestedReferenceObjectIds": [],
+        "referenceBindings": [],
+        "excludedReferenceObjectIds": [
+          "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+          "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+        ],
+        "excludeDefaultReference": true,
+        "changeGoals": [
+          "暗灰无纹理背景与柔和轮廓光"
+        ],
+        "preserve": [
+          "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+          "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+          "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+          "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+          "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+        ],
+        "allowToChange": [
+          "背景和照明"
+        ],
+        "materialsAndCmf": [
+          "保留原图蓝绿色主体、黄色点缀和金属舱门"
+        ],
+        "viewpoint": "沿用原图视角与整体构图",
+        "environmentAndLighting": [
+          "暗灰无纹理背景",
+          "柔和轮廓光，不增加无关物体"
+        ],
+        "productForm": [],
+        "avoid": [
+          "不要改变产品身份或生成第二个产品",
+          "不要显示或猜测不可见内部",
+          "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+        ],
+        "role": "conceptImage"
+      },
+      "plan": {
+        "kind": "visualDevelopment",
+        "items": [
+          {
+            "id": "L3-4-trial-1",
+            "userInstruction": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+            "lineage": {
+              "version": 1,
+              "identityParent": {
+                "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                "title": "A",
+                "incarnationId": "00000000-0000-4000-8000-000000000024",
+                "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "parentSource": "explicitTask",
+              "direction": {
+                "objectId": "direction-proposal-direction-1783671299082-1",
+                "title": "方向 1｜守望塔：长期驻留型声学浮标",
+                "incarnationId": "00000000-0000-4000-8000-000000000021"
+              },
+              "directionSource": "identityParent",
+              "branch": {
+                "id": "p7-a-branch",
+                "directionId": "direction-proposal-direction-1783671299082-1",
+                "label": "守望塔 A 历史路线",
+                "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "branchSource": "identityParent"
+            },
+            "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+            "visualBranchId": "p7-a-branch",
+            "title": "Explicit default-reference exclusion controlled smoke",
+            "purpose": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+            "prompt": "任务：Explicit default-reference exclusion controlled smoke\n\n目的：本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。\n\n设计意图优先于渲染装饰：先保证结构、比例、部件关系和使用情境正确，再谈灯光、背景与风格；不要无意义地堆砌 studio lighting、premium render、futuristic 之类的装饰词。\n\n图片角色：方向预览 / 继续发展\n\n图像编辑能力：图生图\n\n清楚展示方向的产品架构、比例和形态语言差异，避免只换背景、颜色或灯光。\n\n任务模板：按本轮结构化视觉意图生成一个新的、可追溯的项目图像对象。\n\n当前用户要求（最高优先级）：本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。\n\n本轮要改变：暗灰无纹理背景与柔和轮廓光\n\n必须保留：One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions；Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture；Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways；Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it；Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible\n\n允许变化：背景和照明\n\n视角：沿用原图视角与整体构图\n\n材料与 CMF：保留原图蓝绿色主体、黄色点缀和金属舱门\n\n环境与光线：暗灰无纹理背景；柔和轮廓光，不增加无关物体\n\n避免：不要改变产品身份或生成第二个产品；不要显示或猜测不可见内部；不要把生态、声学、承载或耐久当成图像已证明的工程事实\n\n目标方向：方向 1｜守望塔：长期驻留型声学浮标\n方向策略：采用深吃水的稳定主浮体与上部细长设备塔分层布局：水下声学舱与配重位于低重心区域，能源、通信与维护接口集中于上部密封舱。通过可更换的功能环或检修舱支持多年期维护；风险信息以环形灯带、顶部航标灯和简洁状态编码对外传达，船端接收更细的行动建议。\n方向差异点：结构策略：深吃水低重心浮体 + 上部设备塔，优先抗浪稳定与长期驻留。；使用方式：按固定点位长期布设，由专业维护船定期靠泊或吊装检修。；产品气质：安静、可信、公共设施感强，像一座为海洋生态守望的微型灯塔。\n方向视觉信号：厚实环形浮圈与细长顶部塔体形成明确比例；太阳能顶盖、通信天线与航标灯整合为克制的冠部；水面以上采用雾白、深海蓝与安全琥珀的低饱和编码；水下感知舱以独立深色模块下沉，强调重心与功能分层\n\n当前 Design Brief：\n- 核心问题：现有噪声风险往往以分散数据或事后报告呈现，船舶运营者与海域管理者难以在风险发生时获得可信、可理解且可行动的提示。\n- 设计原则：闭环优先：每次风险提示必须对应明确的建议动作、责任角色和记录结果。\n- 设计原则：分层呈现：水下感知、海面信号、后台管理各自只承载当下所需信息。\n- 设计原则：多物种导向：以生态敏感度和栖息情境分级，不将产品叙事绑定单一动物。\n- 设计原则：可信而克制：用风险等级、置信度和复核状态表达不确定性，不制造绝对安全承诺。\n- 设计原则：低维护部署：结构、供能、通信和回收策略应从开放海况与长期值守出发。\n- 约束：海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。\n- 约束：声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。\n- 约束：浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。\n- 约束：避免增加船员操作负担或在航行安全信息之外制造干扰。\n- 避免项：避免把产品做成只展示实时声波的科研仪器界面。\n- 避免项：避免以单一鲸豚形象替代完整生态影响范围。\n- 避免项：避免承诺浮标可独立执法、自动强制船舶改道或保证零干扰。\n- 避免项：避免用高频告警造成告警疲劳或掩盖真正紧急事件。\n- 项目目标：在生态热点海域建立从水下声学监测到海面提示与后台处置的最小闭环，降低航运和局部海上作业对敏感生物栖息活动的干扰。\n- 目标用户：近海航运船长与调度员\n- 目标用户：海洋保护区与港航管理人员\n- 目标用户：生态监测与科研团队\n- 核心场景：船舶进入已知或预测生态热点前，接收航速与航线风险建议\n- 核心场景：浮标检测到异常声学风险时，通过海面状态信号提示附近船只，并向后台发出事件记录\n- 核心场景：管理人员在后台查看风险地图、设备健康状态与处置建议，决定是否发布临时管控\n- 机会：将海山、峡谷、大陆架边缘和海洋锋面等可预测热点转为浮标布设与巡航优先级。\n- 机会：以可视化海面状态和数字通告连接现场船只与后台决策，形成可被理解的风险语言。\n- 机会：建立事件—建议—响应—结果的数据链，为后续保护措施评估提供依据。\n\n参考图与实际 images[] 顺序一一对应：\n参考图 1：A（产品身份、比例和关键结构的唯一直接父图）\n\n本轮明确排除项目默认参考。\n\n模型适配：使用明确的空间、材质、光线和保留/变化边界描述；文字元素仅在用户明确要求时出现。\n\n只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。",
+            "referenceObjectIds": [
+              "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            ],
+            "role": "conceptImage",
+            "editMode": "imageToImage",
+            "visualIntent": {
+              "id": "L3-4-trial-1",
+              "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "Explicit default-reference exclusion controlled smoke",
+              "purpose": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+              "requestedReferenceObjectIds": [],
+              "referenceBindings": [],
+              "excludedReferenceObjectIds": [
+                "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+              ],
+              "excludeDefaultReference": true,
+              "changeGoals": [
+                "暗灰无纹理背景与柔和轮廓光"
+              ],
+              "preserve": [
+                "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+                "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+                "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+                "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+                "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+              ],
+              "allowToChange": [
+                "背景和照明"
+              ],
+              "materialsAndCmf": [
+                "保留原图蓝绿色主体、黄色点缀和金属舱门"
+              ],
+              "viewpoint": "沿用原图视角与整体构图",
+              "environmentAndLighting": [
+                "暗灰无纹理背景",
+                "柔和轮廓光，不增加无关物体"
+              ],
+              "productForm": [],
+              "avoid": [
+                "不要改变产品身份或生成第二个产品",
+                "不要显示或猜测不可见内部",
+                "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+              ],
+              "role": "conceptImage",
+              "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+              "visualBranchId": "p7-a-branch"
+            },
+            "referenceResolution": {
+              "resolvedObjectIds": [
+                "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              ],
+              "candidates": [
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "identityParent",
+                  "priority": 0,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": true
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "selectedSource",
+                  "priority": 2,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "branchRoot",
+                  "priority": 3,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "directionRepresentative",
+                  "priority": 4,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "defaultReference",
+                  "priority": 5,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                }
+              ],
+              "providerLimit": 4,
+              "defaultReferenceExcluded": true
+            },
+            "promptContractVersion": "morpho-image-prompt-v4"
+          }
+        ]
+      },
+      "planSha256": "0c34531b410143a91e3ae65aa2dea710b3b1274f0d2300702b49aaaa7f829600"
+    },
+    {
+      "key": "L3-4-trial-2",
+      "classId": "L3-4",
+      "trial": 2,
+      "user": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+      "intent": {
+        "id": "L3-4-trial-2",
+        "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+        "title": "Explicit default-reference exclusion controlled smoke",
+        "purpose": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+        "requestedReferenceObjectIds": [],
+        "referenceBindings": [],
+        "excludedReferenceObjectIds": [
+          "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+          "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+        ],
+        "excludeDefaultReference": true,
+        "changeGoals": [
+          "暗灰无纹理背景与柔和轮廓光"
+        ],
+        "preserve": [
+          "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+          "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+          "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+          "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+          "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+        ],
+        "allowToChange": [
+          "背景和照明"
+        ],
+        "materialsAndCmf": [
+          "保留原图蓝绿色主体、黄色点缀和金属舱门"
+        ],
+        "viewpoint": "沿用原图视角与整体构图",
+        "environmentAndLighting": [
+          "暗灰无纹理背景",
+          "柔和轮廓光，不增加无关物体"
+        ],
+        "productForm": [],
+        "avoid": [
+          "不要改变产品身份或生成第二个产品",
+          "不要显示或猜测不可见内部",
+          "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+        ],
+        "role": "conceptImage"
+      },
+      "plan": {
+        "kind": "visualDevelopment",
+        "items": [
+          {
+            "id": "L3-4-trial-2",
+            "userInstruction": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+            "lineage": {
+              "version": 1,
+              "identityParent": {
+                "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                "title": "A",
+                "incarnationId": "00000000-0000-4000-8000-000000000024",
+                "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "parentSource": "explicitTask",
+              "direction": {
+                "objectId": "direction-proposal-direction-1783671299082-1",
+                "title": "方向 1｜守望塔：长期驻留型声学浮标",
+                "incarnationId": "00000000-0000-4000-8000-000000000021"
+              },
+              "directionSource": "identityParent",
+              "branch": {
+                "id": "p7-a-branch",
+                "directionId": "direction-proposal-direction-1783671299082-1",
+                "label": "守望塔 A 历史路线",
+                "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              },
+              "branchSource": "identityParent"
+            },
+            "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+            "visualBranchId": "p7-a-branch",
+            "title": "Explicit default-reference exclusion controlled smoke",
+            "purpose": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+            "prompt": "任务：Explicit default-reference exclusion controlled smoke\n\n目的：本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。\n\n设计意图优先于渲染装饰：先保证结构、比例、部件关系和使用情境正确，再谈灯光、背景与风格；不要无意义地堆砌 studio lighting、premium render、futuristic 之类的装饰词。\n\n图片角色：方向预览 / 继续发展\n\n图像编辑能力：图生图\n\n清楚展示方向的产品架构、比例和形态语言差异，避免只换背景、颜色或灯光。\n\n任务模板：按本轮结构化视觉意图生成一个新的、可追溯的项目图像对象。\n\n当前用户要求（最高优先级）：本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。\n\n本轮要改变：暗灰无纹理背景与柔和轮廓光\n\n必须保留：One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions；Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture；Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways；Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it；Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible\n\n允许变化：背景和照明\n\n视角：沿用原图视角与整体构图\n\n材料与 CMF：保留原图蓝绿色主体、黄色点缀和金属舱门\n\n环境与光线：暗灰无纹理背景；柔和轮廓光，不增加无关物体\n\n避免：不要改变产品身份或生成第二个产品；不要显示或猜测不可见内部；不要把生态、声学、承载或耐久当成图像已证明的工程事实\n\n目标方向：方向 1｜守望塔：长期驻留型声学浮标\n方向策略：采用深吃水的稳定主浮体与上部细长设备塔分层布局：水下声学舱与配重位于低重心区域，能源、通信与维护接口集中于上部密封舱。通过可更换的功能环或检修舱支持多年期维护；风险信息以环形灯带、顶部航标灯和简洁状态编码对外传达，船端接收更细的行动建议。\n方向差异点：结构策略：深吃水低重心浮体 + 上部设备塔，优先抗浪稳定与长期驻留。；使用方式：按固定点位长期布设，由专业维护船定期靠泊或吊装检修。；产品气质：安静、可信、公共设施感强，像一座为海洋生态守望的微型灯塔。\n方向视觉信号：厚实环形浮圈与细长顶部塔体形成明确比例；太阳能顶盖、通信天线与航标灯整合为克制的冠部；水面以上采用雾白、深海蓝与安全琥珀的低饱和编码；水下感知舱以独立深色模块下沉，强调重心与功能分层\n\n当前 Design Brief：\n- 核心问题：现有噪声风险往往以分散数据或事后报告呈现，船舶运营者与海域管理者难以在风险发生时获得可信、可理解且可行动的提示。\n- 设计原则：闭环优先：每次风险提示必须对应明确的建议动作、责任角色和记录结果。\n- 设计原则：分层呈现：水下感知、海面信号、后台管理各自只承载当下所需信息。\n- 设计原则：多物种导向：以生态敏感度和栖息情境分级，不将产品叙事绑定单一动物。\n- 设计原则：可信而克制：用风险等级、置信度和复核状态表达不确定性，不制造绝对安全承诺。\n- 设计原则：低维护部署：结构、供能、通信和回收策略应从开放海况与长期值守出发。\n- 约束：海况、腐蚀、生物附着、供电和通信中断限制设备长期稳定运行。\n- 约束：声学信号受环境噪声、季节和物种差异影响，实时识别存在误报与漏报。\n- 约束：浮标只能建议或提示，速度限制、绕航和施工暂停需要适配既有监管与运营权限。\n- 约束：避免增加船员操作负担或在航行安全信息之外制造干扰。\n- 避免项：避免把产品做成只展示实时声波的科研仪器界面。\n- 避免项：避免以单一鲸豚形象替代完整生态影响范围。\n- 避免项：避免承诺浮标可独立执法、自动强制船舶改道或保证零干扰。\n- 避免项：避免用高频告警造成告警疲劳或掩盖真正紧急事件。\n- 项目目标：在生态热点海域建立从水下声学监测到海面提示与后台处置的最小闭环，降低航运和局部海上作业对敏感生物栖息活动的干扰。\n- 目标用户：近海航运船长与调度员\n- 目标用户：海洋保护区与港航管理人员\n- 目标用户：生态监测与科研团队\n- 核心场景：船舶进入已知或预测生态热点前，接收航速与航线风险建议\n- 核心场景：浮标检测到异常声学风险时，通过海面状态信号提示附近船只，并向后台发出事件记录\n- 核心场景：管理人员在后台查看风险地图、设备健康状态与处置建议，决定是否发布临时管控\n- 机会：将海山、峡谷、大陆架边缘和海洋锋面等可预测热点转为浮标布设与巡航优先级。\n- 机会：以可视化海面状态和数字通告连接现场船只与后台决策，形成可被理解的风险语言。\n- 机会：建立事件—建议—响应—结果的数据链，为后续保护措施评估提供依据。\n\n参考图与实际 images[] 顺序一一对应：\n参考图 1：A（产品身份、比例和关键结构的唯一直接父图）\n\n本轮明确排除项目默认参考。\n\n模型适配：使用明确的空间、材质、光线和保留/变化边界描述；文字元素仅在用户明确要求时出现。\n\n只生成本任务要求的新图，不覆盖来源图；没有蒙版或 inpainting 参数时，不保证未指定区域像素级不变，只能通过提示词尽量保持结构、比例、材质和构图。",
+            "referenceObjectIds": [
+              "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            ],
+            "role": "conceptImage",
+            "editMode": "imageToImage",
+            "visualIntent": {
+              "id": "L3-4-trial-2",
+              "identityParentObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "Explicit default-reference exclusion controlled smoke",
+              "purpose": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+              "requestedReferenceObjectIds": [],
+              "referenceBindings": [],
+              "excludedReferenceObjectIds": [
+                "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+              ],
+              "excludeDefaultReference": true,
+              "changeGoals": [
+                "暗灰无纹理背景与柔和轮廓光"
+              ],
+              "preserve": [
+                "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions",
+                "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture",
+                "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways",
+                "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it",
+                "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+              ],
+              "allowToChange": [
+                "背景和照明"
+              ],
+              "materialsAndCmf": [
+                "保留原图蓝绿色主体、黄色点缀和金属舱门"
+              ],
+              "viewpoint": "沿用原图视角与整体构图",
+              "environmentAndLighting": [
+                "暗灰无纹理背景",
+                "柔和轮廓光，不增加无关物体"
+              ],
+              "productForm": [],
+              "avoid": [
+                "不要改变产品身份或生成第二个产品",
+                "不要显示或猜测不可见内部",
+                "不要把生态、声学、承载或耐久当成图像已证明的工程事实"
+              ],
+              "role": "conceptImage",
+              "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+              "visualBranchId": "p7-a-branch"
+            },
+            "referenceResolution": {
+              "resolvedObjectIds": [
+                "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+              ],
+              "candidates": [
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "identityParent",
+                  "priority": 0,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": true
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "selectedSource",
+                  "priority": 2,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "reason": "branchRoot",
+                  "priority": 3,
+                  "role": "identity",
+                  "required": true,
+                  "sourceDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "targetDirectionId": "direction-proposal-direction-1783671299082-1",
+                  "included": false,
+                  "omissionReason": "duplicate"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+                  "reason": "userExplicit",
+                  "priority": 1,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "directionRepresentative",
+                  "priority": 4,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                },
+                {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "reason": "defaultReference",
+                  "priority": 5,
+                  "role": "unspecified",
+                  "required": false,
+                  "included": false,
+                  "omissionReason": "explicitExcluded"
+                }
+              ],
+              "providerLimit": 4,
+              "defaultReferenceExcluded": true
+            },
+            "promptContractVersion": "morpho-image-prompt-v4"
+          }
+        ]
+      },
+      "planSha256": "77fe134deaf233b7925cc8e684ba4bab373ad53e2bcec9cddfbc9d6722b0b207"
+    }
+  ]
+}

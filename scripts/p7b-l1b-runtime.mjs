@@ -21,7 +21,7 @@ export async function startIsolatedBoundary(toolsPath, outputPath) {
   const tools = resolve(toolsPath);
   if (!tools.startsWith(resolve(root, "temp") + sep)) throw Error("Tools must be inside ignored temp/");
   const output = resolve(outputPath);
-  if (!["p7b-l1b","p7b-l2"].some(name=>output.startsWith(resolve(root,`output/playwright/${name}`) + sep))) throw Error("Unsafe run directory");
+  if (!["p7b-l1b","p7b-l2","p7b-l3"].some(name=>output.startsWith(resolve(root,`output/playwright/${name}`) + sep))) throw Error("Unsafe run directory");
   await mkdir(output, { recursive: true });
   const { default: EmbeddedPostgres } = await import(pathToFileURL(resolve(tools, "node_modules/embedded-postgres/dist/index.js")));
   const password = randomBytes(24).toString("hex");
