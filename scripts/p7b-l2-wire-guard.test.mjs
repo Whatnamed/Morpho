@@ -6,14 +6,14 @@ import { createRequire } from "node:module";
 const require=createRequire(import.meta.url);
 const source=readFileSync(new URL("./p7b-l2-wire-guard.cjs",import.meta.url),"utf8");
 const frozen=JSON.parse(readFileSync(new URL("../e2e/eval/p7b-l2-manifest.json",import.meta.url),"utf8"));
-function harness({noPaid=false,slice="L2-3",budget={},reply,transport,carry}={}){
+function harness({noPaid=false,slice="L2-3",budget={},reply,transport,carry,extension}={}){
   const files=new Map(),calls=[];
   const manifest={...frozen,budget:{...frozen.budget,...budget}};
   let handle=0;const handles=new Map(),durability=[];
-  const fs={readFileSync:p=>p==="manifest"?JSON.stringify(manifest):p==="carry"?JSON.stringify({totals:carry}):p.endsWith("active-trial.json")?JSON.stringify({key:slice+"-trial-1",slice}):files.get(p),
+  const fs={readFileSync:p=>p==="manifest"?JSON.stringify(manifest):p==="extension"?JSON.stringify({cumulativeBudget:extension}):p==="carry"?JSON.stringify({totals:carry}):p.endsWith("active-trial.json")?JSON.stringify({key:slice+"-trial-1",slice}):files.get(p),
     openSync:p=>{handles.set(++handle,p);return handle;},writeFileSync:(p,v)=>files.set(typeof p==="number"?handles.get(p):p,v),fsyncSync:fd=>durability.push(handles.get(fd)),closeSync:()=>{},renameSync:(a,b)=>{files.set(b,files.get(a));files.delete(a);},
     appendFileSync:(p,v)=>files.set(p,(files.get(p)??"")+v),existsSync:p=>files.has(p)};
-  const context=vm.createContext({require:n=>n==="node:fs"?fs:require(n),process:{env:{MORPHO_L2_MANIFEST:"manifest",MORPHO_L2_OUTPUT:"output",MORPHO_L2_NO_PAID:String(noPaid),...(carry?{MORPHO_L2_CARRY_FORWARD:"carry"}:{})}},URL,Buffer,Response,
+  const context=vm.createContext({require:n=>n==="node:fs"?fs:require(n),process:{env:{MORPHO_L2_MANIFEST:"manifest",MORPHO_L2_OUTPUT:"output",MORPHO_L2_NO_PAID:String(noPaid),...(carry?{MORPHO_L2_CARRY_FORWARD:"carry"}:{}),...(extension?{MORPHO_L2_BUDGET_EXTENSION:"extension"}:{})}},URL,Buffer,Response,
     fetch:async(input,init)=>{calls.push({input,init});if(transport)return transport(input,init);return Response.json(reply??{usage:{input_tokens:50,output_tokens:20,input_tokens_details:{cached_tokens:10}}});}});
   vm.runInContext(source,context);
   const fetch=(tools=[])=>context.fetch(frozen.provider.endpoint,{method:"POST",body:JSON.stringify({model:frozen.provider.model,reasoning:{effort:"high"},input:[{role:"user",content:[{type:"input_text",text:"Fixed data"}]}],tools})});
@@ -92,4 +92,17 @@ test("a positive final output remainder is allocated, not called exhausted by an
   const h=harness({carry,reply:{usage:{input_tokens:10,output_tokens:1}}});await h.fetch();await h.settled();
   assert.equal(h.json("request.json").finalWire.max_output_tokens,1);assert.equal(h.json("ledger.json").outputTokens,50000);
   await assert.rejects(h.fetch(),/Actual output token budget exhausted/);assert.equal(h.json("hard-blocker.json").stopKind,"actual_budget_limit");assert.equal(h.calls.length,1);
+});
+
+test("explicit cumulative extension admits the historical settled ledger without changing the frozen manifest",async()=>{
+  const carry={requests:13,inputTokens:641092,outputTokens:23835,cachedInputTokens:147358,estimatedCny:0.18829344};
+  const extension={textRequests:64,inputTokens:4000000,outputTokensIncludingReasoning:200000,costCny:16};
+  const blocked=harness({carry});await assert.rejects(blocked.fetch(),/Actual cumulative budget reached/);assert.equal(blocked.calls.length,0);
+  const h=harness({carry,extension});await h.fetch();await h.settled();
+  assert.equal(h.json("ledger.json").requests,14);assert.equal(h.json("ledger.json").inputTokens,641142);assert.equal(h.json("ledger.json").outputTokens,23855);
+  assert.equal(h.json("request.json").finalWire.max_output_tokens,4096);assert.equal(frozen.budget.inputTokens,600000);
+});
+
+test("invalid budget override fails before upstream transport",()=>{
+  for(const inputTokens of [undefined,-1,NaN])assert.throws(()=>harness({extension:{textRequests:64,inputTokens,outputTokensIncludingReasoning:200000,costCny:16}}),/Invalid L2 budget/);
 });

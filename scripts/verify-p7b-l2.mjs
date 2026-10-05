@@ -15,6 +15,8 @@ if(git(["status","--porcelain","--untracked-files=no"]))throw Error("Clean track
 nextEnv.loadEnvConfig(root);const realKey=process.env.MORPHO_AI_API_KEY??process.env.AIJWS_API_KEY;
 if(!realKey)throw Error("Missing real Provider credential; no paid request sent");
 const manifestBytes=await readFile("e2e/eval/p7b-l2-manifest.json","utf8"),manifest=JSON.parse(manifestBytes);
+const extension=process.argv.includes("--resume-budget-extension")?JSON.parse(await readFile("e2e/eval/p7b-l2-budget-extension.json","utf8")):null;
+if(extension)assert.equal(hash(manifestBytes),extension.originalManifestSha256);
 const runId=new Date().toISOString().replaceAll(":","-")+"-"+process.pid+(preflight?"-preflight":"");
 const output=resolve("output/playwright/p7b-l2",runId);await mkdir(output,{recursive:true});
 const save=(name,value)=>writeFile(resolve(output,name),JSON.stringify(value,null,2)+"\n");
@@ -28,10 +30,10 @@ async function selectObject(page,seed,id,additive){
   },selector);
   if(additive)await page.keyboard.down("Shift");await page.mouse.click(point.x,point.y);if(additive)await page.keyboard.up("Shift");
 }
-const run={version:"p7b-l2-run-1",runId,sourceSha:git(["rev-parse","HEAD"]),manifestSha256:hash(manifestBytes),manifest,mode:preflight?"no-paid harness preflight":"real limited L2",trials:[],status:"invalid_run",hardBlocker:null,realImageCalls:0,productionWrites:0};
+const run={version:"p7b-l2-run-1",runId,sourceSha:git(["rev-parse","HEAD"]),manifestSha256:hash(manifestBytes),manifest,budgetExtension:extension,mode:preflight?"no-paid harness preflight":"real limited L2",trials:[],status:"invalid_run",hardBlocker:null,realImageCalls:0,productionWrites:0};
 let runtime,server,browser;
 try{
-  run.carryForward=await writeL2CarryForward(output,manifest);
+  run.carryForward=await writeL2CarryForward(output,manifest,extension);
   run.fixtureMetadata=await buildL2Fixtures(output);
   const lock=JSON.parse(await readFile("e2e/eval/p7b-l2-fixture-lock.json","utf8"));assert.equal(run.fixtureMetadata.bundleSha256,lock.bundleSha256,"Frozen fixture mismatch");
   const seeds=JSON.parse(await readFile(resolve(output,"fixtures.json"),"utf8"));
@@ -39,11 +41,13 @@ try{
   const build=runtime.launch(process.execPath,[resolve("scripts/build-production.mjs"),"--strict"],runtime.appEnv,root);
   const exit=await new Promise(r=>build.once("exit",r));await writeFile(resolve(output,"build.log"),build.safeLog);if(exit!==0)throw Error("Clean production build failed");
   run.build=await readBuildProvenance();assert.equal(run.build.sourceSha,run.sourceSha);assert.equal(run.build.isDirty,false);
-  await save("run-manifest.json",{...run,trialOrder:manifest.slices.flatMap(s=>[1,2].map(trial=>({slice:s.id,trial}))),frozenAt:new Date().toISOString()});
+  const trialOrder=manifest.slices.flatMap(s=>[1,2].map(trial=>({slice:s.id,trial})));
+  await save("run-manifest.json",{...run,trialOrder,activeTrialOrder:trialOrder.filter(t=>!extension?.completedTrialKeys.includes(`${t.slice}-trial-${t.trial}`)),completedPredecessors:extension?.completedTrialKeys??[],frozenAt:new Date().toISOString()});
   server=runtime.launch(process.execPath,[resolve("node_modules/next/dist/bin/next"),"start","-p",String(ports.app),"-H","127.0.0.1"],{
     ...runtime.appEnv,MORPHO_AI_BASE_URL:"https://api.aijws.com/v1",MORPHO_AI_API_KEY:realKey,MORPHO_AI_MODEL:manifest.provider.model,MORPHO_AI_REASONING_EFFORT:manifest.provider.reasoning,MORPHO_AI_WEB_SEARCH_ENABLED:"true",
     MORPHO_AI_SUPPORTS_PROMPT_CACHE_KEY:"false",MORPHO_AI_SUPPORTS_PROMPT_CACHE_RETENTION:"false",MORPHO_AI_PROMPT_CACHE_KEY_ENABLED:"false",MORPHO_L2_NO_PAID:preflight?"true":"false",
     NODE_OPTIONS:`--require ${resolve("scripts/p7b-l2-wire-guard.cjs")}`,MORPHO_L2_MANIFEST:resolve("e2e/eval/p7b-l2-manifest.json"),MORPHO_L2_OUTPUT:output,MORPHO_L2_CARRY_FORWARD:resolve(output,"carry-forward.json"),
+    ...(extension?{MORPHO_L2_BUDGET_EXTENSION:resolve("e2e/eval/p7b-l2-budget-extension.json")}:{}),
     MORPHO_BUILD_SOURCE_SHA:run.sourceSha,MORPHO_BUILD_ID:run.build.buildId,MORPHO_BUILD_SOURCE_TREE_SHA256:run.build.sourceTreeSha256,MORPHO_BUILD_ARTIFACT_SHA256:run.build.artifactSha256,MORPHO_BUILD_IS_DIRTY:"false"
   },root);await runtime.wait(`${baseUrl}/login`,server);
   let cookies=[];const auth=createServerClient(runtime.origin,runtime.keys.anon,{cookies:{getAll:()=>cookies,setAll:u=>{cookies=u;}}});
@@ -51,7 +55,9 @@ try{
   const userId=signed.data.user.id;await runtime.db.query("update public.app_user_access set status='active' where user_id=$1",[userId]);
   browser=await chromium.launch({headless:true});
   for(const slice of (boundaryAudit?manifest.slices.slice(0,1):manifest.slices))for(const trial of (preflight?[1]:[1,2])){
-    const key=`${slice.id}-trial-${trial}`,seed=seeds.find(s=>s.sliceId===slice.id),row={key,slice:slice.id,trial,status:"running",userRescue:0};run.trials.push(row);await save("active-trial.json",{key,slice:slice.id,trial});
+    const key=`${slice.id}-trial-${trial}`;
+    if(extension?.completedTrialKeys.includes(key)&&!boundaryAudit)continue;
+    const seed=seeds.find(s=>s.sliceId===slice.id),row={key,slice:slice.id,trial,status:"running",userRescue:0};run.trials.push(row);await save("active-trial.json",{key,slice:slice.id,trial});
     const context=await browser.newContext({viewport:{width:1440,height:1000}});await context.addCookies(cookies.map(c=>({...c,url:baseUrl,sameSite:"Lax"})));
     const page=await context.newPage(),errors=[];page.on("pageerror",e=>errors.push(e.message));
     await context.route("**/*",route=>{const u=new URL(route.request().url());return ["127.0.0.1","localhost","[::1]"].includes(u.hostname)||["data:","blob:"].includes(u.protocol)?route.continue():route.abort("blockedbyclient");});

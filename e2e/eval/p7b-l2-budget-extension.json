@@ -1,0 +1,19 @@
+{
+  "version": "p7b-l2-user-budget-extension-1",
+  "authority": "User explicitly selected expanded cumulative budget on 2026-10-05 Asia/Shanghai",
+  "originalManifest": "e2e/eval/p7b-l2-manifest.json",
+  "originalManifestSha256": "ff33d548da41d4cfd93fb44df059277c96b9392a3869ff3243cd57c449f039cc",
+  "predecessorReceiptCommit": "0db697ec47aa2990518cc3311fa1a3f6c20e014b",
+  "cumulativeBudget": {
+    "textRequests": 64,
+    "inputTokens": 4000000,
+    "outputTokensIncludingReasoning": 200000,
+    "costCny": 16,
+    "agentInteractions": 16,
+    "realImageCalls": 0,
+    "realSearchCalls": 0,
+    "automaticEvalRetries": 0
+  },
+  "completedTrialKeys": ["L2-1-trial-1", "L2-1-trial-2", "L2-2-trial-1"],
+  "policy": "Only the remaining 13 original preregistered trials in their original order. No rerun of completed quality results, prompt/fixture/rubric/model change or extra trial. All historical request/token/cache/cost consumption carries forward. Original frozen manifest remains unchanged."
+}

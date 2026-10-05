@@ -1,6 +1,9 @@
 // Eval-only final server egress recorder/budget boundary. No product prompt/tool changes.
 const fs=require("node:fs"),path=require("node:path"),crypto=require("node:crypto");
 const manifest=JSON.parse(fs.readFileSync(process.env.MORPHO_L2_MANIFEST,"utf8"));
+const budget=process.env.MORPHO_L2_BUDGET_EXTENSION?JSON.parse(fs.readFileSync(process.env.MORPHO_L2_BUDGET_EXTENSION,"utf8")).cumulativeBudget:manifest.budget;
+for(const key of ["textRequests","inputTokens","outputTokensIncludingReasoning"])if(!Number.isSafeInteger(budget[key])||budget[key]<0)throw Error("Invalid L2 budget "+key);
+if(!Number.isFinite(budget.costCny)||budget.costCny<0)throw Error("Invalid L2 cost budget");
 const root=path.resolve(process.env.MORPHO_L2_OUTPUT);
 const sha=b=>crypto.createHash("sha256").update(b).digest("hex");
 const native=globalThis.fetch;
@@ -60,11 +63,11 @@ globalThis.fetch=async(input,init)=>{
   if(body.model!==manifest.provider.model||body.reasoning?.effort!==manifest.provider.reasoning)return hard("Model/config drift",{model:body.model});
   if(body.prompt_cache_key||body.prompt_cache_retention)return hard("Cache configuration drift");
   if((body.tools??[]).some(t=>t.type!=="function"))return hard("Unexpected built-in paid Provider tool");
-  const cap=Math.min(manifest.provider.budgetTransportMaxOutputTokens,manifest.budget.outputTokensIncludingReasoning-ledger.outputTokens);
+  const cap=Math.min(manifest.provider.budgetTransportMaxOutputTokens,budget.outputTokensIncludingReasoning-ledger.outputTokens);
   if(cap<1)return hard("Actual output token budget exhausted",{id:"P7B-2-BUDGET",stopKind:"actual_budget_limit"});
   const wire={...body,max_output_tokens:cap},inputEstimate=estimateInput(wire);
   const costProjection=(inputEstimate*manifest.pricing.cnyPerMillion.cacheWrite+cap*manifest.pricing.cnyPerMillion.output)/1e6;
-  if(ledger.requests>=manifest.budget.textRequests||ledger.inputTokens>=manifest.budget.inputTokens||ledger.estimatedCny>=manifest.budget.costCny)return hard("Actual cumulative budget reached; next upstream action blocked",{id:"P7B-2-BUDGET",stopKind:"actual_budget_limit",inputEstimate,outputAllocation:cap});
+  if(ledger.requests>=budget.textRequests||ledger.inputTokens>=budget.inputTokens||ledger.estimatedCny>=budget.costCny)return hard("Actual cumulative budget reached; next upstream action blocked",{id:"P7B-2-BUDGET",stopKind:"actual_budget_limit",inputEstimate,outputAllocation:cap});
   const number=++ledger.requests,prefix=`wire-${String(number).padStart(3,"0")}`;
   ledger.runRequests++;
   const wireBytes=JSON.stringify(wire),started=Date.now();
