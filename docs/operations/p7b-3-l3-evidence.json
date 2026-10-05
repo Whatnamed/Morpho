@@ -1,6 +1,6 @@
 {
   "version": "p7b-l3-evidence-1",
-  "status": "partial evidence / blocked_result_cdn_configuration",
+  "status": "partial evidence / blocked_eval_recovery_evidence",
   "p7": "validating",
   "webAcceptance": "pending",
   "base": "9cbe42c4389c9bf9c78876d089e388a4f0363879",
@@ -530,5 +530,115 @@
       "bytes": 67200,
       "sha256": "b6a7b62f7a8d204b17c8e35ebe5930e3762e708cdf11660113d0eb7759a2686d"
     }
-  ]
+  ],
+  "initialStatus": "partial evidence / blocked_result_cdn_configuration",
+  "continuation": {
+    "fixSha": "29a2b412455306f8c200998c44ed7f6cd118f5b8",
+    "d1": "bounded product/config fix complete / awaiting web review",
+    "policy": {
+      "exactHostsPreserved": true,
+      "familyToken": "file*.aitohumanize.com",
+      "match": "^file[0-9]+\\.aitohumanize\\.com$",
+      "genericWildcard": false
+    },
+    "audit": {
+      "version": "p7b-l3-d1-recovery-readiness-1",
+      "sourceSha": "29a2b412455306f8c200998c44ed7f6cd118f5b8",
+      "originalRun": "2026-10-05T05-03-54.495Z-21972",
+      "originalArtifactsVerified": 53,
+      "effectId": "effect:07711fcfc0c77d261a54433ed353378bad43d75faf88c46c2cfd12b312c3623c",
+      "clientRequestId": "client-image-1791176710534-17a7b00b-L3-1-trial-1",
+      "providerTaskId": "15-dea8783d-4056-4e65-97a6-0807657a9a8b",
+      "journalExecutionState": "succeeded",
+      "pendingIndexKey": "morpho.independent-image-delivery.v1.project-p7-buoy-copy.effect:07711fcfc0c77d261a54433ed353378bad43d75faf88c46c2cfd12b312c3623c",
+      "retainedIndex": true,
+      "retainedExactClientBody": true,
+      "retainedIntentBlob": false,
+      "originalBrowserContext": "nonpersistent context closed in original runner finally",
+      "retainedFiles": [
+        "active-attempt.json",
+        "browser-host.js",
+        "build.log",
+        "environment.json",
+        "fixture-metadata.json",
+        "fixture.json",
+        "L3-1-trial-1-after.json",
+        "L3-1-trial-1-attempt.json",
+        "L3-1-trial-1-before.json",
+        "L3-1-trial-1-journal.json",
+        "L3-1-trial-1-provider-request.json",
+        "L3-1-trial-1-provider-response.json",
+        "paid-ledger.json",
+        "progress.json",
+        "run-manifest.json",
+        "server.log",
+        "verdict.json"
+      ],
+      "status": "blocked / original client Recovery intent unavailable",
+      "blocker": {
+        "id": "P7B-3-D2",
+        "category": "Eval harness / recovery evidence capture",
+        "reason": "Original IndexedDB intent requestBody+draft was not exported; no surviving original browser profile. Cannot run native independent delivery recovery without inventing an old intent."
+      },
+      "resultRecovery": "not_attempted / missing original local boundary",
+      "newGeneratePosts": 0,
+      "newProviderGetRequests": 0,
+      "newDownloads": 0,
+      "newAcknowledgements": 0,
+      "cumulativePaidSubmissions": 1,
+      "cumulativeEstimatedCostCny": 0.03,
+      "remainingAttemptsStarted": 0,
+      "modelAuthorization": {
+        "authorizedForRemainingAttempts": "gpt-image-2.5",
+        "applied": false,
+        "originalTaskModel": "gpt-image-2",
+        "reason": "Conditional continuation stopped before new submissions; original execution cannot change model."
+      }
+    },
+    "auditScriptSha256": "687b06b479db547fe33d86f57bc6f0deeb1fe1ca717340cb7585ffa54dda2775",
+    "build": {
+      "schemaVersion": 2,
+      "sourceSha": "29a2b412455306f8c200998c44ed7f6cd118f5b8",
+      "sourceTreeSha256": "4bab586b3ce852363e30ca2b92df66ca38bfebc090bb4b6ca45f8b5fe8ee9f6c",
+      "sourceTreeFileCount": 1108,
+      "buildId": "_3zfpFvmPybkANCMqSfUq",
+      "artifactSha256": "c8fcae1f9462fa0e799ed87c234927f782364b2f93f79cd1c389f6739b4c070f",
+      "artifactFileCount": 911,
+      "isDirty": false,
+      "nodeVersion": "v22.23.2",
+      "builtAt": "2026-10-05T06:50:09.100Z"
+    },
+    "verification": {
+      "targetedAdjacentFiles": 9,
+      "targetedAdjacentTests": 163,
+      "guardTests": 7,
+      "typecheck": "pass",
+      "targetedLint": "pass",
+      "cleanBuild": "pass",
+      "diffCheck": "pass"
+    },
+    "originalTaskExactRecovery": false,
+    "recoveredAsset": null,
+    "recoveredImageSha256": null,
+    "resultGet": 0,
+    "imageDownload": 0,
+    "newPaidSubmissions": 0,
+    "cumulativePaidSubmissions": 1,
+    "cumulativeEstimatedCostCny": 0.03,
+    "remainingAttempts": "7 not_run",
+    "newBlocker": "P7B-3-D2 / Eval recovery evidence capture; not product runtime",
+    "frozenManifestFixtureRubricUnchanged": true,
+    "artifacts": [
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T06-51-57.220Z-d1-recovery-audit/recovery-readiness.json",
+        "bytes": 2190,
+        "sha256": "8d36ea085276f18444d985f8abaeb5d337bc11b9d95a8b29dcff17745b4e8676"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T06-51-57.220Z-d1-recovery-audit/build-provenance.json",
+        "bytes": 449,
+        "sha256": "c19c2f4e776410098d5abb656bb06905b797f9e83a2ae2f3b580ee21d30acc21"
+      }
+    ]
+  }
 }

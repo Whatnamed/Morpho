@@ -67,3 +67,8 @@ are in `p7b-l3-manifest.json` and `p7b-l3-fixture-lock.json`; guard checks run v
 `node --test scripts/p7b-l3-wire-guard.test.mjs`. Raw artifacts remain ignored under
 `output/playwright/p7b-l3/`. Current partial/blocked results and limits:
 [P7B-3 report](../../docs/operations/p7b-3-l3.md).
+The D1 CDN fix retains exact hosts and supports only the numbered GrsAI family token. Original
+trial recovery is currently blocked because its IndexedDB intent blob was not exported; the saved
+index is not enough to reconstruct it. `node scripts/audit-p7b-l3-d1-recovery.mjs` verifies the
+retained identities/artifact hashes without network or paid egress. Do not rerun the original
+trial or continue remaining paid attempts to replace the missing boundary.
