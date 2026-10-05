@@ -1,6 +1,6 @@
 {
   "version": "p7b-l3-evidence-1",
-  "status": "partial evidence / blocked_eval_recovery_evidence",
+  "status": "partial evidence / blocked_eval_hash_assertion",
   "p7": "validating",
   "webAcceptance": "pending",
   "base": "9cbe42c4389c9bf9c78876d089e388a4f0363879",
@@ -638,6 +638,936 @@
         "path": "output/playwright/p7b-l3/2026-10-05T06-51-57.220Z-d1-recovery-audit/build-provenance.json",
         "bytes": 449,
         "sha256": "c19c2f4e776410098d5abb656bb06905b797f9e83a2ae2f3b580ee21d30acc21"
+      }
+    ]
+  },
+  "postfix": {
+    "version": "p7b-l3-postfix-evidence-1",
+    "d1": "ACCEPTED / closed (user web review)",
+    "d2": {
+      "category": "Eval capture/recovery infrastructure",
+      "fixSha": "c8c828111262fcf0249de9f7d2a133a6eb19ea5f",
+      "status": "bounded fix complete / awaiting web review",
+      "regressionRunId": "2026-10-05T07-13-25.333Z-zero-paid-recovery",
+      "cases": [
+        {
+          "name": "nativeReopen",
+          "mode": "nativeReopen",
+          "status": "pass",
+          "intentSha256": "4f0ccf3c04ed9e505cded0032562a8ab0ccaf682f724e86b0bd6f7ad84fd5d22",
+          "requestBodySha256": "d7739e725d802e5705abd701e14d95b1e9e32011a6d91ab65d3a79b17752eaf1",
+          "draftSha256": "72da5ab3ee858e6c84889b8ebf9a0672001ace1112a47c280f00d297aa6aa29d",
+          "recoveryCalls": [
+            {
+              "url": "http://127.0.0.1:55439/api/ai/effects/effect%3Aefe71640e2e0f0745ed30872d064bbf2a19a5f535d311e2baec532eb4a3e86a6/result?kind=image",
+              "method": "GET"
+            },
+            {
+              "url": "http://127.0.0.1:55439/api/ai/effects/effect%3Aefe71640e2e0f0745ed30872d064bbf2a19a5f535d311e2baec532eb4a3e86a6/result?kind=image&chunk=0&resultId=result%3Ac1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+              "method": "GET"
+            },
+            {
+              "url": "http://127.0.0.1:55439/api/ai/effects/effect%3Aefe71640e2e0f0745ed30872d064bbf2a19a5f535d311e2baec532eb4a3e86a6/result?kind=image",
+              "method": "POST"
+            }
+          ],
+          "paidGeneratePosts": 0,
+          "error": null
+        },
+        {
+          "name": "rehydrate",
+          "mode": "rehydrate",
+          "status": "pass",
+          "intentSha256": "6e713dda74d71b765200f2e79643a9989ec731858fbdf7721b6b301238db3dca",
+          "requestBodySha256": "0a308b0db8ff6e2f043c3a0d0509123081911d16760a85e95d3495cddf962118",
+          "draftSha256": "daf1b0121e704ee894568248bc26494e4dfc12207e09ca539b5fc82f8709c9cf",
+          "recoveryCalls": [
+            {
+              "url": "http://127.0.0.1:55439/api/ai/effects/effect%3Ac4cf23d1ca121d57c3b15a42f4e3c5d57042bad9556b2000aee79aaf765f4e6f/result?kind=image",
+              "method": "GET"
+            },
+            {
+              "url": "http://127.0.0.1:55439/api/ai/effects/effect%3Ac4cf23d1ca121d57c3b15a42f4e3c5d57042bad9556b2000aee79aaf765f4e6f/result?kind=image&chunk=0&resultId=result%3Ac1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+              "method": "GET"
+            },
+            {
+              "url": "http://127.0.0.1:55439/api/ai/effects/effect%3Ac4cf23d1ca121d57c3b15a42f4e3c5d57042bad9556b2000aee79aaf765f4e6f/result?kind=image",
+              "method": "POST"
+            }
+          ],
+          "paidGeneratePosts": 0,
+          "error": null
+        },
+        {
+          "name": "missing",
+          "mode": "missing",
+          "status": "pass",
+          "intentSha256": "50b483cdfccd738f6aa2e54363bbc1da1f2340ea41360a7cde5dbb639894f7fb",
+          "requestBodySha256": "e520c61edafe71734c6b17ee39011c13045dfc536e1aa1f603cbc6f9d8a34b41",
+          "draftSha256": "e0f3bc185c71da100e92c6068a91f0123a4f4a4ac5ba23d27869cda15e6306aa",
+          "recoveryCalls": [],
+          "paidGeneratePosts": 0,
+          "error": "page.evaluate: Error: Stored original intent missing / corrupt / hash mismatch\n    at verifyStoredRecovery (<anonymous>:5550:101)\n    at async Object.recover (<anonymous>:34687:5)\n    at async <anonymous>:337:30"
+        },
+        {
+          "name": "corrupt",
+          "mode": "corrupt",
+          "status": "pass",
+          "intentSha256": "c317b8fb9502f86844e94dbf81742e30c8d3e294d5a748b3a0b2548480493248",
+          "requestBodySha256": "854dcd239ec7a9b1487a02aa0e3557dc482a60a3ce70b5423c1d43936c17c5ff",
+          "draftSha256": "ae2d87bbd620c5a9236351cb0348964fafa5056bec5605d8fb8096f95e424a58",
+          "recoveryCalls": [],
+          "paidGeneratePosts": 0,
+          "error": "page.evaluate: Error: Stored original intent missing / corrupt / hash mismatch\n    at verifyStoredRecovery (<anonymous>:5550:101)\n    at async Object.recover (<anonymous>:34687:5)\n    at async <anonymous>:337:30"
+        },
+        {
+          "name": "hashMismatch",
+          "mode": "hashMismatch",
+          "status": "pass",
+          "intentSha256": "4e4ba21cb39b5ba5dca0d51828fda64e836a19ad5b7a5c59ec12cf14e896a25c",
+          "requestBodySha256": "7d862f25b8a3357d209f59cb50e21214bc09ee6884e05060f31fa5799fac5e69",
+          "draftSha256": "f6b4c65be46176eca49b09f72d434936e5d631e13aada8ded0d76936f57a5f89",
+          "recoveryCalls": [],
+          "paidGeneratePosts": 0,
+          "error": "page.evaluate: Error: Intent byte length / hash mismatch\n    at validateRecoveryCapture (<anonymous>:5497:141)\n    at async verifyStoredRecovery (<anonymous>:5546:5)\n    at async Object.recover (<anonymous>:34687:5)\n    at async <anonymous>:337:30"
+        },
+        {
+          "name": "invalidBlob",
+          "mode": "invalidBlob",
+          "status": "pass",
+          "intentSha256": "b68042e97b8cc24fe1a769c0baa1ac885b1233b41d523918823cf38b39bbdf46",
+          "requestBodySha256": "3966a36add25d3907659a30d6a2bde832cfeb46de929d4a01de59bdd981c1b96",
+          "draftSha256": "f06960b691d27c68f8226723332d22cd1131659c2b66cee011d0f7bd7ae137a7",
+          "recoveryCalls": [],
+          "paidGeneratePosts": 0,
+          "error": "page.evaluate: SyntaxError: Unexpected token 'i', \"invalid JSON\" is not valid JSON\n    at JSON.parse (<anonymous>)\n    at validateRecoveryCapture (<anonymous>:5498:27)\n    at async verifyStoredRecovery (<anonymous>:5546:5)\n    at async Object.recover (<anonymous>:34687:5)\n    at async <anonymous>:337:30"
+        },
+        {
+          "name": "pending",
+          "mode": "pending",
+          "status": "pass",
+          "intentSha256": "edd14e20202226ca319d0a11fb10c4b64e0ee9afbd277459901de85d5d26e5d4",
+          "requestBodySha256": "22a98bdf60c30ce9cc702c57b31472b1117d4ac905dafc507f3db08bc36f3358",
+          "draftSha256": "ecbbee6fcfdba3ab892d25b025c4024234ae7b9a69b411c95a38220b9373edd7",
+          "recoveryCalls": [
+            {
+              "url": "http://127.0.0.1:55439/api/ai/effects/effect%3A724fc2fd0fa732ca17c5e25a1ff4128411245b5d11ef2623f1a96c41eb9c2132/result?kind=image",
+              "method": "GET"
+            }
+          ],
+          "paidGeneratePosts": 0,
+          "error": null
+        }
+      ],
+      "paidGeneratePosts": 0,
+      "exportBoundary": "Before client POST, original index/blob bytes and exact body/draft metadata exported and fsynced; persistent per-trial browser profile retained"
+    },
+    "preregistrationSha": "dc5f89ec34b8852c690a09069568de1872979c1f",
+    "sourceSha": "dc5f89ec34b8852c690a09069568de1872979c1f",
+    "build": {
+      "schemaVersion": 2,
+      "sourceSha": "dc5f89ec34b8852c690a09069568de1872979c1f",
+      "sourceTreeSha256": "a48e210534b9fb5a5b3be634e0385a929ebfd317bdb48aa2f9c5ce609e528572",
+      "sourceTreeFileCount": 1112,
+      "buildId": "XmlRa4VNTKaQZBhR1Zcs1",
+      "artifactSha256": "ba14f6aa4e9f7268790a8ba330ff4f53e33b54c6c9272a56e1bfda1f425647a0",
+      "artifactFileCount": 914,
+      "isDirty": false,
+      "nodeVersion": "v22.23.2",
+      "builtAt": "2026-10-05T07:19:05.044Z"
+    },
+    "manifestSha256": "b9b6088f15296b3547fac52a9753c25b5f6114fe841107bf54129453b0b66f88",
+    "fixtureSha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656",
+    "manifest": {
+      "version": "p7b-l3-postfix-controlled-smoke-1",
+      "base": "9cbe42c4389c9bf9c78876d089e388a4f0363879",
+      "fixtureVersion": "p7b-l3-buoy-copy-1",
+      "trajectoryVersion": "p7-trajectories-1/T2-independent-checkpoints",
+      "rubricVersion": "p7-rubric-1/l3-anchors-1",
+      "planning": "Frozen deterministic visual intents compiled by production compileVisualGenerationPlan; no real Text/Agent planning request",
+      "execution": "production executeWorkspaceVisualGenerationPlan in Chromium, native persistence controller/IndexedDB, independent /api/ai/image, real isolated Journal/effect/result RPC and GrsAI",
+      "provider": {
+        "adapter": "src/server/image/grsProvider.ts / unified v1/api/generate + GET v1/api/result",
+        "baseUrl": "https://grsai.dakka.com.cn",
+        "fallbackBaseUrls": [
+          "https://grsaiapi.com"
+        ],
+        "imageHostAllowlist": [
+          "file*.aitohumanize.com"
+        ],
+        "allowlistAuthority": "User-authorized numbered GrsAI CDN family; exact production policy, Eval process only",
+        "model": "gpt-image-2",
+        "aspectRatio": "1:1",
+        "providerAspectRatio": "1024x1024",
+        "sizeOption": "1K",
+        "providerImageSize": "omitted by production gptImage2 profile",
+        "replyType": "json",
+        "quality": "omitted/default",
+        "seed": "omitted/unsupported"
+      },
+      "pricing": {
+        "source": "https://grsai.com/zh/dashboard/models",
+        "retrieved": "2026-10-05 Asia/Shanghai; official GrsAI model tariff rechecked before post-fix execution",
+        "cnyPerSubmission": 0.03,
+        "pointsPerSubmission": 600,
+        "qualification": "Published model tariff estimate, not an account billing ledger. Failures/refunds are not credited to the conservative run budget.",
+        "recordedAt": "2026-10-05T07:07:30.581Z",
+        "readingMethod": "GrsAI official models page via web primary source; Jina Reader unavailable; current base read-only /v1/models returned 404, no paid model probe"
+      },
+      "budget": {
+        "paidSubmissions": 9,
+        "directEstimatedCostCny": 0.5,
+        "estimatedAllEightCny": 0.24,
+        "trialsPerClass": 2,
+        "paidTextRequests": 0,
+        "automaticPaidRetries": 0,
+        "replacementAttempts": 0,
+        "baselineSubmissions": 8,
+        "estimatedCumulativeCny": 0.27
+      },
+      "preserveOracle": [
+        {
+          "id": "tower",
+          "claim": "One central tall cylindrical tower on the ring, with original slim tower-to-ring silhouette/proportions"
+        },
+        {
+          "id": "ring",
+          "claim": "Broad horizontal circular float ring remains around/below tower, not replaced by a different base architecture"
+        },
+        {
+          "id": "lowerDevice",
+          "claim": "Compact lower device hangs on the tower/ring vertical axis beneath the ring; not moved above or detached sideways"
+        },
+        {
+          "id": "solarHierarchy",
+          "claim": "Sloped solar-panel roof remains above the tower body on supports, with mast/sensor/beacon group above it"
+        },
+        {
+          "id": "serviceHatch",
+          "claim": "Visible side service hatch remains on tower body above ring, preserving its placement/relationship when visible"
+        }
+      ],
+      "grader": {
+        "anchors": {
+          "0": "Wrong/unusable or essential identity lost",
+          "1": "Useful fragment but substantial visual rescue required",
+          "2": "Usable controlled result with explicit gaps",
+          "3": "Specific requested change with strong preserved identity and little rescue"
+        },
+        "pass": "Each applicable essential dimension at least 2; N/A only for angle-occluded details, not false preservation",
+        "dimensions": [
+          "Visual preservation",
+          "requested change completion",
+          "Scenario / detail",
+          "User agency / reference authority",
+          "Maturity fit"
+        ],
+        "quality": "Root Agent evidence review against frozen anchors, not independent human designer/L4",
+        "policy": "All attempts retained; quality failures continue, no best-of-N or prompt/fixture/oracle edits"
+      },
+      "hardStop": [
+        "Final Provider references/content differ from frozen authority",
+        "Source overwrite or lineage/persistence corruption",
+        "Duplicate or ambiguous paid execution",
+        "Completed result cannot be safely attributed/delivered",
+        "Invalid fixture/evidence",
+        "Submission or money ceiling",
+        "Other product/infrastructure blocker invalidates later evidence"
+      ],
+      "classes": [
+        {
+          "id": "L3-1",
+          "kind": "CMF only",
+          "role": "cmfStudy",
+          "user": "只基于选中的旧图 A 生成一张 CMF 图：中央塔体改为浅暖灰哑光，浮圈为低饱和深橄榄绿，少量安全标记为赭黄色。只改颜色与表面材料表达，保留原结构、轮廓和部件关系；不使用默认图 E，不改变默认参考。",
+          "changeGoals": [
+            "中央塔体浅暖灰哑光、浮圈深橄榄绿、少量赭黄安全标记"
+          ],
+          "allowToChange": [
+            "外表颜色、哑光表面和小面积标记"
+          ],
+          "materialsAndCmf": [
+            "浅暖灰哑光塔体",
+            "深橄榄绿浮圈",
+            "小面积赭黄安全标记"
+          ],
+          "viewpoint": "沿用参考图视角与构图",
+          "environmentAndLighting": [
+            "沿用原中性背景与软光"
+          ]
+        },
+        {
+          "id": "L3-2",
+          "kind": "Another angle",
+          "role": "conceptImage",
+          "user": "只基于选中的旧图 A 生成同一守望塔产品的另一合理视角：相对原图水平转约 90 度，略低机位三分之四侧视。保持原比例、结构、部件关系和配色；看不见的舱门允许遮挡，不臆造内部构造。排除默认图 E，不改变默认参考。",
+          "changeGoals": [
+            "水平转约90度的另一三分之四侧视，机位略低"
+          ],
+          "allowToChange": [
+            "视角、正常遮挡、随视角变化的可见表面"
+          ],
+          "materialsAndCmf": [
+            "保留原图蓝绿色主体、黄色点缀和金属舱门"
+          ],
+          "viewpoint": "原图相对水平转约90度，略低机位三分之四侧视",
+          "environmentAndLighting": [
+            "中性背景与软光"
+          ]
+        },
+        {
+          "id": "L3-3",
+          "kind": "Usage / maintenance scene",
+          "role": "sceneVisual",
+          "user": "只基于选中的旧图 A 生成同一守望塔的维护场景：产品在港口检修平台上固定支撑，穿工作服的技术员站在侧面用手触达原塔体舱门把手。保留同一结构和配色，以合理的人体尺度、站位与触达说明检查动作；舱门保持关闭，不显示未知内部。图像不证明工程性能。排除默认图 E，不改变默认参考。",
+          "changeGoals": [
+            "港口检修平台与侧面技术员触达既有舱门把手的检查动作"
+          ],
+          "allowToChange": [
+            "环境、人物、维护支撑架与说明尺度的构图"
+          ],
+          "materialsAndCmf": [
+            "保留原图蓝绿色主体、黄色点缀和金属舱门"
+          ],
+          "viewpoint": "能同时看到塔体、浮圈、下部装置、技术员手与舱门的三分之四视角",
+          "environmentAndLighting": [
+            "港口检修平台",
+            "设备稳定支撑以留出下部装置空间",
+            "自然日光",
+            "技术员侧面站立，不在水中悬浮"
+          ]
+        },
+        {
+          "id": "L3-4",
+          "kind": "Explicit default-reference exclusion",
+          "role": "conceptImage",
+          "user": "本轮明确只使用选中的旧图 A，排除项目默认参考 E，不借用 E 的像素、结构或配色。生成 A 的同一方案新图，保持原结构、比例与配色，只把背景变为暗灰无纹理背景，以柔和轮廓光说明边缘。不要把这张新图设为默认参考。",
+          "changeGoals": [
+            "暗灰无纹理背景与柔和轮廓光"
+          ],
+          "allowToChange": [
+            "背景和照明"
+          ],
+          "materialsAndCmf": [
+            "保留原图蓝绿色主体、黄色点缀和金属舱门"
+          ],
+          "viewpoint": "沿用原图视角与整体构图",
+          "environmentAndLighting": [
+            "暗灰无纹理背景",
+            "柔和轮廓光，不增加无关物体"
+          ]
+        }
+      ],
+      "reviewedSource": "834e934c7a994712aec936afcdae067b8fe64bd3",
+      "baselineIdentity": "fresh post-D1-fix 8-attempt capability baseline; original D1 submission is historical diagnostic only",
+      "historical": {
+        "runId": "2026-10-05T05-03-54.495Z-21972",
+        "model": "gpt-image-2",
+        "classification": "historical diagnostic / not a post-fix capability trial",
+        "paidSubmissions": 1,
+        "estimatedCostCny": 0.03,
+        "usageOrActualCharge": "unknown",
+        "ledgerSha256": "2e4fc22ba1f76ec6f89a93536d1bd1590ed9ba4dfd498b1bf5ea19ccfcf01ca3",
+        "attempts": [
+          {
+            "key": "historical-D1-L3-1-trial-1",
+            "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+            "status": "response metadata captured",
+            "httpStatus": 200,
+            "classification": "diagnostic / no gradable delivered pixels"
+          }
+        ]
+      }
+    },
+    "preflight": {
+      "runId": "2026-10-05T07-16-24.520Z-33216-preflight",
+      "status": "zero-paid preflight complete",
+      "blocker": null,
+      "newPaid": 0,
+      "originalIntentCaptured": true
+    },
+    "realRunId": "2026-10-05T07-18-07.719Z-34912",
+    "ledger": {
+      "paidSubmissions": 2,
+      "estimatedCostCny": 0.06,
+      "textRequests": 0,
+      "baselineSubmissions": 1,
+      "attempts": [
+        {
+          "key": "historical-D1-L3-1-trial-1",
+          "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+          "status": "response metadata captured",
+          "httpStatus": 200,
+          "classification": "diagnostic / no gradable delivered pixels"
+        },
+        {
+          "key": "L3-1-trial-1",
+          "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+          "status": "response metadata captured",
+          "httpStatus": 200
+        }
+      ]
+    },
+    "historical": {
+      "runId": "2026-10-05T05-03-54.495Z-21972",
+      "classification": "historical pre-fix diagnostic / not a post-fix capability trial",
+      "paidSubmissions": 1,
+      "estimatedCostCny": 0.03,
+      "gradableImage": false,
+      "oldTaskRecoveryAttempted": false
+    },
+    "attempts": [
+      {
+        "key": "L3-1-trial-1",
+        "classId": "L3-1",
+        "trial": 1,
+        "status": "Provider delivered / automated Eval gate interrupted at D3 / supplemental evidence captured",
+        "paidSubmissions": 1,
+        "facts": {
+          "classification": "D3 supplemental read-only attribution / not rerun or corrected automatic verdict",
+          "productPixelHash": "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293",
+          "bareDataUrlSha256": "5b2a1bf240e684c4b09f8d75f71ecf7ef2bdf8c35bf834548d2e32bffc11cd98",
+          "decodedPixelSha256": "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+          "returnedImageSha256": "ae8abb6f1ed186a67852dc907520bab30810dc8495904558245983672d675b76",
+          "bytes": 1548456,
+          "objectId": "image-generated-asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+          "assetId": "asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+          "providerTaskId": "16-ee40dec9-47db-4c53-8f1a-9a5bd0bee93e",
+          "effectId": "effect:589b3966a4cda3cf73514134686860b14d9f1c83078c903fc0f1991f68af1608",
+          "resultId": "result:4b0415b27e344b0590f03a9d92a0e3587384ee03bb113789411cc16e3cbe8fd6",
+          "dimensions": {
+            "objectId": "image-generated-asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+            "assetId": "asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+            "storageKey": "blob:asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+            "sha256": "ae8abb6f1ed186a67852dc907520bab30810dc8495904558245983672d675b76",
+            "bytes": 1548456,
+            "width": 1254,
+            "height": 1254
+          },
+          "lineage": {
+            "version": 1,
+            "identityParent": {
+              "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "A",
+              "incarnationId": "00000000-0000-4000-8000-000000000024",
+              "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "parentSource": "explicitTask",
+            "direction": {
+              "objectId": "direction-proposal-direction-1783671299082-1",
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "incarnationId": "00000000-0000-4000-8000-000000000021"
+            },
+            "directionSource": "identityParent",
+            "branch": {
+              "id": "p7-a-branch",
+              "directionId": "direction-proposal-direction-1783671299082-1",
+              "label": "守望塔 A 历史路线",
+              "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "branchSource": "identityParent"
+          },
+          "providerInputs": {
+            "version": 1,
+            "references": [
+              {
+                "source": {
+                  "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+                  "title": "A",
+                  "incarnationId": "00000000-0000-4000-8000-000000000024",
+                  "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+                },
+                "role": "identity",
+                "required": true,
+                "status": "sent",
+                "payloadIndex": 0,
+                "pixelHash": "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+              },
+              {
+                "source": {
+                  "objectId": "image-generated-asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b",
+                  "title": "E",
+                  "incarnationId": "00000000-0000-4000-8000-000000000034",
+                  "assetId": "asset-grs-result-1783855434681-png-4d1a8182-06ea-4bdc-a70e-7a4fe936232b"
+                },
+                "role": "unspecified",
+                "required": false,
+                "status": "omitted",
+                "omissionReason": "explicitExcluded"
+              },
+              {
+                "source": {
+                  "objectId": "image-generated-asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095",
+                  "title": "X",
+                  "incarnationId": "00000000-0000-4000-8000-000000000025",
+                  "assetId": "asset-grs-result-1783682264701-jpg-4fe27c5d-c793-4281-97a2-012ba3dcb095"
+                },
+                "role": "unspecified",
+                "required": false,
+                "status": "omitted",
+                "omissionReason": "explicitExcluded"
+              }
+            ]
+          },
+          "sourceUnchanged": true,
+          "defaultReferenceUnchanged": true,
+          "versionParent": [
+            "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+          ],
+          "durableBeforeAck": true,
+          "ackCount": 1,
+          "serverAcknowledgedAt": "2026-10-05T07:20:03.020Z",
+          "browserReopen": "pass",
+          "newProviderCalls": 0,
+          "newLocalApiCalls": 0,
+          "artifact": "D3-supplemental-result.png"
+        },
+        "provisionalRubric": {
+          "classification": "Supplemental pixel review, automated gate interrupted; not baseline acceptance",
+          "scores": {
+            "visualPreservation": 2,
+            "requestedChangeCompletion": 3,
+            "scenarioDetail": "N/A / CMF-only",
+            "userAgencyReferenceAuthority": 3,
+            "maturityFit": 2
+          },
+          "observations": [
+            "All five frozen identity elements remain: tower, circular ring, axial lower device, solar roof/mast/beacon and side hatch. Small redraw/proportion/detail differences prevent pixel-lock claims.",
+            "Warm-grey matte tower, muted dark olive ring and small ochre safety marks are visible.",
+            "Only authorized A pixels were sent; default E/X excluded and unchanged.",
+            "Suitable for CMF exploration; technical dimensions/material performance remain unproven."
+          ],
+          "twoTrialConsistency": "not_verifiable / trial2 not_run",
+          "preliminaryCapability": "usable / applicable dimensions >=2; no package acceptance"
+        },
+        "latencyMs": 45386,
+        "intent": {
+          "key": "morpho.independent-image-delivery.v1.project-p7-buoy-copy.effect:589b3966a4cda3cf73514134686860b14d9f1c83078c903fc0f1991f68af1608",
+          "byteLength": 636211,
+          "sha256": "3197f8620fedb26c0cef6334087b639e138a736524e399def5fedea7d23e6018",
+          "mimeType": "application/json",
+          "effectId": "effect:589b3966a4cda3cf73514134686860b14d9f1c83078c903fc0f1991f68af1608",
+          "requestBodySha256": "923408d66495cad73ff20c1c7dc865c4c6a752c4c7fe44da19f6dedd11e28022",
+          "draftSha256": "2b0f2ec2cf15bdb7cbac62e458aa6ac45bc3be86023b74964081c91ca7cc91b8",
+          "operationId": "operation-image-1791184758691-215b0a23",
+          "clientRequestId": "client-image-1791184758691-b51dd550-L3-1-trial-1"
+        },
+        "rawProviderResult": {
+          "status": 200,
+          "contentType": "application/json",
+          "raw": "{\"id\":\"16-ee40dec9-47db-4c53-8f1a-9a5bd0bee93e\",\"status\":\"succeeded\",\"results\":[{\"url\":\"https://file7.aitohumanize.com/file/e8c15b718bdf4a9a9e2b943f8dbaa441.png\"}],\"progress\":100}"
+        }
+      },
+      {
+        "key": "L3-1-trial-2",
+        "classId": "L3-1",
+        "trial": 2,
+        "status": "not_run / D3 first divergence stop",
+        "paidSubmissions": 0,
+        "rubric": "not_gradable",
+        "consistency": "not_verifiable"
+      },
+      {
+        "key": "L3-2-trial-1",
+        "classId": "L3-2",
+        "trial": 1,
+        "status": "not_run / D3 first divergence stop",
+        "paidSubmissions": 0,
+        "rubric": "not_gradable",
+        "consistency": "not_verifiable"
+      },
+      {
+        "key": "L3-2-trial-2",
+        "classId": "L3-2",
+        "trial": 2,
+        "status": "not_run / D3 first divergence stop",
+        "paidSubmissions": 0,
+        "rubric": "not_gradable",
+        "consistency": "not_verifiable"
+      },
+      {
+        "key": "L3-3-trial-1",
+        "classId": "L3-3",
+        "trial": 1,
+        "status": "not_run / D3 first divergence stop",
+        "paidSubmissions": 0,
+        "rubric": "not_gradable",
+        "consistency": "not_verifiable"
+      },
+      {
+        "key": "L3-3-trial-2",
+        "classId": "L3-3",
+        "trial": 2,
+        "status": "not_run / D3 first divergence stop",
+        "paidSubmissions": 0,
+        "rubric": "not_gradable",
+        "consistency": "not_verifiable"
+      },
+      {
+        "key": "L3-4-trial-1",
+        "classId": "L3-4",
+        "trial": 1,
+        "status": "not_run / D3 first divergence stop",
+        "paidSubmissions": 0,
+        "rubric": "not_gradable",
+        "consistency": "not_verifiable"
+      },
+      {
+        "key": "L3-4-trial-2",
+        "classId": "L3-4",
+        "trial": 2,
+        "status": "not_run / D3 first divergence stop",
+        "paidSubmissions": 0,
+        "rubric": "not_gradable",
+        "consistency": "not_verifiable"
+      }
+    ],
+    "blocker": {
+      "id": "P7B-3-D3",
+      "category": "Eval hash assertion / not unauthorized reference or product defect",
+      "reason": "Runner compares bare SHA256(dataURL) with production domain-separated canonical pixelHash.",
+      "rawReason": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n  [\n    {\n+     hash: '34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293',\n-     hash: '5b2a1bf240e684c4b09f8d75f71ecf7ef2bdf8c35bf834548d2e32bffc11cd98',\n      id: 'image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195',\n      index: 0,\n      role: 'identity'\n    }\n  ]\n",
+      "productHashAlgorithm": "SHA256(morpho-agent-provider-image-content-v1 + NUL + stableJson(dataURL))",
+      "actualProductPixelHash": "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293",
+      "bareDataUrlSha256": "5b2a1bf240e684c4b09f8d75f71ecf7ef2bdf8c35bf834548d2e32bffc11cd98",
+      "decodedPixelSha256": "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+      "sameFrozenPixels": true,
+      "fixedThisRound": false
+    },
+    "verification": {
+      "zeroPaidChromiumRecoveryCases": 7,
+      "guardTests": 9,
+      "productAdjacentFiles": 9,
+      "productAdjacentTests": 163,
+      "typecheck": "pass",
+      "targetedLint": "pass",
+      "cleanStrictBuild": "pass",
+      "diffCheck": "pass",
+      "productionRecoveryJournalSqlSchemaUnchanged": true,
+      "originalManifestFixtureOracleUnchanged": true
+    },
+    "limits": [
+      "Only one of eight fresh attempts submitted; no complete baseline or two-trial consistency.",
+      "Supplemental read-only browser reopen exported the same already ACKed local asset; no new API/Provider call, no corrected raw verdict.",
+      "Actual returned PNG 1254x1254 despite requested production aspectRatio 1024x1024/1K; no resize or engineering claim.",
+      "Cumulative two submissions and CNY 0.06 tariff estimate; account charges/refunds and reseller internal execution count unknown.",
+      "No gpt-image-2.5, no old D1 task retrieval/reconstruction, no main merge/P7C."
+    ],
+    "artifacts": [
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/corrupt-before-post.json",
+        "bytes": 2645455,
+        "sha256": "1fdac1c40c51aace9603754a03d7abecbbd48a864e5967d136663e2e36a3bdb1"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/corrupt-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "6e05d2907ef749516d4cd7eb6084fb232751e5c5d7c9690110cc730b1af90bf1"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/fixture-metadata.json",
+        "bytes": 155658,
+        "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/fixture.json",
+        "bytes": 1944496,
+        "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/hashMismatch-before-post.json",
+        "bytes": 2645455,
+        "sha256": "3b10f74e9c5e624556efd6a127abcce4b6cca5db142c00bd4c56c271826c730d"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/hashMismatch-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "9e30cde143d16ada127cb300177f2821c338b1daf848c9cf46e68bfbe896d10b"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/invalidBlob-before-post.json",
+        "bytes": 2645455,
+        "sha256": "e7497b9b38151f7cd39b93ffbbffaa624472de28f555b372657e5e25ccaf1efa"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/invalidBlob-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "66ebd632f694e171c497488cd1edf4dbb207ed98878e624eb7b7190c92835496"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/missing-before-post.json",
+        "bytes": 2645455,
+        "sha256": "fa19cf688bb7d66e2329c7d1a5838e3bdd6564087bcd34045222e5a21775e8f0"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/missing-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "fe49ee4e61d7dd451ec2a4ce43320e7fd197d90680aefab5d8311637606d578c"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/nativeReopen-before-post.json",
+        "bytes": 2645455,
+        "sha256": "051ab3c4d6083773b806638c7d5ea9532e832054aa25cc1349398df7a58edad2"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/nativeReopen-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "4f4985ec548200ebfc7a69e0816dcdd1065fc87139b44f0d7b46a577950c40f2"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/nativeReopen-result.json",
+        "bytes": 7207580,
+        "sha256": "29ba8b795f9bc90a8f73a40c16fcead0b844c7c81d7cf20d2cfc5b85b3d48fcd"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/pending-before-post.json",
+        "bytes": 2645455,
+        "sha256": "0f4dcb2c00e4a8cd2effc950907545146318656a4bfb6529b0b13f16b00cb2c9"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/pending-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "204f2ac67ac6af650f644304c7986207f97f04c9b37c456b4b14b4db137e6da5"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/pending-result.json",
+        "bytes": 4981424,
+        "sha256": "b655f44421b8fa74c49f33df42198d1ef1374802d3e49495eea0c261c148ecce"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/rehydrate-before-post.json",
+        "bytes": 2645455,
+        "sha256": "77e194ce77c5a6e95dc8b6cea172af15974ceb4fc96194ea17019fce2b300265"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/rehydrate-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "204f518eb7adfb35257a2018143fcbe030a44aea90a9eae2de9d203ca5d01358"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/rehydrate-result.json",
+        "bytes": 7207589,
+        "sha256": "5580c922974d366fe5a24f2f02e7bdadfcbccc61068c77e27e8a57d6989688ac"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-13-25.333Z-zero-paid-recovery/verdict.json",
+        "bytes": 5809,
+        "sha256": "413cee236b73def800147b2c0db22f431df21db22cba91c91d9e621cb4c5e77c"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/active-attempt.json",
+        "bytes": 28,
+        "sha256": "6decf109ec7ae1bae87048935749deead175d98d673a50f7ecfb873c686e5628"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/browser-host.js",
+        "bytes": 2398950,
+        "sha256": "def1a3b79f3f39030f5ee23761917f8a825f996c99f7eb0b7d9e2ba1539f1e4b"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/build.log",
+        "bytes": 1473,
+        "sha256": "b5b05659c628826d47be383cb01b1d7ff43dec4f334b0e66a2c5ad493b0163fc"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/environment.json",
+        "bytes": 16029,
+        "sha256": "9a9d657aab4cd4f9b6ad7cedf7a1a9a541028c76ecbad4563eaf85296a4d4d55"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/fixture-metadata.json",
+        "bytes": 155658,
+        "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/fixture.json",
+        "bytes": 1944496,
+        "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/L3-1-trial-1-after.json",
+        "bytes": 5584516,
+        "sha256": "b7adadf1c6ed2ce17f23f8181b393ac4c47fc89ef48c664f93fb1fee86d1c94a"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/L3-1-trial-1-attempt.json",
+        "bytes": 39432,
+        "sha256": "674ef29b75e1ae0a483f07286d8a1dec7b8b9a8b3d1bde0533960bbaa7d0d02f"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/L3-1-trial-1-before.json",
+        "bytes": 2294927,
+        "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/L3-1-trial-1-intent-before-post.json",
+        "bytes": 2645456,
+        "sha256": "e4ce8a5fd95fa600be6f42301b3b29efbe12e09f324887198660ed5f75a470c6"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/L3-1-trial-1-journal.json",
+        "bytes": 602323,
+        "sha256": "3bf32dfa6178b35d3e3d8fa07e073917bb00dd874c3ef1f4c7202e7eda5d915b"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/L3-1-trial-1-provider-request.json",
+        "bytes": 600268,
+        "sha256": "285d0c837ecdbe7668c205369844b73f8f7c5dc27e1b4bd7ba53313ec3d56a8e"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/paid-ledger.json",
+        "bytes": 407,
+        "sha256": "c8b255b959153bbb3f1f84c37097014ecc44f3be6d4cb740583bfad1c131ad52"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/preflight-wire.json",
+        "bytes": 600291,
+        "sha256": "81138973ab64ac99f82b65b6f41267486887571be3b8a04001bff9f1af752962"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/progress.json",
+        "bytes": 68641,
+        "sha256": "0cf4011b6976686538ff4b9332b0e400c84fe8dc91ed37a282e6486a75e9e3a2"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/run-manifest.json",
+        "bytes": 27386,
+        "sha256": "38fa6489f8e1c374c7ae795516696bff2ede09bf249c17391a320f8d8e55e76b"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/server.log",
+        "bytes": 155,
+        "sha256": "796b3f3d06f61c34e51a30c799fb1a204896b1ae509dcc0b54572775338dc877"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-16-24.520Z-33216-preflight/verdict.json",
+        "bytes": 69106,
+        "sha256": "7f86e0d3ee596ec11f9ad0e2fa541c5de91c6f2037c24866148707e626a04f2e"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/active-attempt.json",
+        "bytes": 28,
+        "sha256": "6decf109ec7ae1bae87048935749deead175d98d673a50f7ecfb873c686e5628"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/browser-host.js",
+        "bytes": 2398950,
+        "sha256": "def1a3b79f3f39030f5ee23761917f8a825f996c99f7eb0b7d9e2ba1539f1e4b"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/build.log",
+        "bytes": 1475,
+        "sha256": "bf438b0cda2d90bce621a7a5df711a6a0a00817b7fff5f5bde1b626f9f218025"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/D3-supplemental-browser-reopen.json",
+        "bytes": 2662297,
+        "sha256": "c6829353adca14b13877109c8369f69aadb0878e4935ebadba95234c7b6dd57b"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/D3-supplemental-facts.json",
+        "bytes": 4323,
+        "sha256": "bf93277b75e8c8732de94728ed8067565709cb771745d5ca4befca159dbd5d69"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/D3-supplemental-result.png",
+        "bytes": 1548456,
+        "sha256": "ae8abb6f1ed186a67852dc907520bab30810dc8495904558245983672d675b76"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/environment.json",
+        "bytes": 16029,
+        "sha256": "3a7cd255bf62b4d8ae6a1d4be678c14c680930d5eea3cb71a005c8a56e1bde8d"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/fixture-metadata.json",
+        "bytes": 155658,
+        "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/fixture.json",
+        "bytes": 1944496,
+        "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/L3-1-trial-1-after.json",
+        "bytes": 10809711,
+        "sha256": "513cd9bad7ad3c6cdb8931044b101b68e7a0230bbe6be1c81aa639bea9aec9f7"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/L3-1-trial-1-attempt.json",
+        "bytes": 40404,
+        "sha256": "9e6b6bcffd2b8df47bd4bbb79094a3adc4e367a87d5b3e3d79c2180913bd2079"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/L3-1-trial-1-before.json",
+        "bytes": 2294927,
+        "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/L3-1-trial-1-download-1791184799830.json",
+        "bytes": 185,
+        "sha256": "a8b52975b8b389e2da7b62b8ae209c144abc32dca01bd0261de5654cccfbcfb4"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/L3-1-trial-1-intent-before-post.json",
+        "bytes": 2645456,
+        "sha256": "a59f4d5279d75c5f2c52431872c9db4bd47b2007ee86b23eef3af1abec081713"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/L3-1-trial-1-journal.json",
+        "bytes": 603093,
+        "sha256": "c9561aa5afedf23913773e4722c7ccfe9c3a3a91dbeadd37fb841f88ed90b48a"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/L3-1-trial-1-provider-request.json",
+        "bytes": 600268,
+        "sha256": "4efcc8a45afd622b4b00df60fe97c5cd963b54d9da6fcec0f93686aa0ec12cbd"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/L3-1-trial-1-provider-response.json",
+        "bytes": 265,
+        "sha256": "8edec28e0f66223259281b45cf1184560a28cf01a7c5f0642a8b43fc0ccca6fc"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/paid-ledger.json",
+        "bytes": 607,
+        "sha256": "0e37345314c3259762843d506f0052e5e347266cc75606554b362d6d0f130903"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/progress.json",
+        "bytes": 70068,
+        "sha256": "c1be448e257527739e288ae6801f65bba6514354813b10d9cb619c33641b1f68"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/run-manifest.json",
+        "bytes": 27358,
+        "sha256": "a9df02f8f8e64581b5ad61df122b44a30215933a4f11f15b7a451a85418e56fd"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/server.log",
+        "bytes": 155,
+        "sha256": "ed5ecb18dcfee83bf4d81c5353938799aae5e9504d3d4df693e6db336207a756"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/verdict.json",
+        "bytes": 70739,
+        "sha256": "30e0cb4c3db2153b2be388e9d7f8e80a8efb7d3aa28dac85a6800680dbc629d2"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-12-17.860Z-zero-paid-recovery/fixture-metadata.json",
+        "bytes": 155658,
+        "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-12-17.860Z-zero-paid-recovery/fixture.json",
+        "bytes": 1944496,
+        "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T07-12-17.860Z-zero-paid-recovery/verdict.json",
+        "bytes": 400,
+        "sha256": "4de4fe124621031cbe693ac436fc866f8798ff79f92d0a14d92941a99f7d3832"
       }
     ]
   }

@@ -63,7 +63,9 @@ does not prove model understanding. No production Journal/real Provider/human ac
 P7B-3 controlled L3 runner: `node scripts/verify-p7b-l3.mjs --preflight` captures the final production
 image wire with zero paid egress. The command without that flag performs real paid submissions;
 do not rerun the blocked baseline without new execution authorization. Frozen plans/config/budget
-are in `p7b-l3-manifest.json` and `p7b-l3-fixture-lock.json`; guard checks run via
+for the historical diagnostic are in `p7b-l3-manifest.json` and `p7b-l3-fixture-lock.json`;
+fresh post-fix execution uses `p7b-l3-postfix-manifest.json` (eight new attempts, cumulative nine
+including the historical submission, unchanged CNY 0.50 ceiling); guard checks run via
 `node --test scripts/p7b-l3-wire-guard.test.mjs`. Raw artifacts remain ignored under
 `output/playwright/p7b-l3/`. Current partial/blocked results and limits:
 [P7B-3 report](../../docs/operations/p7b-3-l3.md).
@@ -72,3 +74,12 @@ trial recovery is currently blocked because its IndexedDB intent blob was not ex
 index is not enough to reconstruct it. `node scripts/audit-p7b-l3-d1-recovery.mjs` verifies the
 retained identities/artifact hashes without network or paid egress. Do not rerun the original
 trial or continue remaining paid attempts to replace the missing boundary.
+
+D2 Eval capture/recovery fix: `node scripts/verify-p7b-l3-recovery.mjs` runs seven zero-paid
+Chromium cases with real IndexedDB/localStorage and a fixed result API fixture. The browser host
+exports/fsyncs original index/blob bytes before POST and retains a persistent profile per trial;
+validated export/rehydration never derives an old intent from a manifest or current Workspace.
+The new baseline stopped at D3 after its first delivered CMF attempt because the runner compared
+bare SHA256(dataURL) with the domain-separated product pixelHash. Keep that raw verdict; only
+read-only supplemental artifact/reopen evidence was captured. Do not fix D3 or start more paid
+attempts without a new bounded task; seven fresh attempts remain not_run.
