@@ -59,3 +59,11 @@ P7B adapters must provide isolated real server routes/Journal/RPC evidence (L1b)
 inputs and real model outputs (L2), real image outputs plus preserve/change grading (L3), and
 independent designer handoff (L4). This run captures client serialization only; mock Agent prose
 does not prove model understanding. No production Journal/real Provider/human acceptance is implied.
+
+P7B-3 controlled L3 runner: `node scripts/verify-p7b-l3.mjs --preflight` captures the final production
+image wire with zero paid egress. The command without that flag performs real paid submissions;
+do not rerun the blocked baseline without new execution authorization. Frozen plans/config/budget
+are in `p7b-l3-manifest.json` and `p7b-l3-fixture-lock.json`; guard checks run via
+`node --test scripts/p7b-l3-wire-guard.test.mjs`. Raw artifacts remain ignored under
+`output/playwright/p7b-l3/`. Current partial/blocked results and limits:
+[P7B-3 report](../../docs/operations/p7b-3-l3.md).

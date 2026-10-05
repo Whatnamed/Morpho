@@ -1,0 +1,534 @@
+{
+  "version": "p7b-l3-evidence-1",
+  "status": "partial evidence / blocked_result_cdn_configuration",
+  "p7": "validating",
+  "webAcceptance": "pending",
+  "base": "9cbe42c4389c9bf9c78876d089e388a4f0363879",
+  "preregistrationSha": "9128c24abad81236d065c0eb50d0ea5ee866ad32",
+  "calibrationSha": "ba1d177ed8ebdd4e68b5c9bacec51cccce39d85a",
+  "sourceSha": "ba1d177ed8ebdd4e68b5c9bacec51cccce39d85a",
+  "build": {
+    "schemaVersion": 2,
+    "sourceSha": "ba1d177ed8ebdd4e68b5c9bacec51cccce39d85a",
+    "sourceTreeSha256": "01acac5023bae2eb6fe25e9f670601689b7c0012f6d8f09a3fe2696e408dbe67",
+    "sourceTreeFileCount": 1106,
+    "buildId": "71lk-GNReYypQ6TkNSbK4",
+    "artifactSha256": "e7bc38c75c90104d2a5f420cd52192968cdac3210bf788b36697391799238ba5",
+    "artifactFileCount": 912,
+    "isDirty": false,
+    "nodeVersion": "v22.23.2",
+    "builtAt": "2026-10-05T05:04:56.086Z"
+  },
+  "runId": "2026-10-05T05-03-54.495Z-21972",
+  "manifestSha256": "59d21ab0a37e5ed61cae2f387d0a9794aca78fb30f468af793d4edad4fbc5af8",
+  "fixtureSha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656",
+  "versions": {
+    "fixture": "p7b-l3-buoy-copy-1",
+    "trajectory": "p7-trajectories-1/T2-independent-checkpoints",
+    "rubric": "p7-rubric-1/l3-anchors-1"
+  },
+  "provider": {
+    "adapter": "src/server/image/grsProvider.ts / unified v1/api/generate + GET v1/api/result",
+    "baseUrl": "https://grsai.dakka.com.cn",
+    "fallbackBaseUrls": [
+      "https://grsaiapi.com"
+    ],
+    "imageHostAllowlist": [
+      "file1.aitohumanize.com"
+    ],
+    "allowlistAuthority": "User supplied exact host; Eval process only, no .env/system changes",
+    "model": "gpt-image-2",
+    "aspectRatio": "1:1",
+    "providerAspectRatio": "1024x1024",
+    "sizeOption": "1K",
+    "providerImageSize": "omitted by production gptImage2 profile",
+    "replyType": "json",
+    "quality": "omitted/default",
+    "seed": "omitted/unsupported"
+  },
+  "pricing": {
+    "source": "https://grsai.com/zh/dashboard/models",
+    "retrieved": "2026-10-05 Asia/Shanghai before execution",
+    "cnyPerSubmission": 0.03,
+    "pointsPerSubmission": 600,
+    "qualification": "Published model tariff estimate, not an account billing ledger. Failures/refunds are not credited to the conservative run budget.",
+    "recordedAt": "2026-10-05T04:55:55.502Z",
+    "readingMethod": "GrsAI official models page via web primary source; Jina Reader unavailable; current base read-only /v1/models returned 404, no paid model probe"
+  },
+  "budget": {
+    "paidSubmissions": 8,
+    "directEstimatedCostCny": 0.5,
+    "estimatedAllEightCny": 0.24,
+    "trialsPerClass": 2,
+    "paidTextRequests": 0,
+    "automaticPaidRetries": 0,
+    "replacementAttempts": 0
+  },
+  "ledger": {
+    "paidSubmissions": 1,
+    "estimatedCostCny": 0.03,
+    "textRequests": 0,
+    "attempts": [
+      {
+        "key": "L3-1-trial-1",
+        "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+        "status": "response metadata captured",
+        "httpStatus": 200
+      }
+    ]
+  },
+  "attempts": [
+    {
+      "key": "L3-1-trial-1",
+      "status": "infrastructure-interrupted / completed upstream result not delivered",
+      "paidSubmissions": 1,
+      "quality": "not_gradable / no delivered pixels",
+      "rubric": {
+        "Visual preservation": "not_gradable",
+        "requested change completion": "not_gradable",
+        "Scenario / detail": "not_gradable",
+        "User agency / reference authority": "not_gradable",
+        "Maturity fit": "not_gradable"
+      }
+    },
+    {
+      "key": "L3-1-trial-2",
+      "status": "not_run / first-divergence stop",
+      "paidSubmissions": 0,
+      "quality": "not_gradable / no delivered pixels",
+      "rubric": {
+        "Visual preservation": "not_gradable",
+        "requested change completion": "not_gradable",
+        "Scenario / detail": "not_gradable",
+        "User agency / reference authority": "not_gradable",
+        "Maturity fit": "not_gradable"
+      }
+    },
+    {
+      "key": "L3-2-trial-1",
+      "status": "not_run / first-divergence stop",
+      "paidSubmissions": 0,
+      "quality": "not_gradable / no delivered pixels",
+      "rubric": {
+        "Visual preservation": "not_gradable",
+        "requested change completion": "not_gradable",
+        "Scenario / detail": "not_gradable",
+        "User agency / reference authority": "not_gradable",
+        "Maturity fit": "not_gradable"
+      }
+    },
+    {
+      "key": "L3-2-trial-2",
+      "status": "not_run / first-divergence stop",
+      "paidSubmissions": 0,
+      "quality": "not_gradable / no delivered pixels",
+      "rubric": {
+        "Visual preservation": "not_gradable",
+        "requested change completion": "not_gradable",
+        "Scenario / detail": "not_gradable",
+        "User agency / reference authority": "not_gradable",
+        "Maturity fit": "not_gradable"
+      }
+    },
+    {
+      "key": "L3-3-trial-1",
+      "status": "not_run / first-divergence stop",
+      "paidSubmissions": 0,
+      "quality": "not_gradable / no delivered pixels",
+      "rubric": {
+        "Visual preservation": "not_gradable",
+        "requested change completion": "not_gradable",
+        "Scenario / detail": "not_gradable",
+        "User agency / reference authority": "not_gradable",
+        "Maturity fit": "not_gradable"
+      }
+    },
+    {
+      "key": "L3-3-trial-2",
+      "status": "not_run / first-divergence stop",
+      "paidSubmissions": 0,
+      "quality": "not_gradable / no delivered pixels",
+      "rubric": {
+        "Visual preservation": "not_gradable",
+        "requested change completion": "not_gradable",
+        "Scenario / detail": "not_gradable",
+        "User agency / reference authority": "not_gradable",
+        "Maturity fit": "not_gradable"
+      }
+    },
+    {
+      "key": "L3-4-trial-1",
+      "status": "not_run / first-divergence stop",
+      "paidSubmissions": 0,
+      "quality": "not_gradable / no delivered pixels",
+      "rubric": {
+        "Visual preservation": "not_gradable",
+        "requested change completion": "not_gradable",
+        "Scenario / detail": "not_gradable",
+        "User agency / reference authority": "not_gradable",
+        "Maturity fit": "not_gradable"
+      }
+    },
+    {
+      "key": "L3-4-trial-2",
+      "status": "not_run / first-divergence stop",
+      "paidSubmissions": 0,
+      "quality": "not_gradable / no delivered pixels",
+      "rubric": {
+        "Visual preservation": "not_gradable",
+        "requested change completion": "not_gradable",
+        "Scenario / detail": "not_gradable",
+        "User agency / reference authority": "not_gradable",
+        "Maturity fit": "not_gradable"
+      }
+    }
+  ],
+  "blocker": {
+    "id": "P7B-3-D1",
+    "category": "infrastructure / result CDN configuration mismatch",
+    "rawVerdictReason": "Ambiguous/undelivered image execution",
+    "attempt": "L3-1-trial-1",
+    "providerHttpStatus": 200,
+    "providerStatus": "succeeded",
+    "providerTaskId": "15-dea8783d-4056-4e65-97a6-0807657a9a8b",
+    "returnedUrl": "https://file4.aitohumanize.com/file/4f4a014dbccf4f139e07127d07c11616.png",
+    "returnedHost": "file4.aitohumanize.com",
+    "authorizedHost": "file1.aitohumanize.com",
+    "clientRequestId": "client-image-1791176710534-17a7b00b-L3-1-trial-1",
+    "effectId": "effect:07711fcfc0c77d261a54433ed353378bad43d75faf88c46c2cfd12b312c3623c",
+    "attemptId": "7ab456bb-e75b-4998-b1e3-187dd206fe94",
+    "requestDigest": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+    "journalState": "succeeded",
+    "providerObservation": "succeeded",
+    "clientHttpStatus": 502,
+    "clientTerminal": {
+      "error": "图像任务失败，请稍后重试。",
+      "code": "image_generation_failed",
+      "recoverable": false
+    },
+    "latencyMs": 132661,
+    "resultManifests": 0,
+    "acknowledgements": 0,
+    "newObjects": 0,
+    "newAssets": 0,
+    "downloadedPixels": null
+  },
+  "gates": {
+    "finalProviderReferences": "pass / authorized A only, exact decoded SHA",
+    "defaultReferenceExclusion": "pass / E absent from actual images",
+    "finalPrompt": "pass / frozen compiled prompt exact",
+    "journalRequestBinding": "pass / request_digest equals final body SHA",
+    "sourceObjectsAndPixels": "pass / unchanged",
+    "defaultReference": "pass / unchanged",
+    "onePaidSubmission": "pass / one original request, no new attempt after hard stop",
+    "localFailurePersistence": {
+      "phase": "saved",
+      "isDirty": false,
+      "lastSavedAt": "2026-10-05T05:07:22.821Z"
+    },
+    "successfulLineage": "not_run / no new object",
+    "durableResultBeforeAck": "not_run / no result, ACK 0",
+    "reloadAssetReadability": "not_run / no generated asset; original raw state retained"
+  },
+  "diagnostics": [
+    {
+      "run": "2026-10-05T04-55-57.653Z-29320-preflight",
+      "classification": "invalid Eval comparison diagnostic; zero paid",
+      "reason": "Memory undefined property versus persisted JSON; original raw verdict is preserved, not a confirmed product D1"
+    },
+    {
+      "run": "2026-10-05T04-58-56.238Z-31088-preflight",
+      "classification": "zero-paid actual final Server wire preflight clean",
+      "paid": 0,
+      "blocker": null
+    }
+  ],
+  "hashConventions": {
+    "sourceAssetDecodedSha256": "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc",
+    "productionDataUrlPixelHash": "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+  },
+  "verification": {
+    "guardTests": 7,
+    "adjacentTests": 109,
+    "adjacentFiles": 7,
+    "typecheck": "pass",
+    "targetedLint": "pass",
+    "cleanProductionBuild": "pass",
+    "diffCheck": "pass",
+    "productAndSqlUnchanged": true,
+    "frozenPredecessorContractsUnchanged": true
+  },
+  "limits": [
+    "No delivered image; quality, two-trial consistency, successful persistence/reload/lineage and durable-before-ACK are unverified.",
+    "One observed paid outbound submission and one Provider task, not proof of reseller internal execution or account debit count.",
+    "Published tariff estimate CNY 0.03; actual account charge/refund unknown.",
+    "No automatic retry, CDN allowlist expansion, model switch, product fix, main merge, Text request, P7C or L4."
+  ],
+  "artifacts": [
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-53-03.118Z-12072/fixture-metadata.json",
+      "bytes": 155658,
+      "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-53-03.118Z-12072/fixture.json",
+      "bytes": 1944496,
+      "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/active-attempt.json",
+      "bytes": 28,
+      "sha256": "6decf109ec7ae1bae87048935749deead175d98d673a50f7ecfb873c686e5628"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/browser-host.js",
+      "bytes": 2389205,
+      "sha256": "a0c4bc3ed511a23586a9743121b39c76ad9d11bc42899102c619515c68b89489"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/build.log",
+      "bytes": 1474,
+      "sha256": "0ec904bafd92187a98e6ef215b8cb9089b4baa56ec65a9dd4168f1501b401560"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/environment.json",
+      "bytes": 16029,
+      "sha256": "b3575df04ef715a3004dd3f52d246b92fe6438781012df1f83360d2b9bc6c827"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/fixture-metadata.json",
+      "bytes": 155658,
+      "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/fixture.json",
+      "bytes": 1944496,
+      "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/L3-1-trial-1-after.json",
+      "bytes": 2937945,
+      "sha256": "ddf5130df57f80a5634ae336afca2c58673f9950a80953528765c490ee1d296c"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/L3-1-trial-1-attempt.json",
+      "bytes": 39174,
+      "sha256": "61fbf61308082f79db0a358542838197e0c96cddb100c76d3a6e4958c17b4c6b"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/L3-1-trial-1-before.json",
+      "bytes": 2294927,
+      "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/L3-1-trial-1-journal.json",
+      "bytes": 602323,
+      "sha256": "b7bf63aef9e3e3af8e904b4b76d6929c061a08a9ce195c5fdc2595b9f5ebec51"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/L3-1-trial-1-provider-request.json",
+      "bytes": 600268,
+      "sha256": "cc6cb7c3c185a0eb040418b2d1c10a1215b6170fc9f45bdc7094c4554a1f0472"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/paid-ledger.json",
+      "bytes": 91,
+      "sha256": "2b411eb80749210db539775630e4acc59b2cf6157f1ffb5279ebc9064c12bd9a"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/preflight-wire.json",
+      "bytes": 600291,
+      "sha256": "48739b11707e465bfb3e3ab7a6307c911077d5e585cb1374d1fa0a23e4b9fbd6"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/progress.json",
+      "bytes": 67876,
+      "sha256": "89a255d84fb56bbd3a4900921ee55ed278073c4f3105ec8c9408fbc36620679c"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/run-manifest.json",
+      "bytes": 26322,
+      "sha256": "37e853b95908bf5fa647a5e99881dc349af50f045df74a0e39313868acacdaf4"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/server.log",
+      "bytes": 155,
+      "sha256": "1b5e92400be44937d710c22af9b6ab1225535fe49b3012a4fb1162be839f687c"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-55-57.653Z-29320-preflight/verdict.json",
+      "bytes": 68001,
+      "sha256": "e90151f2b2b9961999e21df074a2d9509d7974ffda8d47958d596200713c51a2"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/active-attempt.json",
+      "bytes": 28,
+      "sha256": "6decf109ec7ae1bae87048935749deead175d98d673a50f7ecfb873c686e5628"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/browser-host.js",
+      "bytes": 2389244,
+      "sha256": "4a5751c6fd09116d35350baf3b779a5d4956c11a19dc681ae41ef8c8bca65cb6"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/build.log",
+      "bytes": 1475,
+      "sha256": "7660781f9d8c02b2ffcd9132aae2ee255349f04f78004a2dfdd878e7c7c49ee3"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/environment.json",
+      "bytes": 16029,
+      "sha256": "28a112fb519479f2353449ee9dccec431a96f68a498aa3a68e5a1d8d3d365412"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/fixture-metadata.json",
+      "bytes": 155658,
+      "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/fixture.json",
+      "bytes": 1944496,
+      "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/L3-1-trial-1-after.json",
+      "bytes": 2937945,
+      "sha256": "d5655d0e99e5979e5d8d6fae43ac292dadf49e56d54e17770ddd3b52a058e6c4"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/L3-1-trial-1-attempt.json",
+      "bytes": 38719,
+      "sha256": "c14636d5a0a64cfb2836a657dc879c2dd7863422be93925eb46aba36e38e3243"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/L3-1-trial-1-before.json",
+      "bytes": 2294927,
+      "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/L3-1-trial-1-journal.json",
+      "bytes": 602323,
+      "sha256": "8ff420ae9306bc2668cfb81cbb7330810ab01e28eacbebe8ade76315a8128cb5"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/L3-1-trial-1-provider-request.json",
+      "bytes": 600268,
+      "sha256": "49940157f8d7e6abf972607d050bfd8f4c5d98ff05dfe2e85689bd1622ef1b46"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/paid-ledger.json",
+      "bytes": 91,
+      "sha256": "2b411eb80749210db539775630e4acc59b2cf6157f1ffb5279ebc9064c12bd9a"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/preflight-wire.json",
+      "bytes": 600291,
+      "sha256": "433636fe730f4eb4960999c09da53740e8f746393de17be9cd9d970e522be159"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/progress.json",
+      "bytes": 66820,
+      "sha256": "ca2dfbb3962edd6eb6a35209cee738185e87bd7c875838d74bf40ef4e8fa8dbb"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/run-manifest.json",
+      "bytes": 26322,
+      "sha256": "a3e5161418544a194a25e332aeb5c2a667cb70f64820e52ea3f489db90c68701"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/server.log",
+      "bytes": 155,
+      "sha256": "32b7b92bc6284a39d55b2381b0c01fe5762ad8f771627e288d2679ccabd820f5"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T04-58-56.238Z-31088-preflight/verdict.json",
+      "bytes": 66951,
+      "sha256": "348a54df31368421a536e701363d717b6b28ee4f9e1c26ff4d623c049429f4fa"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/active-attempt.json",
+      "bytes": 28,
+      "sha256": "6decf109ec7ae1bae87048935749deead175d98d673a50f7ecfb873c686e5628"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/browser-host.js",
+      "bytes": 2389244,
+      "sha256": "4a5751c6fd09116d35350baf3b779a5d4956c11a19dc681ae41ef8c8bca65cb6"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/build.log",
+      "bytes": 1476,
+      "sha256": "b006970e822b383806b4e793b3d95e5ec940a6ef0d3a4c98427192a3817465d8"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/environment.json",
+      "bytes": 16029,
+      "sha256": "8e55cb3d52c89facab9e3f550a4f864744e640771a431e545fd9809563511825"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/fixture-metadata.json",
+      "bytes": 155658,
+      "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/fixture.json",
+      "bytes": 1944496,
+      "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/L3-1-trial-1-after.json",
+      "bytes": 2937945,
+      "sha256": "6e4d2f93ad827ae8ac1140d9563deed012e2efa0bd357c36a69f27a91afded50"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/L3-1-trial-1-attempt.json",
+      "bytes": 38679,
+      "sha256": "fef9e9afc3d743bfc46a4cf36f4afe58a63906bc4da2cddeca00d6afd08269b3"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/L3-1-trial-1-before.json",
+      "bytes": 2294927,
+      "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/L3-1-trial-1-journal.json",
+      "bytes": 602426,
+      "sha256": "32f5a74bc1bc5cdcb9182350a157fa54499cecac307135c0ed08cee1f8b4301b"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/L3-1-trial-1-provider-request.json",
+      "bytes": 600268,
+      "sha256": "94e6465cb84ff5fdd8fc907564174d20a51fd51adaecc679e40d0d4fe2ad97dd"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/L3-1-trial-1-provider-response.json",
+      "bytes": 265,
+      "sha256": "95e04a2988df647c7809565697ff0c2bd1c299c6ebd7150e2b44265eaf03f893"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/paid-ledger.json",
+      "bytes": 296,
+      "sha256": "2e4fc22ba1f76ec6f89a93536d1bd1590ed9ba4dfd498b1bf5ea19ccfcf01ca3"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/progress.json",
+      "bytes": 66856,
+      "sha256": "adda89c1ba3dcd963a4ffd620a94f3606af1ed2c838adcba07d75072e070096d"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/run-manifest.json",
+      "bytes": 26294,
+      "sha256": "59b1c2112a5a68cdbc7a5d1c069326dd019d6d0dca6751652f1fb90234aa63c8"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/server.log",
+      "bytes": 155,
+      "sha256": "c77f8c410b0604de9ce9efe803d3e513d7fe042bc69fa85e79b778f0f6432186"
+    },
+    {
+      "path": "output/playwright/p7b-l3/2026-10-05T05-03-54.495Z-21972/verdict.json",
+      "bytes": 67200,
+      "sha256": "b6a7b62f7a8d204b17c8e35ebe5930e3762e708cdf11660113d0eb7759a2686d"
+    }
+  ]
+}
