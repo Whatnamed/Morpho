@@ -159,9 +159,11 @@ Paid submission stop-loss (P3S):
 Image generation uses the GrsAI `MORPHO_GRS_*` group defined in `.env.example`.
 
 `MORPHO_GRS_IMAGE_HOST_ALLOWLIST` is required and contains comma-separated exact HTTPS hostnames
-that may serve generated-image bytes. The current documented `/v1/api/generate` contract returns
-`file1.aitohumanize.com`, which is the example value in `.env.example`; re-verify that Provider
-contract before changing the list. The configured primary and fallback Provider hosts are included
+or the single supported GrsAI CDN family token `file*.aitohumanize.com` (the recommended example).
+That token matches only `^file[0-9]+\.aitohumanize\.com$`, including file1/file4/file27; it never matches
+the apex, arbitrary subdomains, nested hosts, or suffix lookalikes. GrsAI's file1 example is not a
+stable unique result host. Other wildcard tokens fail configuration validation before paid egress.
+The configured primary and fallback Provider hosts are included
 automatically. Missing result-host configuration blocks the paid request before it starts. Redirects
 are rechecked and IP-literal/local-name targets, non-image responses, oversized bodies, and slow
 bodies are rejected. Generate, result-poll, and error JSON bodies are each capped at 256 KiB.

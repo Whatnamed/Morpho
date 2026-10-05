@@ -15,6 +15,8 @@ export type SecureImageDownloadResult =
   | { status: "cancelled"; reason: string };
 
 export const MAX_REMOTE_IMAGE_BYTES = 16 * 1024 * 1024;
+/** The only supported family token. This is not a general wildcard policy. */
+export const GRSAI_RESULT_CDN_FAMILY = "file*.aitohumanize.com";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_REDIRECTS = 3;
 const SAFE_IMAGE_MIME_TYPES = new Set([
@@ -163,7 +165,8 @@ function parseTrustedImageUrl(value: string, allowedHosts: ReadonlySet<string>):
       parsed.password ||
       (parsed.port && parsed.port !== "443") ||
       isForbiddenHostname(hostname) ||
-      !allowedHosts.has(hostname)
+      !(allowedHosts.has(hostname) ||
+        (allowedHosts.has(GRSAI_RESULT_CDN_FAMILY) && /^file[0-9]+\.aitohumanize\.com$/.test(hostname)))
     ) {
       return undefined;
     }

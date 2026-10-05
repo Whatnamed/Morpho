@@ -1,4 +1,5 @@
 import type { GrsImageConfig } from "./grsProvider";
+import { GRSAI_RESULT_CDN_FAMILY } from "./secureImageDownload";
 
 export type GrsImageConfigResult =
   | {
@@ -36,6 +37,13 @@ export function loadGrsImageConfig(env: Partial<NodeJS.ProcessEnv>): GrsImageCon
       status: "failed",
       reason:
         "GrsAI 配置缺失：请在 .env.local 设置 MORPHO_GRS_IMAGE_HOST_ALLOWLIST；未明确允许结果图片主机前不会发起付费生图请求。"
+    };
+  }
+
+  if (imageHostAllowlist.some((host) => host.includes("*") && host !== GRSAI_RESULT_CDN_FAMILY)) {
+    return {
+      status: "failed",
+      reason: "GrsAI 图片主机配置无效：只支持 exact hostname 或 file*.aitohumanize.com；不支持通用 wildcard。"
     };
   }
 

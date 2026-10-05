@@ -88,6 +88,26 @@ describe("GrsAI image config", () => {
     }
   });
 
+  it("preserves exact hosts alongside the normalized narrow GrsAI family token", () => {
+    expect(loadGrsImageConfig({
+      MORPHO_GRS_API_KEY: "secret",
+      MORPHO_GRS_BASE_URL: "https://grs.example",
+      MORPHO_GRS_DEFAULT_MODEL: "gpt-image-2",
+      MORPHO_GRS_IMAGE_HOST_ALLOWLIST: "FILE*.AITOHUMANIZE.COM., cdn.example, file*.aitohumanize.com"
+    })).toMatchObject({ status: "ok", config: { imageHostAllowlist: ["file*.aitohumanize.com", "cdn.example"] } });
+  });
+
+  it.each(["*.aitohumanize.com", "file*.example", "cdn.*", "*"])(
+    "fails configuration before paid egress for unsupported wildcard %s", (token) => {
+      expect(loadGrsImageConfig({
+        MORPHO_GRS_API_KEY: "secret",
+        MORPHO_GRS_BASE_URL: "https://grs.example",
+        MORPHO_GRS_DEFAULT_MODEL: "gpt-image-2",
+        MORPHO_GRS_IMAGE_HOST_ALLOWLIST: token
+      })).toMatchObject({ status: "failed", reason: expect.stringContaining("不支持通用 wildcard") });
+    }
+  );
+
   it("fails before a paid request when the result-image host allowlist is missing", () => {
     const result = loadGrsImageConfig({
       MORPHO_GRS_API_KEY: "secret",

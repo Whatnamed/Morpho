@@ -72,6 +72,17 @@ async function fixture() {
 }
 
 describe("independent Image bounded reload delivery", () => {
+  it("cannot recover from an index without its original durable intent blob; no request, asset or ACK is invented", async () => {
+    const f = await fixture();
+    const originalObjects = f.workspace().objects;
+    blobs.delete(f.key);
+    f.saved();
+    await resumeIndependentImageDeliveries(f.ports);
+    expect(f.fetch).not.toHaveBeenCalled();
+    expect(f.saveGeneratedAsset).not.toHaveBeenCalled();
+    expect(f.workspace().objects).toEqual(originalObjects);
+  });
+
   it("partial escrow stays pending, then repeated reload delivers one local Image by GET only", async () => {
     const f = await fixture(); f.saved(); f.staging(true);
     await resumeIndependentImageDeliveries(f.ports);

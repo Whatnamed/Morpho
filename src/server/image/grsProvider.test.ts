@@ -645,6 +645,26 @@ describe("GrsAI image provider adapter", () => {
     ]);
   });
 
+  it("recovers the D1 completed task from file4 using the narrow CDN policy with zero generate POSTs", async () => {
+    const taskId = "15-dea8783d-4056-4e65-97a6-0807657a9a8b";
+    const resultUrl = "https://file4.aitohumanize.com/file/4f4a014dbccf4f139e07127d07c11616.png";
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: taskId, status: "succeeded", results: [{ url: resultUrl }], progress: 100 }))
+      .mockResolvedValueOnce(new Response("original-image", { headers: { "Content-Type": "image/png" } }));
+    const beforeSubmit = vi.fn(async () => { throw new Error("Recovery must never acquire paid execution"); });
+    const observe = vi.fn(async () => undefined);
+    const result = await resolveGrsImageResult({ ...grsConfig(), imageHostAllowlist: ["file*.aitohumanize.com"] },
+      grsInput(), { fetchImpl, resumeTaskId: taskId, maxPolls: 1, pollDelayMs: 0,
+        effect: { beforeSubmit, observe, cancel: async () => undefined } });
+    expect(result).toMatchObject({ status: "ok", providerTaskId: taskId, mimeType: "image/png" });
+    if (result.status === "ok") expect(await result.blob.text()).toBe("original-image");
+    expect(beforeSubmit).not.toHaveBeenCalled();
+    expect(fetchImpl.mock.calls.map(([url, init]) => [String(url), init?.method])).toEqual([
+      [`https://grs.example/v1/api/result?id=${taskId}`, "GET"], [resultUrl, "GET"]
+    ]);
+    expect(observe).toHaveBeenCalledWith({ kind: "succeeded", taskId });
+  });
+
   it("keeps a confirmed known-task failure distinct from submission unknown", async () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse({ id: "task-failed", status: "pending" }))
