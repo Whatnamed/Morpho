@@ -1,8 +1,8 @@
 {
   "version": "p7b-l3-evidence-1",
-  "status": "partial evidence / blocked_eval_hash_assertion",
+  "status": "L3 controlled real-image smoke complete / awaiting web acceptance",
   "p7": "validating",
-  "webAcceptance": "pending",
+  "webAcceptance": "awaiting web acceptance",
   "base": "9cbe42c4389c9bf9c78876d089e388a4f0363879",
   "preregistrationSha": "9128c24abad81236d065c0eb50d0ea5ee866ad32",
   "calibrationSha": "ba1d177ed8ebdd4e68b5c9bacec51cccce39d85a",
@@ -1568,6 +1568,1528 @@
         "path": "output/playwright/p7b-l3/2026-10-05T07-12-17.860Z-zero-paid-recovery/verdict.json",
         "bytes": 400,
         "sha256": "4de4fe124621031cbe693ac436fc866f8798ff79f92d0a14d92941a99f7d3832"
+      }
+    ]
+  },
+  "d3Continuation": {
+    "version": "p7b-l3-d3-completed-1",
+    "status": "L3 controlled real-image smoke complete / awaiting web acceptance",
+    "p7": "validating",
+    "reviewedHead": "4f82cd6f5ada5ed5e49e91ca54f5df1c5ba9bd7c",
+    "d1": "ACCEPTED / closed",
+    "d2": "ACCEPTED / closed",
+    "d3": {
+      "classification": "Eval-only hash assertion defect",
+      "fixSha": "feb206c80484c5d742cf19c5112c68d231f6ea4b",
+      "status": "fixed / awaiting web acceptance",
+      "contract": "Production hashProviderImageDataUrl called through browser bridge; decoded-byte SHA256 independently verifies frozen pixel authority. Bare SHA256(dataURL) is not a product pixelHash oracle."
+    },
+    "sourceSha": "feb206c80484c5d742cf19c5112c68d231f6ea4b",
+    "originalFreshExecutionSource": "dc5f89ec34b8852c690a09069568de1872979c1f",
+    "productSrcTree": "1c39b033aa73b49260be8d4522b32fd64f8ae132",
+    "build": {
+      "schemaVersion": 2,
+      "sourceSha": "feb206c80484c5d742cf19c5112c68d231f6ea4b",
+      "sourceTreeSha256": "52ccf955576cf378778566f1514b6a103d12fe3d31444981a1785ddae1781ce3",
+      "sourceTreeFileCount": 1115,
+      "buildId": "3sSZjSInDe9yzKYlE8ZQ8",
+      "artifactSha256": "cf7d4b3fd7be9d256233d8d3b2da83c15391c56120388fb9f6dff0925e4788c4",
+      "artifactFileCount": 922,
+      "isDirty": false,
+      "nodeVersion": "v22.23.2",
+      "builtAt": "2026-10-05T08:12:58.706Z"
+    },
+    "manifestSha256": "b9b6088f15296b3547fac52a9753c25b5f6114fe841107bf54129453b0b66f88",
+    "fixtureSha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656",
+    "frozenHashes": [
+      {
+        "path": "e2e/eval/contracts.ts",
+        "sha256": "d9bb869ed395ad3a83225958a596ceb2b6ba3a8434cb8ac59a6091774666d63e"
+      },
+      {
+        "path": "e2e/eval/p7b-l3-fixture-lock.json",
+        "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+      },
+      {
+        "path": "e2e/eval/p7b-l3-manifest.json",
+        "sha256": "59d21ab0a37e5ed61cae2f387d0a9794aca78fb30f468af793d4edad4fbc5af8"
+      },
+      {
+        "path": "e2e/eval/p7b-l3-postfix-manifest.json",
+        "sha256": "b9b6088f15296b3547fac52a9753c25b5f6114fe841107bf54129453b0b66f88"
+      },
+      {
+        "path": "e2e/support/p7Seed.ts",
+        "sha256": "d9bac1bfacab1d023bbfa8f5f80e9640601672a74eb37579ad17269e82c5665f"
+      }
+    ],
+    "reconciliation": {
+      "path": "output/playwright/p7b-l3/2026-10-05T08-11-15.010Z-cmf-reconciliation/reconciliation.json",
+      "sha256": "ab7d1110dc3e21151517e35e715a2ddd17328881cb1c294dcf0a54feb0c8a09d",
+      "originalRun": "2026-10-05T07-18-07.719Z-34912",
+      "originalRawVerdictSha256": "30e0cb4c3db2153b2be388e9d7f8e80a8efb7d3aa28dac85a6800680dbc629d2",
+      "status": "completed / valid capability trial",
+      "newProviderCalls": 0,
+      "newLocalApiCalls": 0
+    },
+    "realRunId": "2026-10-05T08-11-51.835Z-29308",
+    "ledger": {
+      "paidSubmissions": 9,
+      "estimatedCostCny": 0.27,
+      "textRequests": 0,
+      "baselineSubmissions": 8,
+      "attempts": [
+        {
+          "key": "historical-D1-L3-1-trial-1",
+          "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+          "status": "response metadata captured",
+          "httpStatus": 200,
+          "classification": "diagnostic / no gradable delivered pixels"
+        },
+        {
+          "key": "L3-1-trial-1",
+          "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+          "status": "response metadata captured",
+          "httpStatus": 200
+        },
+        {
+          "key": "L3-1-trial-2",
+          "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+          "status": "response metadata captured",
+          "httpStatus": 200
+        },
+        {
+          "key": "L3-2-trial-1",
+          "bodySha256": "99746af28d686e59ece95006e24335578069edf9c64cd34316394141bd7d076d",
+          "status": "response metadata captured",
+          "httpStatus": 200
+        },
+        {
+          "key": "L3-2-trial-2",
+          "bodySha256": "99746af28d686e59ece95006e24335578069edf9c64cd34316394141bd7d076d",
+          "status": "response metadata captured",
+          "httpStatus": 200
+        },
+        {
+          "key": "L3-3-trial-1",
+          "bodySha256": "be8e2a5708faeea31dc27ed36677b478ad167410560b3abdc8c3ccb2e91fd08c",
+          "status": "response metadata captured",
+          "httpStatus": 200
+        },
+        {
+          "key": "L3-3-trial-2",
+          "bodySha256": "be8e2a5708faeea31dc27ed36677b478ad167410560b3abdc8c3ccb2e91fd08c",
+          "status": "response metadata captured",
+          "httpStatus": 200
+        },
+        {
+          "key": "L3-4-trial-1",
+          "bodySha256": "b641eb1fe5b35f868413728198af6beb9ae6f7bcad18ffcfe23f94faeeba0027",
+          "status": "response metadata captured",
+          "httpStatus": 200
+        },
+        {
+          "key": "L3-4-trial-2",
+          "bodySha256": "b641eb1fe5b35f868413728198af6beb9ae6f7bcad18ffcfe23f94faeeba0027",
+          "status": "response metadata captured",
+          "httpStatus": 200
+        }
+      ]
+    },
+    "grading": {
+      "version": "p7b-l3-preliminary-review-1",
+      "status": "L3 controlled real-image smoke complete / awaiting web acceptance",
+      "reviewer": "Root Agent preliminary Eval review against frozen rubric; not independent human/L4",
+      "scoringDimensions": [
+        "Visual preservation",
+        "requested change completion",
+        "Scenario/detail",
+        "User agency/reference authority",
+        "Maturity fit"
+      ],
+      "notApplicable": "null = N/A: no requested scene/detail dimension for CMF, angle and background-only intents; visible identity elements still graded",
+      "trial1ScoresPreserved": true,
+      "attempts": [
+        {
+          "key": "L3-1-trial-1",
+          "classId": "L3-1",
+          "trial": 1,
+          "status": "completed / valid capability trial",
+          "runId": "2026-10-05T07-18-07.719Z-34912",
+          "artifact": "output/playwright/p7b-l3/2026-10-05T07-18-07.719Z-34912/D3-supplemental-result.png",
+          "providerTaskId": "16-ee40dec9-47db-4c53-8f1a-9a5bd0bee93e",
+          "effectId": "effect:589b3966a4cda3cf73514134686860b14d9f1c83078c903fc0f1991f68af1608",
+          "resultId": "result:4b0415b27e344b0590f03a9d92a0e3587384ee03bb113789411cc16e3cbe8fd6",
+          "objectId": "image-generated-asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+          "assetId": "asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+          "pixel": {
+            "objectId": "image-generated-asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+            "assetId": "asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+            "storageKey": "blob:asset-grs-result-1791184802496-png-ab7b8fa6-b024-4bf2-90d8-fcc68274d841",
+            "sha256": "ae8abb6f1ed186a67852dc907520bab30810dc8495904558245983672d675b76",
+            "bytes": 1548456,
+            "width": 1254,
+            "height": 1254
+          },
+          "lineage": {
+            "version": 1,
+            "identityParent": {
+              "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "A",
+              "incarnationId": "00000000-0000-4000-8000-000000000024",
+              "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "parentSource": "explicitTask",
+            "direction": {
+              "objectId": "direction-proposal-direction-1783671299082-1",
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "incarnationId": "00000000-0000-4000-8000-000000000021"
+            },
+            "directionSource": "identityParent",
+            "branch": {
+              "id": "p7-a-branch",
+              "directionId": "direction-proposal-direction-1783671299082-1",
+              "label": "守望塔 A 历史路线",
+              "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "branchSource": "identityParent"
+          },
+          "referenceHashes": {
+            "decodedHashes": [
+              "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc"
+            ],
+            "productHashes": [
+              "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+            ]
+          },
+          "journalAttempts": 1,
+          "ackCount": 1,
+          "durableBeforeAck": true,
+          "sourceAndDefaultUnchanged": true,
+          "browserReopen": "pass",
+          "latencyMs": 45386,
+          "reconciliation": "output/playwright/p7b-l3/2026-10-05T08-11-15.010Z-cmf-reconciliation/reconciliation.json",
+          "preliminaryRubric": {
+            "scores": {
+              "visualPreservation": 2,
+              "requestedChangeCompletion": 3,
+              "scenarioDetail": null,
+              "userAgencyReferenceAuthority": 3,
+              "maturityFit": 2
+            },
+            "capability": "pass",
+            "observation": "Retained prior preliminary scores. Five identity elements retained; warm-grey matte tower / olive ring / ochre marks achieved. Small geometry/detail redraw remains.",
+            "userRescue": "Minor detail review; no paid rescue attempted."
+          }
+        },
+        {
+          "key": "L3-1-trial-2",
+          "classId": "L3-1",
+          "trial": 2,
+          "status": "completed / valid capability trial",
+          "runId": "2026-10-05T08-11-51.835Z-29308",
+          "artifact": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-result.png",
+          "providerTaskId": "11-efe8bae1-2b65-4d9d-98b0-f0ff9fdf1e1f",
+          "effectId": "effect:4e81af22d4436dc68dd65ec6aa0ac8a78c9194c44ffab7135932051e980b6a4e",
+          "resultId": "result:0f307d4f408f3dccb895b2a00aa655e460540c7e780e9a6e729954544158d5d2",
+          "objectId": "image-generated-asset-grs-result-1791188050949-png-2ee9f524-0c8f-443a-9ba6-9a3e6d2a8faf",
+          "assetId": "asset-grs-result-1791188050949-png-2ee9f524-0c8f-443a-9ba6-9a3e6d2a8faf",
+          "pixel": {
+            "objectId": "image-generated-asset-grs-result-1791188050949-png-2ee9f524-0c8f-443a-9ba6-9a3e6d2a8faf",
+            "assetId": "asset-grs-result-1791188050949-png-2ee9f524-0c8f-443a-9ba6-9a3e6d2a8faf",
+            "storageKey": "blob:asset-grs-result-1791188050949-png-2ee9f524-0c8f-443a-9ba6-9a3e6d2a8faf",
+            "sha256": "c6cecdca185ac2a1c56d47f0c6dd7e41b320e15421d67e04b908f45e3873285c",
+            "bytes": 1547371,
+            "width": 1254,
+            "height": 1254
+          },
+          "lineage": {
+            "version": 1,
+            "identityParent": {
+              "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "A",
+              "incarnationId": "00000000-0000-4000-8000-000000000024",
+              "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "parentSource": "explicitTask",
+            "direction": {
+              "objectId": "direction-proposal-direction-1783671299082-1",
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "incarnationId": "00000000-0000-4000-8000-000000000021"
+            },
+            "directionSource": "identityParent",
+            "branch": {
+              "id": "p7-a-branch",
+              "directionId": "direction-proposal-direction-1783671299082-1",
+              "label": "守望塔 A 历史路线",
+              "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "branchSource": "identityParent"
+          },
+          "referenceHashes": {
+            "decodedHashes": [
+              "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc"
+            ],
+            "productHashes": [
+              "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+            ]
+          },
+          "journalAttemptId": "c457b0a4-8242-426e-aee7-3f6a2233f18e",
+          "journalAttempts": 1,
+          "ackCount": 1,
+          "durableBeforeAck": true,
+          "serverAcknowledgedAt": "2026-10-05T08:14:11.437Z",
+          "sourceAndDefaultUnchanged": true,
+          "browserReopen": "pass",
+          "latencyMs": 59591,
+          "requestDigest": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+          "resultCdnHost": "file6.aitohumanize.com",
+          "intent": {
+            "key": "morpho.independent-image-delivery.v1.project-p7-buoy-copy.effect:4e81af22d4436dc68dd65ec6aa0ac8a78c9194c44ffab7135932051e980b6a4e",
+            "byteLength": 636211,
+            "sha256": "1ec8584580df37ea21adaee3f955cdc495e6c9add910d7f3cdfac973fee47ab9",
+            "mimeType": "application/json",
+            "effectId": "effect:4e81af22d4436dc68dd65ec6aa0ac8a78c9194c44ffab7135932051e980b6a4e",
+            "requestBodySha256": "922f84b009fac7c229546db1f23f0d94efbe689de9d6740a201d03532ca943a4",
+            "draftSha256": "c9debb488aa6a28413c3496003b9bcec39be64ba1e3e9ca44cf7efb63f10ce14",
+            "operationId": "operation-image-1791187992888-a44beeff",
+            "clientRequestId": "client-image-1791187992888-af5a246b-L3-1-trial-2"
+          },
+          "preliminaryRubric": {
+            "scores": {
+              "visualPreservation": 2,
+              "requestedChangeCompletion": 3,
+              "scenarioDetail": null,
+              "userAgencyReferenceAuthority": 3,
+              "maturityFit": 2
+            },
+            "capability": "pass",
+            "observation": "Five identity elements and reference composition retained; requested grey/olive/ochre CMF achieved. Minor hatch/edge/material detail redraw; no pixel-locked geometry claim.",
+            "userRescue": "Minor detail review; no paid rescue attempted."
+          }
+        },
+        {
+          "key": "L3-2-trial-1",
+          "classId": "L3-2",
+          "trial": 1,
+          "status": "completed / valid capability trial",
+          "runId": "2026-10-05T08-11-51.835Z-29308",
+          "artifact": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-result.png",
+          "providerTaskId": "7-4ab1832c-2095-4184-9599-6ef87a37669a",
+          "effectId": "effect:b1bb6e700a95698d9ce30b5ad7318442037fa55c185a474c79d6049d41369704",
+          "resultId": "result:2877ff74178a999412fd6036f541e76f7ad3f1717396db392a44794f9a953d8f",
+          "objectId": "image-generated-asset-grs-result-1791188129773-png-aa074a2c-1dc7-4104-a188-b483bc963a30",
+          "assetId": "asset-grs-result-1791188129773-png-aa074a2c-1dc7-4104-a188-b483bc963a30",
+          "pixel": {
+            "objectId": "image-generated-asset-grs-result-1791188129773-png-aa074a2c-1dc7-4104-a188-b483bc963a30",
+            "assetId": "asset-grs-result-1791188129773-png-aa074a2c-1dc7-4104-a188-b483bc963a30",
+            "storageKey": "blob:asset-grs-result-1791188129773-png-aa074a2c-1dc7-4104-a188-b483bc963a30",
+            "sha256": "aaf0ac0c3bad2b901c852298a85a7e5564508e9811c9cb63a35cc517cc023d87",
+            "bytes": 1534997,
+            "width": 1254,
+            "height": 1254
+          },
+          "lineage": {
+            "version": 1,
+            "identityParent": {
+              "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "A",
+              "incarnationId": "00000000-0000-4000-8000-000000000024",
+              "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "parentSource": "explicitTask",
+            "direction": {
+              "objectId": "direction-proposal-direction-1783671299082-1",
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "incarnationId": "00000000-0000-4000-8000-000000000021"
+            },
+            "directionSource": "identityParent",
+            "branch": {
+              "id": "p7-a-branch",
+              "directionId": "direction-proposal-direction-1783671299082-1",
+              "label": "守望塔 A 历史路线",
+              "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "branchSource": "identityParent"
+          },
+          "referenceHashes": {
+            "decodedHashes": [
+              "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc"
+            ],
+            "productHashes": [
+              "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+            ]
+          },
+          "journalAttemptId": "f4163aac-4f22-4fe9-9a93-cdda9f1efa90",
+          "journalAttempts": 1,
+          "ackCount": 1,
+          "durableBeforeAck": true,
+          "serverAcknowledgedAt": "2026-10-05T08:15:30.346Z",
+          "sourceAndDefaultUnchanged": true,
+          "browserReopen": "pass",
+          "latencyMs": 63983,
+          "requestDigest": "99746af28d686e59ece95006e24335578069edf9c64cd34316394141bd7d076d",
+          "resultCdnHost": "file8.aitohumanize.com",
+          "intent": {
+            "key": "morpho.independent-image-delivery.v1.project-p7-buoy-copy.effect:b1bb6e700a95698d9ce30b5ad7318442037fa55c185a474c79d6049d41369704",
+            "byteLength": 636062,
+            "sha256": "7be0613ddc08690dd40a328a817ef4370a0552170fdbbd483ff026e880ab7424",
+            "mimeType": "application/json",
+            "effectId": "effect:b1bb6e700a95698d9ce30b5ad7318442037fa55c185a474c79d6049d41369704",
+            "requestBodySha256": "c14585f75b2e57c944bcd8ecfe7319abd6c351e477cd5efdea793be416c9d773",
+            "draftSha256": "71389b30082d3e8a63e6b53a7f70b7803121657e126419e395c23309f49d8743",
+            "operationId": "operation-image-1791188067356-0606f78a",
+            "clientRequestId": "client-image-1791188067356-fabfc5e5-L3-2-trial-1"
+          },
+          "preliminaryRubric": {
+            "scores": {
+              "visualPreservation": 2,
+              "requestedChangeCompletion": 2,
+              "scenarioDetail": null,
+              "userAgencyReferenceAuthority": 3,
+              "maturityFit": 2
+            },
+            "capability": "pass",
+            "observation": "Usable opposite three-quarter side view and lower camera; tower/ring/lower device/roof/hatch remain. Roof, sensor and hatch side ordering reverses; mirror-like interpretation and exact ~90-degree geometry are not validated. Change score 2 reflects a usable alternate view with this gap, not measured rotation.",
+            "userRescue": "Review handedness and geometry before using as an engineering multi-view."
+          }
+        },
+        {
+          "key": "L3-2-trial-2",
+          "classId": "L3-2",
+          "trial": 2,
+          "status": "completed / valid capability trial",
+          "runId": "2026-10-05T08-11-51.835Z-29308",
+          "artifact": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-result.png",
+          "providerTaskId": "3-243891ad-5200-4db0-af86-acd2ee310b8e",
+          "effectId": "effect:dc67fc4eb2ad15df7b9a425ffc24349442f213fd4f63db1a1b9dd8a8fc67df16",
+          "resultId": "result:f04bbc9a263e783e76e0bee61ce9e409eb3795a2e9051b718508c45e956d1f23",
+          "objectId": "image-generated-asset-grs-result-1791188198621-png-fb02e524-86f8-4fbb-b038-95c580a405e8",
+          "assetId": "asset-grs-result-1791188198621-png-fb02e524-86f8-4fbb-b038-95c580a405e8",
+          "pixel": {
+            "objectId": "image-generated-asset-grs-result-1791188198621-png-fb02e524-86f8-4fbb-b038-95c580a405e8",
+            "assetId": "asset-grs-result-1791188198621-png-fb02e524-86f8-4fbb-b038-95c580a405e8",
+            "storageKey": "blob:asset-grs-result-1791188198621-png-fb02e524-86f8-4fbb-b038-95c580a405e8",
+            "sha256": "b4913e9ebc42edeb380adf18cc7eac00bce6edd9d7fee00e4f86ed71861bfe47",
+            "bytes": 1700120,
+            "width": 1254,
+            "height": 1254
+          },
+          "lineage": {
+            "version": 1,
+            "identityParent": {
+              "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "A",
+              "incarnationId": "00000000-0000-4000-8000-000000000024",
+              "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "parentSource": "explicitTask",
+            "direction": {
+              "objectId": "direction-proposal-direction-1783671299082-1",
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "incarnationId": "00000000-0000-4000-8000-000000000021"
+            },
+            "directionSource": "identityParent",
+            "branch": {
+              "id": "p7-a-branch",
+              "directionId": "direction-proposal-direction-1783671299082-1",
+              "label": "守望塔 A 历史路线",
+              "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "branchSource": "identityParent"
+          },
+          "referenceHashes": {
+            "decodedHashes": [
+              "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc"
+            ],
+            "productHashes": [
+              "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+            ]
+          },
+          "journalAttemptId": "c36fc3cc-4ba9-475e-b425-213980182afc",
+          "journalAttempts": 1,
+          "ackCount": 1,
+          "durableBeforeAck": true,
+          "serverAcknowledgedAt": "2026-10-05T08:16:39.092Z",
+          "sourceAndDefaultUnchanged": true,
+          "browserReopen": "pass",
+          "latencyMs": 53782,
+          "requestDigest": "99746af28d686e59ece95006e24335578069edf9c64cd34316394141bd7d076d",
+          "resultCdnHost": "file7.aitohumanize.com",
+          "intent": {
+            "key": "morpho.independent-image-delivery.v1.project-p7-buoy-copy.effect:dc67fc4eb2ad15df7b9a425ffc24349442f213fd4f63db1a1b9dd8a8fc67df16",
+            "byteLength": 636062,
+            "sha256": "66d22380e200e26abd25690f289a87cde195cd68ab3cc8124bb18c423bc265bc",
+            "mimeType": "application/json",
+            "effectId": "effect:dc67fc4eb2ad15df7b9a425ffc24349442f213fd4f63db1a1b9dd8a8fc67df16",
+            "requestBodySha256": "b21be988f90da039be32fc05f8892c4f59596136a91a1369dcb8328994fbae82",
+            "draftSha256": "5128b26eb54a36803a305f789cd9a24fb0f80d272c718576b8dc839aabdf3d4f",
+            "operationId": "operation-image-1791188146280-4eae09af",
+            "clientRequestId": "client-image-1791188146280-596cb75e-L3-2-trial-2"
+          },
+          "preliminaryRubric": {
+            "scores": {
+              "visualPreservation": 2,
+              "requestedChangeCompletion": 1,
+              "scenarioDetail": null,
+              "userAgencyReferenceAuthority": 3,
+              "maturityFit": 2
+            },
+            "capability": "fail",
+            "observation": "Mostly original side ordering with a lower camera and stronger ring underside perspective; convincing horizontal ~90-degree turn is absent. Requested angle needs substantial visual rescue despite preserved product identity.",
+            "userRescue": "Substantial rescue of horizontal angle required; no paid rescue attempted."
+          }
+        },
+        {
+          "key": "L3-3-trial-1",
+          "classId": "L3-3",
+          "trial": 1,
+          "status": "completed / valid capability trial",
+          "runId": "2026-10-05T08-11-51.835Z-29308",
+          "artifact": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-result.png",
+          "providerTaskId": "9-01b69615-dd10-463b-9430-3b7887314e89",
+          "effectId": "effect:d972a48dc422b09393ad330a46589849cf9574e11b6977b38ce29e514bfc784b",
+          "resultId": "result:ef0891c0b629de0d2c3ac71871e6e7eb029afd4c68cb8a3671cef82690d1b6f1",
+          "objectId": "image-generated-asset-grs-result-1791188268940-png-7e06feeb-c5b1-4524-b68b-7d55388dec99",
+          "assetId": "asset-grs-result-1791188268940-png-7e06feeb-c5b1-4524-b68b-7d55388dec99",
+          "pixel": {
+            "objectId": "image-generated-asset-grs-result-1791188268940-png-7e06feeb-c5b1-4524-b68b-7d55388dec99",
+            "assetId": "asset-grs-result-1791188268940-png-7e06feeb-c5b1-4524-b68b-7d55388dec99",
+            "storageKey": "blob:asset-grs-result-1791188268940-png-7e06feeb-c5b1-4524-b68b-7d55388dec99",
+            "sha256": "c5856478ddca9955af822c2dc3ad177ae15562e5b5649d54a6e0a810fcee5b0e",
+            "bytes": 2119334,
+            "width": 1254,
+            "height": 1254
+          },
+          "lineage": {
+            "version": 1,
+            "identityParent": {
+              "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "A",
+              "incarnationId": "00000000-0000-4000-8000-000000000024",
+              "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "parentSource": "explicitTask",
+            "direction": {
+              "objectId": "direction-proposal-direction-1783671299082-1",
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "incarnationId": "00000000-0000-4000-8000-000000000021"
+            },
+            "directionSource": "identityParent",
+            "branch": {
+              "id": "p7-a-branch",
+              "directionId": "direction-proposal-direction-1783671299082-1",
+              "label": "守望塔 A 历史路线",
+              "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "branchSource": "identityParent"
+          },
+          "referenceHashes": {
+            "decodedHashes": [
+              "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc"
+            ],
+            "productHashes": [
+              "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+            ]
+          },
+          "journalAttemptId": "de337560-adcc-46ac-9333-36452710e658",
+          "journalAttempts": 1,
+          "ackCount": 1,
+          "durableBeforeAck": true,
+          "serverAcknowledgedAt": "2026-10-05T08:17:49.546Z",
+          "sourceAndDefaultUnchanged": true,
+          "browserReopen": "pass",
+          "latencyMs": 55783,
+          "requestDigest": "be8e2a5708faeea31dc27ed36677b478ad167410560b3abdc8c3ccb2e91fd08c",
+          "resultCdnHost": "file5.aitohumanize.com",
+          "intent": {
+            "key": "morpho.independent-image-delivery.v1.project-p7-buoy-copy.effect:d972a48dc422b09393ad330a46589849cf9574e11b6977b38ce29e514bfc784b",
+            "byteLength": 639189,
+            "sha256": "6e738bf0a34a2ff855b763793da149c892a5e87c6a95a3e27325112b4753698a",
+            "mimeType": "application/json",
+            "effectId": "effect:d972a48dc422b09393ad330a46589849cf9574e11b6977b38ce29e514bfc784b",
+            "requestBodySha256": "9674ec6fcea4271a2dec1907c3c3136d58000d7cacf0e84636c314742c9d6bb4",
+            "draftSha256": "f0bb16eb51572c659d06628c62fe9551c64dd8917cfc900f1d1b2fb9f450a07f",
+            "operationId": "operation-image-1791188214730-0aa25694",
+            "clientRequestId": "client-image-1791188214730-85e930b0-L3-3-trial-1"
+          },
+          "preliminaryRubric": {
+            "scores": {
+              "visualPreservation": 2,
+              "requestedChangeCompletion": 3,
+              "scenarioDetail": 2,
+              "userAgencyReferenceAuthority": 3,
+              "maturityFit": 2
+            },
+            "capability": "pass",
+            "observation": "Closed hatch, technician hand contacting existing hatch/latch region, workwear, dock and stable-looking support frame with lower-device clearance. Apparent reach/scale plausible; hand/latch mechanics and support strength unproven.",
+            "userRescue": "Review hand/latch, support and real dimensions; no paid rescue attempted."
+          }
+        },
+        {
+          "key": "L3-3-trial-2",
+          "classId": "L3-3",
+          "trial": 2,
+          "status": "completed / valid capability trial",
+          "runId": "2026-10-05T08-11-51.835Z-29308",
+          "artifact": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-result.png",
+          "providerTaskId": "3-08ac7df8-e42d-4988-8b26-15075a09e546",
+          "effectId": "effect:e7842c765bfa9e761fe035be2db489cae091deef24702a96cbee288c619abb3f",
+          "resultId": "result:136932f1c36a6327017d64e176e974b467c3eae64c98aa09bbc897cb1939cb07",
+          "objectId": "image-generated-asset-grs-result-1791188331158-png-a47ac419-28ad-4c25-a68e-bd208621a3f4",
+          "assetId": "asset-grs-result-1791188331158-png-a47ac419-28ad-4c25-a68e-bd208621a3f4",
+          "pixel": {
+            "objectId": "image-generated-asset-grs-result-1791188331158-png-a47ac419-28ad-4c25-a68e-bd208621a3f4",
+            "assetId": "asset-grs-result-1791188331158-png-a47ac419-28ad-4c25-a68e-bd208621a3f4",
+            "storageKey": "blob:asset-grs-result-1791188331158-png-a47ac419-28ad-4c25-a68e-bd208621a3f4",
+            "sha256": "51abfc5c4a77a6f15a51cadce5497c68480e465bbe1a250bf11ec52c3a2c8aec",
+            "bytes": 2129487,
+            "width": 1254,
+            "height": 1254
+          },
+          "lineage": {
+            "version": 1,
+            "identityParent": {
+              "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "A",
+              "incarnationId": "00000000-0000-4000-8000-000000000024",
+              "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "parentSource": "explicitTask",
+            "direction": {
+              "objectId": "direction-proposal-direction-1783671299082-1",
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "incarnationId": "00000000-0000-4000-8000-000000000021"
+            },
+            "directionSource": "identityParent",
+            "branch": {
+              "id": "p7-a-branch",
+              "directionId": "direction-proposal-direction-1783671299082-1",
+              "label": "守望塔 A 历史路线",
+              "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "branchSource": "identityParent"
+          },
+          "referenceHashes": {
+            "decodedHashes": [
+              "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc"
+            ],
+            "productHashes": [
+              "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+            ]
+          },
+          "journalAttemptId": "f8a6991c-f169-47c7-98be-e913c0c58172",
+          "journalAttempts": 1,
+          "ackCount": 1,
+          "durableBeforeAck": true,
+          "serverAcknowledgedAt": "2026-10-05T08:18:51.768Z",
+          "sourceAndDefaultUnchanged": true,
+          "browserReopen": "pass",
+          "latencyMs": 48466,
+          "requestDigest": "be8e2a5708faeea31dc27ed36677b478ad167410560b3abdc8c3ccb2e91fd08c",
+          "resultCdnHost": "file5.aitohumanize.com",
+          "intent": {
+            "key": "morpho.independent-image-delivery.v1.project-p7-buoy-copy.effect:e7842c765bfa9e761fe035be2db489cae091deef24702a96cbee288c619abb3f",
+            "byteLength": 639189,
+            "sha256": "1b6f87cbd538c4133cca1153e2695362f3d544acf065e4f5e6744eca3bdd8408",
+            "mimeType": "application/json",
+            "effectId": "effect:e7842c765bfa9e761fe035be2db489cae091deef24702a96cbee288c619abb3f",
+            "requestBodySha256": "4d2864e77228b9c294ed05e2e087882273a33d8105f8acf71fec4b74da2eedb6",
+            "draftSha256": "7ab084e5b6e4e4e9800608f7e5d83e5082e0e318c0ee3d25f5bb9547e0b84fec",
+            "operationId": "operation-image-1791188284235-da55aaaf",
+            "clientRequestId": "client-image-1791188284235-49893df3-L3-3-trial-2"
+          },
+          "preliminaryRubric": {
+            "scores": {
+              "visualPreservation": 2,
+              "requestedChangeCompletion": 3,
+              "scenarioDetail": 2,
+              "userAgencyReferenceAuthority": 3,
+              "maturityFit": 2
+            },
+            "capability": "pass",
+            "observation": "Closed hatch with technician contacting left latch region, dock setting and support under ring preserving lower-device clearance. Plausible apparent reach; fingers/handle and support geometry still require design review.",
+            "userRescue": "Review hand/latch, support and real dimensions; no paid rescue attempted."
+          }
+        },
+        {
+          "key": "L3-4-trial-1",
+          "classId": "L3-4",
+          "trial": 1,
+          "status": "completed / valid capability trial",
+          "runId": "2026-10-05T08-11-51.835Z-29308",
+          "artifact": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-result.png",
+          "providerTaskId": "1-abf0c312-608b-422c-a96d-0ea84c278a86",
+          "effectId": "effect:f0212cb84fd579a99f70a252ff644df0b40db3ef7ee528c2e78038d2adc6ecbf",
+          "resultId": "result:cf95f3b042a14c48eb8deb9bf99d43568afa3153552e7ae3b0c05bb01aa168fd",
+          "objectId": "image-generated-asset-grs-result-1791188387997-png-aac4042d-8bf6-4f90-81ad-d1b9319faad9",
+          "assetId": "asset-grs-result-1791188387997-png-aac4042d-8bf6-4f90-81ad-d1b9319faad9",
+          "pixel": {
+            "objectId": "image-generated-asset-grs-result-1791188387997-png-aac4042d-8bf6-4f90-81ad-d1b9319faad9",
+            "assetId": "asset-grs-result-1791188387997-png-aac4042d-8bf6-4f90-81ad-d1b9319faad9",
+            "storageKey": "blob:asset-grs-result-1791188387997-png-aac4042d-8bf6-4f90-81ad-d1b9319faad9",
+            "sha256": "bfff22ecdf3f886e854c4c060263d4bb08762fa54e2e9e2ad078eb3e0a5c9a79",
+            "bytes": 1469312,
+            "width": 1254,
+            "height": 1254
+          },
+          "lineage": {
+            "version": 1,
+            "identityParent": {
+              "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "A",
+              "incarnationId": "00000000-0000-4000-8000-000000000024",
+              "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "parentSource": "explicitTask",
+            "direction": {
+              "objectId": "direction-proposal-direction-1783671299082-1",
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "incarnationId": "00000000-0000-4000-8000-000000000021"
+            },
+            "directionSource": "identityParent",
+            "branch": {
+              "id": "p7-a-branch",
+              "directionId": "direction-proposal-direction-1783671299082-1",
+              "label": "守望塔 A 历史路线",
+              "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "branchSource": "identityParent"
+          },
+          "referenceHashes": {
+            "decodedHashes": [
+              "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc"
+            ],
+            "productHashes": [
+              "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+            ]
+          },
+          "journalAttemptId": "0ee45aca-154b-4f10-b1b2-4547b9915ede",
+          "journalAttempts": 1,
+          "ackCount": 1,
+          "durableBeforeAck": true,
+          "serverAcknowledgedAt": "2026-10-05T08:19:48.440Z",
+          "sourceAndDefaultUnchanged": true,
+          "browserReopen": "pass",
+          "latencyMs": 42842,
+          "requestDigest": "b641eb1fe5b35f868413728198af6beb9ae6f7bcad18ffcfe23f94faeeba0027",
+          "resultCdnHost": "file2.aitohumanize.com",
+          "intent": {
+            "key": "morpho.independent-image-delivery.v1.project-p7-buoy-copy.effect:f0212cb84fd579a99f70a252ff644df0b40db3ef7ee528c2e78038d2adc6ecbf",
+            "byteLength": 636007,
+            "sha256": "95497fdea7e6245b3cf1a8532a1c0375e3fbc3b5a99daf08e2602b3ac02c798b",
+            "mimeType": "application/json",
+            "effectId": "effect:f0212cb84fd579a99f70a252ff644df0b40db3ef7ee528c2e78038d2adc6ecbf",
+            "requestBodySha256": "8c02ab074e12290bc7e4f964a19cb862886d1d8492528cfdbe7c5a626a27bab5",
+            "draftSha256": "40aebd67ef8a6ff94dc697288d736d2b7c865a1a37d7f2b657669b8216022b4a",
+            "operationId": "operation-image-1791188346543-3bdea717",
+            "clientRequestId": "client-image-1791188346543-b0594ae7-L3-4-trial-1"
+          },
+          "preliminaryRubric": {
+            "scores": {
+              "visualPreservation": 2,
+              "requestedChangeCompletion": 3,
+              "scenarioDetail": null,
+              "userAgencyReferenceAuthority": 3,
+              "maturityFit": 2
+            },
+            "capability": "pass",
+            "observation": "Dark untextured grey background and soft edge light; original tower/ring/lower device/roof/hatch and colour family retained. Small detail redraw. Only A actual pixels; default E unchanged.",
+            "userRescue": "Minor detail review; no paid rescue attempted."
+          }
+        },
+        {
+          "key": "L3-4-trial-2",
+          "classId": "L3-4",
+          "trial": 2,
+          "status": "completed / valid capability trial",
+          "runId": "2026-10-05T08-11-51.835Z-29308",
+          "artifact": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-result.png",
+          "providerTaskId": "11-47d43ffd-6025-4808-a35a-e8b85a2e7937",
+          "effectId": "effect:7507d2995e76de81f3d75e7d21f259b8cc9583f030d0d08dec1d3b90759b3935",
+          "resultId": "result:a3f4b9273e63b468e5a463783818c570eeb31602672dd2bad804fd90e7721162",
+          "objectId": "image-generated-asset-grs-result-1791188447277-png-0647279e-599c-4e1f-973f-da165bc64748",
+          "assetId": "asset-grs-result-1791188447277-png-0647279e-599c-4e1f-973f-da165bc64748",
+          "pixel": {
+            "objectId": "image-generated-asset-grs-result-1791188447277-png-0647279e-599c-4e1f-973f-da165bc64748",
+            "assetId": "asset-grs-result-1791188447277-png-0647279e-599c-4e1f-973f-da165bc64748",
+            "storageKey": "blob:asset-grs-result-1791188447277-png-0647279e-599c-4e1f-973f-da165bc64748",
+            "sha256": "fe9c35b4935657939b3874bf0fd4a32cb37c25489696ef3c5ff12eeaa58d2afa",
+            "bytes": 1476807,
+            "width": 1254,
+            "height": 1254
+          },
+          "lineage": {
+            "version": 1,
+            "identityParent": {
+              "objectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195",
+              "title": "A",
+              "incarnationId": "00000000-0000-4000-8000-000000000024",
+              "assetId": "asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "parentSource": "explicitTask",
+            "direction": {
+              "objectId": "direction-proposal-direction-1783671299082-1",
+              "title": "方向 1｜守望塔：长期驻留型声学浮标",
+              "incarnationId": "00000000-0000-4000-8000-000000000021"
+            },
+            "directionSource": "identityParent",
+            "branch": {
+              "id": "p7-a-branch",
+              "directionId": "direction-proposal-direction-1783671299082-1",
+              "label": "守望塔 A 历史路线",
+              "rootObjectId": "image-generated-asset-grs-result-1783682204066-jpg-cabf128b-b221-4eb1-b7c1-cfe9a515d195"
+            },
+            "branchSource": "identityParent"
+          },
+          "referenceHashes": {
+            "decodedHashes": [
+              "c1fa9574e8a7870179327f4cf4bd175fb37c3036dfa513e3933dda4b62e4ecdc"
+            ],
+            "productHashes": [
+              "34d97d256df0d6c832ecc53ceaf3e3b9b0eeb80c4480647d35b7d100acaf9293"
+            ]
+          },
+          "journalAttemptId": "a4e8305f-6868-4bfc-bb67-6084124678b8",
+          "journalAttempts": 1,
+          "ackCount": 1,
+          "durableBeforeAck": true,
+          "serverAcknowledgedAt": "2026-10-05T08:20:47.745Z",
+          "sourceAndDefaultUnchanged": true,
+          "browserReopen": "pass",
+          "latencyMs": 44319,
+          "requestDigest": "b641eb1fe5b35f868413728198af6beb9ae6f7bcad18ffcfe23f94faeeba0027",
+          "resultCdnHost": "file3.aitohumanize.com",
+          "intent": {
+            "key": "morpho.independent-image-delivery.v1.project-p7-buoy-copy.effect:7507d2995e76de81f3d75e7d21f259b8cc9583f030d0d08dec1d3b90759b3935",
+            "byteLength": 636007,
+            "sha256": "f94d25928decdc8e962d7de3785f4bf0d0f9c4497374bb26678346d6d925fdbe",
+            "mimeType": "application/json",
+            "effectId": "effect:7507d2995e76de81f3d75e7d21f259b8cc9583f030d0d08dec1d3b90759b3935",
+            "requestBodySha256": "e94ed82f99d919c2947a2c870204bfe23fa10fd142aaabd04abae08dee83f77b",
+            "draftSha256": "a3fd84d4b32b3ea3fb0c2d86a09f3a781d773d50b1dd8df3430a10a9ef93db81",
+            "operationId": "operation-image-1791188404391-53ce23e9",
+            "clientRequestId": "client-image-1791188404391-1119023d-L3-4-trial-2"
+          },
+          "preliminaryRubric": {
+            "scores": {
+              "visualPreservation": 2,
+              "requestedChangeCompletion": 3,
+              "scenarioDetail": null,
+              "userAgencyReferenceAuthority": 3,
+              "maturityFit": 2
+            },
+            "capability": "pass",
+            "observation": "Same requested background/edge lighting and preserved identity; small hatch/lower-device redraw remains. Only A actual pixels; default E unchanged.",
+            "userRescue": "Minor detail review; no paid rescue attempted."
+          }
+        }
+      ],
+      "classes": [
+        {
+          "classId": "L3-1",
+          "kind": "CMF only",
+          "results": [
+            "pass",
+            "pass"
+          ],
+          "consistency": "consistent pass"
+        },
+        {
+          "classId": "L3-2",
+          "kind": "Another angle",
+          "results": [
+            "pass",
+            "fail"
+          ],
+          "consistency": "variable",
+          "attribution": "Model visual rotation/geometry response; frozen exact wire and authority passed. This is quality, not a runtime hard blocker."
+        },
+        {
+          "classId": "L3-3",
+          "kind": "Usage / maintenance scene",
+          "results": [
+            "pass",
+            "pass"
+          ],
+          "consistency": "consistent pass"
+        },
+        {
+          "classId": "L3-4",
+          "kind": "Explicit default-reference exclusion",
+          "results": [
+            "pass",
+            "pass"
+          ],
+          "consistency": "consistent pass"
+        }
+      ],
+      "firstAttemptClasses": "4/4 preliminary pass, with explicit angle-trial1 gap; not package acceptance",
+      "twoTrialConsistency": "3/4 consistent pass; angle variable",
+      "qualityTrials": "7 preliminary pass / 1 preliminary fail; all 8 valid evidence",
+      "paidRescueAttempts": 0,
+      "hardBlocker": null,
+      "ledger": {
+        "paidSubmissions": 9,
+        "estimatedCostCny": 0.27,
+        "textRequests": 0,
+        "baselineSubmissions": 8,
+        "attempts": [
+          {
+            "key": "historical-D1-L3-1-trial-1",
+            "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+            "status": "response metadata captured",
+            "httpStatus": 200,
+            "classification": "diagnostic / no gradable delivered pixels"
+          },
+          {
+            "key": "L3-1-trial-1",
+            "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+            "status": "response metadata captured",
+            "httpStatus": 200
+          },
+          {
+            "key": "L3-1-trial-2",
+            "bodySha256": "586aaf7c047163cce776f6c2522b74575f5c68dd3a6f10db55b49703f12695e4",
+            "status": "response metadata captured",
+            "httpStatus": 200
+          },
+          {
+            "key": "L3-2-trial-1",
+            "bodySha256": "99746af28d686e59ece95006e24335578069edf9c64cd34316394141bd7d076d",
+            "status": "response metadata captured",
+            "httpStatus": 200
+          },
+          {
+            "key": "L3-2-trial-2",
+            "bodySha256": "99746af28d686e59ece95006e24335578069edf9c64cd34316394141bd7d076d",
+            "status": "response metadata captured",
+            "httpStatus": 200
+          },
+          {
+            "key": "L3-3-trial-1",
+            "bodySha256": "be8e2a5708faeea31dc27ed36677b478ad167410560b3abdc8c3ccb2e91fd08c",
+            "status": "response metadata captured",
+            "httpStatus": 200
+          },
+          {
+            "key": "L3-3-trial-2",
+            "bodySha256": "be8e2a5708faeea31dc27ed36677b478ad167410560b3abdc8c3ccb2e91fd08c",
+            "status": "response metadata captured",
+            "httpStatus": 200
+          },
+          {
+            "key": "L3-4-trial-1",
+            "bodySha256": "b641eb1fe5b35f868413728198af6beb9ae6f7bcad18ffcfe23f94faeeba0027",
+            "status": "response metadata captured",
+            "httpStatus": 200
+          },
+          {
+            "key": "L3-4-trial-2",
+            "bodySha256": "b641eb1fe5b35f868413728198af6beb9ae6f7bcad18ffcfe23f94faeeba0027",
+            "status": "response metadata captured",
+            "httpStatus": 200
+          }
+        ]
+      }
+    },
+    "gates": {
+      "paidSubmissionsPerTrial": 1,
+      "journalAttemptsPerTrial": 1,
+      "distinctEffectsAndTasks": 8,
+      "distinctNewAssetsAndObjects": 8,
+      "immutableDeliveredResults": 8,
+      "sourceAndDefaultUnchanged": true,
+      "finalWireReferences": "Only A; E/X omitted; exact decoded pixels and production product hash",
+      "lineage": "parent A / original direction / branch / version relation",
+      "durableWorkspaceAndAssetBeforeAck": true,
+      "ackCountPerTrial": 1,
+      "serverAckDurable": true,
+      "browserReopen": "8/8 same object/asset/metadata/hash"
+    },
+    "hardBlocker": null,
+    "historicalDiagnostic": {
+      "runId": "2026-10-05T05-03-54.495Z-21972",
+      "paidSubmissions": 1,
+      "estimatedCostCny": 0.03,
+      "classification": "Not a fresh capability trial; no gradable delivered image; not reconstructed/retried"
+    },
+    "verification": {
+      "hashAndGuardTests": 13,
+      "adjacentTests": 72,
+      "adjacentFiles": 5,
+      "zeroPaidRecoveryChromium": 7,
+      "typecheck": "pass",
+      "targetedLint": "pass",
+      "cleanStrictProductionBuild": "pass",
+      "diffCheck": "pass",
+      "oldArtifactHashesUnchanged": 118,
+      "productSqlSchemaUnchanged": true,
+      "frozenContractsPlansReferencesOracleUnchanged": true
+    },
+    "limits": [
+      "Preliminary Root Agent Eval review only; independent human/L4 not_run.",
+      "No real Text planning; P7B-2 external Provider blocker remains closed to new execution.",
+      "Actual billing/refunds and reseller internal execution count unknown; .27 is published tariff estimate.",
+      "Requested 1K / aspectRatio 1024x1024 produced 1254x1254 PNGs; no resize or replacement.",
+      "One T2 product and two independent attempts per class; geometry, dimensions, performance and multi-view engineering consistency not proven.",
+      "No hosted/production boundary acceptance, P7C, main merge or broader P7 acceptance."
+    ],
+    "artifacts": [
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/active-attempt.json",
+        "bytes": 28,
+        "sha256": "de538e4d2cba349b9a0690d99f7899f7a308ea9d43eaf1b8b2949f04fe5a43b1"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/browser-host.js",
+        "bytes": 2398976,
+        "sha256": "6512cf49854cc9d4ae0bb097adb2044904c489b44dc784d710bd8bc3e076d1ef"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/build.log",
+        "bytes": 1476,
+        "sha256": "8ed4dcc11a5d2ea49c7ccb50fe2cb1c9e2a97c23e6e3e0a4a08640408e9a28a7"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/environment.json",
+        "bytes": 16029,
+        "sha256": "d1288cedf8653b579bca7ef0943760166c56dda371f2ebed09dd0e66252ef4fc"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/fixture-metadata.json",
+        "bytes": 155658,
+        "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/fixture.json",
+        "bytes": 1944496,
+        "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-after.json",
+        "bytes": 10809711,
+        "sha256": "c1ffc3668570c8a94eba9ef1ae291291b3b88978652f0366266da278a54ac544"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-attempt.json",
+        "bytes": 41154,
+        "sha256": "de4af6a21d8c41ae2190337f4eadcae5e774d8dc9d3921e7aa1ac2991e3c7584"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-before.json",
+        "bytes": 2294927,
+        "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-browser-reopen.json",
+        "bytes": 2662297,
+        "sha256": "927a749f39c85a9b4acb95522ad0bf87916966d3bbfc971c08ca256478bad1e2"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-download-1791188044843.json",
+        "bytes": 185,
+        "sha256": "17c05f40ea4c0743012dca1945ae40e41adc0ce6dda4c68e0e06252289f150f4"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-intent-before-post.json",
+        "bytes": 2645456,
+        "sha256": "81f0180c5e33ab744b8fd59cf20c15a7288edcd606709b5b2b3a29cd8c0c73d7"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-journal.json",
+        "bytes": 603093,
+        "sha256": "126608784bf7a6fdb9de0aa677cb021f2fb80ee435217590858b8a166f2af8ed"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-provider-request.json",
+        "bytes": 600268,
+        "sha256": "cd2b10b32b29ae0cb2f2759d9c9ac4cca76827773a22eb315fc7f56cc4115d80"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-provider-response.json",
+        "bytes": 265,
+        "sha256": "8a97a0bcd479b0f299e728b395969fbd0be63cff55a82230da96e2f328333afa"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-reopen.json",
+        "bytes": 2662297,
+        "sha256": "927a749f39c85a9b4acb95522ad0bf87916966d3bbfc971c08ca256478bad1e2"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-1-trial-2-result.png",
+        "bytes": 1547371,
+        "sha256": "c6cecdca185ac2a1c56d47f0c6dd7e41b320e15421d67e04b908f45e3873285c"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-after.json",
+        "bytes": 10809825,
+        "sha256": "bf1bf14abda07decf22ebe34526e71dab840346ab4f983fa129e2f85cc2a1a34"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-attempt.json",
+        "bytes": 41118,
+        "sha256": "14c36f1c84f351694329e16e42503358cc1a48b5d0b411db7124e28820037245"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-before.json",
+        "bytes": 2294927,
+        "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-browser-reopen.json",
+        "bytes": 2662383,
+        "sha256": "1c72679e3c08569cfb5e3c4ad7ee988001db65b7d4bd93fcdfe348e51056cd93"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-download-1791188125002.json",
+        "bytes": 185,
+        "sha256": "f816792264d8325df126cac1be830e2d0e6ce4fa9af88838a9380816cdc2b252"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-intent-before-post.json",
+        "bytes": 2645288,
+        "sha256": "37a07814023e782533b226e481b21829e2316199324b30b2698fe2cce6645730"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-journal.json",
+        "bytes": 1206020,
+        "sha256": "84272ae5b5930cbfaf0cc4e9d0948118a612c21eef4f968d47f4349be287bdfa"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-provider-request.json",
+        "bytes": 600189,
+        "sha256": "051be84351770a008b57a38796269e5899a2c918d958999597a70b6616b1286e"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-provider-response.json",
+        "bytes": 264,
+        "sha256": "c424f8c58b4c9903c00067093b7e4bb18c3eafac741238ca8cec36df73a23231"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-reopen.json",
+        "bytes": 2662383,
+        "sha256": "1c72679e3c08569cfb5e3c4ad7ee988001db65b7d4bd93fcdfe348e51056cd93"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-1-result.png",
+        "bytes": 1534997,
+        "sha256": "aaf0ac0c3bad2b901c852298a85a7e5564508e9811c9cb63a35cc517cc023d87"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-after.json",
+        "bytes": 10810087,
+        "sha256": "251e64a7271e069cae21eb5a2feeb1bbecf3c21fc85331b539e3e5aea5750c88"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-attempt.json",
+        "bytes": 41118,
+        "sha256": "30267ab8c6824788789569d19015e8a0e0f213c3f3eca32089382076fa6696fc"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-before.json",
+        "bytes": 2294927,
+        "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-browser-reopen.json",
+        "bytes": 2662379,
+        "sha256": "6f4885d97e7369d8baea040b25cdad026b3e787a6dc18aeb1e488f6d0b49da5d"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-download-1791188191133.json",
+        "bytes": 185,
+        "sha256": "cec8fa8d2df258a5fead41f8ee4cc546f4daa7db46941dd5e7a8953cdb74de36"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-intent-before-post.json",
+        "bytes": 2645288,
+        "sha256": "0cad472764265f635b17a105eba137ba93539da43e9214fe3a9b1bf2bb2c6d53"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-journal.json",
+        "bytes": 1808947,
+        "sha256": "80f2f2642439746d43de371d208ba1bc1fb441a4ac125f844ae951595a00d118"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-provider-request.json",
+        "bytes": 600189,
+        "sha256": "9188b2945ab6b3828c1196d82fb87331241d4228613099f3954168edf8a65aa7"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-provider-response.json",
+        "bytes": 264,
+        "sha256": "473739dd0d83246ca8ea1b4bc34295d261da2e052bab25960778f172cf7819ba"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-reopen.json",
+        "bytes": 2662379,
+        "sha256": "6f4885d97e7369d8baea040b25cdad026b3e787a6dc18aeb1e488f6d0b49da5d"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-2-trial-2-result.png",
+        "bytes": 1700120,
+        "sha256": "b4913e9ebc42edeb380adf18cc7eac00bce6edd9d7fee00e4f86ed71861bfe47"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-after.json",
+        "bytes": 10834449,
+        "sha256": "bfd9df21309379e05fde34425ef9186da95e1b997dd8df7c862366ba290cc7c4"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-attempt.json",
+        "bytes": 43448,
+        "sha256": "4e93e2225dcb134aa24ae6181432921b9e2d51b366ce7064f392f2dcac8172c5"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-before.json",
+        "bytes": 2294927,
+        "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-browser-reopen.json",
+        "bytes": 2668513,
+        "sha256": "d80d78075c4cda482825da8e6f96017b67eaae47046823173f069f18663ecbbf"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-download-1791188264634.json",
+        "bytes": 185,
+        "sha256": "fc2bcd7b48a14f7f4b6aba9c4e4674728cf151e1d4d422b5a6975abb980ac99d"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-intent-before-post.json",
+        "bytes": 2651690,
+        "sha256": "19b1cc9554fcb6ec57cffd0b8bae5e5d17a4aa895541d5ee6e8e5083f36193b1"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-journal.json",
+        "bytes": 2412419,
+        "sha256": "3d9a7b4aa45e66b68db9057e1f3645f66d1496a0a336dd7eadfb72312ab01efe"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-provider-request.json",
+        "bytes": 600734,
+        "sha256": "8fb476058d5b7033817e36be9f08e994bae67c38993f2c303e3a25220c11dae5"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-provider-response.json",
+        "bytes": 264,
+        "sha256": "40ed948fc87b86f07a10ab02ecbd30840881f20e0d4ea77f12cab0e744e96ef8"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-reopen.json",
+        "bytes": 2668513,
+        "sha256": "d80d78075c4cda482825da8e6f96017b67eaae47046823173f069f18663ecbbf"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-1-result.png",
+        "bytes": 2119334,
+        "sha256": "c5856478ddca9955af822c2dc3ad177ae15562e5b5649d54a6e0a810fcee5b0e"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-after.json",
+        "bytes": 10834458,
+        "sha256": "cfffe309fa1f23ac177fa9085da791972407cb0555457463cd9f57ea3c3fc63e"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-attempt.json",
+        "bytes": 43448,
+        "sha256": "4ede8567e3046226d9e45f590a03fc9ed7456cd7cf88c708eb082b6b97569a3f"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-before.json",
+        "bytes": 2294927,
+        "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-browser-reopen.json",
+        "bytes": 2668517,
+        "sha256": "db021d7efa5ed7dc72bd27642e2516efa7e5e5828214d0e37474ecfdce62c87a"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-download-1791188327173.json",
+        "bytes": 185,
+        "sha256": "37b8e159298cc3aa8a3135d4f8798a2a20a693b7a300006c7309b5a3d904adda"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-intent-before-post.json",
+        "bytes": 2651690,
+        "sha256": "5d4eec16ff577b56b0060f39452f1e1abb52abe293b333597ec43b43823c21ca"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-journal.json",
+        "bytes": 3015891,
+        "sha256": "4bd5f8f4fded53e47d5535f943ab8c0fd654d6d0c38fb790a837949fb436ecca"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-provider-request.json",
+        "bytes": 600734,
+        "sha256": "4b20da7bb0e95b8dbaf51a7d814d1d913673e03627acb2262a19dd36b8b0d8da"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-provider-response.json",
+        "bytes": 264,
+        "sha256": "f9c3ee1212e76a1514659bf88ac3d94d9fac77287c906225d482d5150f7196dd"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-reopen.json",
+        "bytes": 2668517,
+        "sha256": "db021d7efa5ed7dc72bd27642e2516efa7e5e5828214d0e37474ecfdce62c87a"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-3-trial-2-result.png",
+        "bytes": 2129487,
+        "sha256": "51abfc5c4a77a6f15a51cadce5497c68480e465bbe1a250bf11ec52c3a2c8aec"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-after.json",
+        "bytes": 10810549,
+        "sha256": "1b9da048e737403b1dc22028df87f386364a57d1c3e661a6fa0c55fcbdc26a65"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-attempt.json",
+        "bytes": 41120,
+        "sha256": "d93978899db9fd5e17ac5c2eb87839c1b4679fe665a9274c60acf698e14accca"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-before.json",
+        "bytes": 2294927,
+        "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-browser-reopen.json",
+        "bytes": 2662626,
+        "sha256": "12401ed845a82e62636c73a58b74b5ed86559790baf6e3e62b4fdb43617d7eb3"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-download-1791188384872.json",
+        "bytes": 185,
+        "sha256": "4b13903ed1acc0766c93e8820acd470c41845bcd1f7d26eb6b7eee7df7bd3837"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-intent-before-post.json",
+        "bytes": 2645186,
+        "sha256": "f4d5a0105bfbdbe4f4e3f07ab8f4eeb6571a71da04a96cf998c837e59535c8ff"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-journal.json",
+        "bytes": 3618797,
+        "sha256": "54449139fd7177d7ed7fd37434b42e059d54a54a72433e21871c28903b296b13"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-provider-request.json",
+        "bytes": 600168,
+        "sha256": "e2f5e0a367da5adfe40bec4fda5697aafa14ba3262d3ada450cb4a1c747a35b9"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-provider-response.json",
+        "bytes": 264,
+        "sha256": "8f7204edb91889cef604aca08144aba89e5ed42dd8a2d930a597131b97dc3e21"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-reopen.json",
+        "bytes": 2662626,
+        "sha256": "12401ed845a82e62636c73a58b74b5ed86559790baf6e3e62b4fdb43617d7eb3"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-1-result.png",
+        "bytes": 1469312,
+        "sha256": "bfff22ecdf3f886e854c4c060263d4bb08762fa54e2e9e2ad078eb3e0a5c9a79"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-after.json",
+        "bytes": 10810585,
+        "sha256": "50558652321767a2834941abeb5298c5b8222f757de7433e2bad69982806c946"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-attempt.json",
+        "bytes": 41124,
+        "sha256": "d0693c643681135363489db0cbbb8d4ea511118f156ddc927d8a7a7ce7cafa88"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-before.json",
+        "bytes": 2294927,
+        "sha256": "56bd624790828824ca329850e8f3663f93d0eff56aac6f69c5c0a0626d8ba116"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-browser-reopen.json",
+        "bytes": 2662635,
+        "sha256": "f7c5a311865cdaf883b82dbce3806cabf8eceddc5ca687c6c3c310974bdb0028"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-download-1791188444109.json",
+        "bytes": 185,
+        "sha256": "ab776c790c94fcdc40842a1a12d4d9cceca730f637e21d34f9b97e6a1ebcc9ec"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-intent-before-post.json",
+        "bytes": 2645186,
+        "sha256": "d4b4c196c12b7451b3fc5b9974c65cd5ce2bbb4c19f2945f6c99f266692f7c2f"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-journal.json",
+        "bytes": 4221705,
+        "sha256": "3e423b2c76eddcae9b1a45523c3b8fb42a9948b50e94ca2fe0d0d3b5f4eb6a8f"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-provider-request.json",
+        "bytes": 600168,
+        "sha256": "b61052be6566272f8bc12eedfe5845c59e01dc5c7e8b75d7ac823add1b40fccd"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-provider-response.json",
+        "bytes": 265,
+        "sha256": "2a845eafbba89893943af73fbcf22881cc014244c5bf89eae3a5addcf8400c7f"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-reopen.json",
+        "bytes": 2662635,
+        "sha256": "f7c5a311865cdaf883b82dbce3806cabf8eceddc5ca687c6c3c310974bdb0028"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/L3-4-trial-2-result.png",
+        "bytes": 1476807,
+        "sha256": "fe9c35b4935657939b3874bf0fd4a32cb37c25489696ef3c5ff12eeaa58d2afa"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/ledger-seed.json",
+        "bytes": 607,
+        "sha256": "0e37345314c3259762843d506f0052e5e347266cc75606554b362d6d0f130903"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/paid-ledger.json",
+        "bytes": 2007,
+        "sha256": "a2008016b99815935fca0d76d0e2dffc02cfa8911ff56692e14be81cd4084251"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/preliminary-review.json",
+        "bytes": 37827,
+        "sha256": "381b23107487a92e676ba68125d18c399ec9ae0aae0f9e54edcceb8a2baf7c1a"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/progress.json",
+        "bytes": 335171,
+        "sha256": "652861a1e7dc82d0d5ffaae6313cba83b7319b676495141dd9a9e9aac37d14c6"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/run-manifest.json",
+        "bytes": 27783,
+        "sha256": "21cbc3591a525007a6db4872a54adbc2f36b46dd7e80cfc6d9290b7394d70d03"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/server.log",
+        "bytes": 155,
+        "sha256": "c5453a35ca4d61dc85c3d8597ea7a84dcbcffaeb9a441cd5ae7537b198194f6f"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-51.835Z-29308/verdict.json",
+        "bytes": 337381,
+        "sha256": "944e26785c2895810cb00bc22889492370bb1f8d90e2be475596423432520ffd"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-11-15.010Z-cmf-reconciliation/reconciliation.json",
+        "bytes": 4014,
+        "sha256": "ab7d1110dc3e21151517e35e715a2ddd17328881cb1c294dcf0a54feb0c8a09d"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/corrupt-before-post.json",
+        "bytes": 2645455,
+        "sha256": "cdfae2eb9980c16cc3463fb12beeaab3a50f034049f56de67339d3065f2606bd"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/corrupt-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "abb8f0b4821e3017d3b2d8b1f51689a703424f56f7a5b6c46ee817ce03150f7e"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/fixture-metadata.json",
+        "bytes": 155658,
+        "sha256": "7bd27641aa525d48cd9b792da0e43581a553fb8c0bf69cbbc059b54b673e217c"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/fixture.json",
+        "bytes": 1944496,
+        "sha256": "0ee1fca487c32bd3796c231ada6aeea6b42c3b10945d292d3a65be5452156656"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/hashMismatch-before-post.json",
+        "bytes": 2645455,
+        "sha256": "1b509ebdaae9ea90085301dfd5dc82588301b96480c3e57ef3fc62bfffc7ef5a"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/hashMismatch-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "dd973d94b0512a0b68120c18b563acdb47c87836a24ca5fd05bda39292e588b3"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/invalidBlob-before-post.json",
+        "bytes": 2645455,
+        "sha256": "6c12b8d8ff3b59302e21fba98f854d3defe7068fb79af2aa481da39566cb7280"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/invalidBlob-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "4185f59e034d3d6e493cc0c07f54165d37e121f74a87f62676f17b7cee30640b"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/missing-before-post.json",
+        "bytes": 2645455,
+        "sha256": "0e371ecb6c07d821f3c1dfeb6200306e2f45a7c44d78a21f09583a2cd9785152"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/missing-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "67d611fc12c09b2f38347ac8c1599cb6ff4e2acd83e6de24b48ed39b4977fbd5"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/nativeReopen-before-post.json",
+        "bytes": 2645455,
+        "sha256": "739490d5631fcc23f459713788fe85161d1538f0b592316528ec60fa36ea34e5"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/nativeReopen-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "f0cacea789151d3cbf8548a47f4d08e27f96424b87df48778d64fd2d726f9109"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/nativeReopen-result.json",
+        "bytes": 7207580,
+        "sha256": "53ab5cfa63851d2e1cb07eff9ff0300d173eb02fb47236633f62bbb2ada7360e"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/pending-before-post.json",
+        "bytes": 2645455,
+        "sha256": "38a6ce61b32c86d719cacaa31d99937a8ec8a910b1b7d3abe5097cefce06a2ac"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/pending-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "d7dd2959e4ce3d24883edca93328bc6af514c8df2e890a95c0fada94f217a4f3"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/pending-result.json",
+        "bytes": 4981424,
+        "sha256": "3578f4ad9603a054461f067cbb90a885f6e8fe47feeb131baf150b656d2db6d2"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/rehydrate-before-post.json",
+        "bytes": 2645455,
+        "sha256": "c104b65eb2e5e8f110ee3f76bf7807e62cb68414e8119c96fb751b2b9dc4ebbc"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/rehydrate-original-intent.json",
+        "bytes": 2646659,
+        "sha256": "2d650143c189bc4e7908faa3745ca7c980aaf94a47a93c459bf0a75af2148e25"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/rehydrate-result.json",
+        "bytes": 7207589,
+        "sha256": "6ed38fc79baf5d37927624639408a25a9396424a487a9715ac598eff25d8b0fd"
+      },
+      {
+        "path": "output/playwright/p7b-l3/2026-10-05T08-09-16.741Z-zero-paid-recovery/verdict.json",
+        "bytes": 5809,
+        "sha256": "9eb9716114d3fa27eff9a0eeba7081e01a22fd6b3cb4b3fb9a4259177e0ac0fd"
       }
     ]
   }
