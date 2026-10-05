@@ -1,0 +1,56 @@
+{
+  "version": "p7b-l2-d3-stop-replay-1",
+  "source": {
+    "runId": "2026-10-05T04-03-29.479Z-28852",
+    "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-1-after.json",
+    "sha256": "b5286c5f1d11d500cd0d2a0365808c4f89db678f09d10f75f1f5ad18faa76353",
+    "rawProviderResponseSha256": "7f5045e9c45ad24b42e07604fbaa134397b9f948d27d1a13fb128ba07591def6",
+    "scope": "Minimal terminal signals extracted from original evidence; not a new capability fixture/prompt/rubric"
+  },
+  "facts": {
+    "key": "L2-3-trial-1",
+    "messages": [
+      {
+        "agentTurnOutcome": "partialSuccess"
+      }
+    ],
+    "wire": [
+      {
+        "method": "POST",
+        "url": "/api/ai/agent/turns/636b9cd3-c9a6-4903-9e75-6031978ef3bd/requests",
+        "status": 200,
+        "response": "data: {\"type\":\"serverStatus\",\"requestId\":\"5d455d36-0a73-4096-a6b7-97e00f0aba54\",\"stepSequence\":2,\"status\":\"providerRunning\"}\n\ndata: {\"type\":\"externalError\",\"requestId\":\"5d455d36-0a73-4096-a6b7-97e00f0aba54\",\"stepSequence\":2,\"code\":\"external_execution_state_unknown\",\"message\":\"无法确认外部请求是否已经执行；Morpho 已停止自动重试，不会基于该不确定状态继续提交新请求。\",\"recoverable\":false}\n\ndata: {\"type\":\"serverStatus\",\"requestId\":\"5d455d36-0a73-4096-a6b7-97e00f0aba54\",\"stepSequence\":2,\"status\":\"externallyFailed\"}\n\n"
+      }
+    ]
+  },
+  "providerIdentityFacts": {
+    "first": "resp_ft_1a3815f1005b6aca4878669938dcf352",
+    "secondCompleted": "resp_ft_637e075a2d813769e3344e2edfd9ae5c",
+    "requestId": "5d455d36-0a73-4096-a6b7-97e00f0aba54",
+    "stepSequence": 2
+  },
+  "ledgerAtUnknown": {
+    "requests": 19,
+    "settledRequests": 18,
+    "inputTokens": 857861,
+    "outputTokens": 30266,
+    "cachedInputTokens": 265358,
+    "estimatedCny": 0.23111064
+  },
+  "ledgerAfterLateUsage": {
+    "requests": 19,
+    "settledRequests": 19,
+    "inputTokens": 912270,
+    "outputTokens": 37740,
+    "cachedInputTokens": 265358,
+    "estimatedCny": 0.25864434
+  },
+  "historicalRequest20": {
+    "requests": 20,
+    "settledRequests": 19,
+    "inputTokens": 912270,
+    "outputTokens": 37740,
+    "cachedInputTokens": 265358,
+    "estimatedCny": 0.25864434
+  }
+}

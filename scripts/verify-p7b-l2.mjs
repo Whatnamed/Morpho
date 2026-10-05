@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile, writeFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, open, rename } from "node:fs/promises";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import nextEnv from "@next/env";
@@ -10,6 +10,7 @@ import { startIsolatedBoundary, baseUrl, ports } from "./p7b-l1b-runtime.mjs";
 import { readBuildProvenance } from "./build-provenance.mjs";
 import { buildL2Fixtures, hash } from "./p7b-l2-fixtures.mjs";
 import { writeL2CarryForward } from "./p7b-l2-carry-forward.mjs";
+import { enforceL2TrialBoundary, L2TrialInfrastructureStop, waitForL2UsageSettlement } from "./p7b-l2-trial-boundary.mjs";
 const git=args=>execFileSync("git",args,{encoding:"utf8"}).trim(),root=process.cwd(),boundaryAudit=process.argv.includes("--boundary-audit"),preflight=process.argv.includes("--preflight")||boundaryAudit;
 if(git(["status","--porcelain","--untracked-files=no"]))throw Error("Clean tracked source required before L2");
 nextEnv.loadEnvConfig(root);const realKey=process.env.MORPHO_AI_API_KEY??process.env.AIJWS_API_KEY;
@@ -20,6 +21,13 @@ if(extension)assert.equal(hash(manifestBytes),extension.originalManifestSha256);
 const runId=new Date().toISOString().replaceAll(":","-")+"-"+process.pid+(preflight?"-preflight":"");
 const output=resolve("output/playwright/p7b-l2",runId);await mkdir(output,{recursive:true});
 const save=(name,value)=>writeFile(resolve(output,name),JSON.stringify(value,null,2)+"\n");
+const readOptional=async name=>{try{return JSON.parse(await readFile(resolve(output,name),"utf8"));}catch(e){if(e.code!=="ENOENT")throw e;return null;}};
+async function persistTrialStop(stop){
+  if(await readOptional("hard-blocker.json"))return; // Preserve an existing guard's first stop.
+  const target=resolve(output,"hard-blocker.json"),temp=target+".tmp",file=await open(temp,"w");
+  try{await file.writeFile(JSON.stringify(stop,null,2)+"\n");await file.sync();}finally{await file.close();}
+  await rename(temp,target);
+}
 async function selectObject(page,seed,id,additive){
   const instance=JSON.parse(seed.workspaceValue).canvas.instances.find(i=>i.objectId===id);assert.ok(instance,`Missing instance ${id}`);
   const selector=`.tl-shape[data-shape-id="shape:${instance.id}"]`;await page.locator(selector).waitFor({state:"visible"});
@@ -93,9 +101,14 @@ try{
       await page.evaluate(async()=>{await Promise.all(window.__l2Wire.map(r=>r.capture).filter(Boolean));});
       const facts=await page.evaluate(k=>({workspace:JSON.parse(localStorage.getItem(k)),wire:window.__l2Wire.map(({capture,...r})=>r),recoveries:Object.entries(localStorage).filter(([key])=>key.startsWith("morpho.agent-runtime-a-plus.recovery.v2")).map(([,v])=>JSON.parse(v)),ackOutbox:Object.entries(localStorage).filter(([key])=>key.startsWith("morpho.result-ack.v1.")).map(([key,value])=>({key,value}))}),seed.workspaceKey);
       await save(`${key}-after.json`,facts);row.assistantMessages=facts.workspace.ai.messages.filter(m=>m.role==="assistant"&&!before.ai.messages.some(b=>b.id===m.id));row.latencyMs=Date.now()-Date.parse(row.startedAt);row.clientRequestPosts=facts.wire.filter(r=>r.method==="POST"&&r.url.endsWith("/requests")).length;
+      let terminalStop;
+      if(!preflight)try{
+        row.usageAtTrialBoundary=await enforceL2TrialBoundary({key,messages:row.assistantMessages,wire:facts.wire},{readLedger:()=>readOptional("ledger.json"),persistStop:persistTrialStop,settleUsage:()=>waitForL2UsageSettlement(()=>readOptional("ledger.json")),guardStop:await readOptional("hard-blocker.json")});
+      }catch(e){if(!(e instanceof L2TrialInfrastructureStop))throw e;terminalStop=e;}
       const turns=(await runtime.db.query("select server_turn_id,local_project_id,server_execution_status,latest_request_id,latest_step_sequence,provider_call_count,bounded_failure_code from private.agent_turn_journal where local_project_id=$1",[seed.projectId])).rows;
       const requests=(await runtime.db.query("select server_turn_id,request_id,step_sequence,request_hash from private.agent_turn_request_journal where server_turn_id=any($1::uuid[])",[turns.map(t=>t.server_turn_id)])).rows;
       const results=(await runtime.db.query("select effect_id,manifest,binding,published_at,acknowledged_at from public.external_result where actor_user_id=$1",[userId])).rows;await save(`${key}-journal.json`,{turns,requests,results});
+      if(terminalStop){await save(`${key}-trial-boundary.json`,terminalStop.stop);throw terminalStop;}
       if(!preflight){
         assert.deepEqual(facts.workspace.assets,before.assets,"Unexpected Image/asset mutation");
         const stable=o=>{const v=structuredClone(o);if(v.type==="image"&&v.generation)delete v.generation.observations;return v;};
@@ -126,7 +139,7 @@ try{
         assert.ok(contract.activities.some(a=>a.kind==="research"&&a.instruction.includes("资料创建一张研究分析卡")),"D1 instruction incorrectly stripped");
         row.serverWireVerdict="pass / D1 restored / zero paid";
       }
-    }catch(error){row.status="hard_blocker";row.error=error.message;run.hardBlocker={id:"P7B-2-D3",trial:key,reason:error.message};throw error;}
+    }catch(error){row.status=error instanceof L2TrialInfrastructureStop?"infrastructure-interrupted":"hard_blocker";row.error=error.message;run.hardBlocker=error instanceof L2TrialInfrastructureStop?error.stop:{id:"P7B-2-D3",trial:key,reason:error.message};throw error;}
     finally{row.pageErrors=errors;await save(`${key}-trial.json`,row);await save("progress.json",run);await context.close();}
     try{run.hardBlocker=JSON.parse(await readFile(resolve(output,"hard-blocker.json"),"utf8"));throw Error(run.hardBlocker.reason);}catch(e){if(e.code!=="ENOENT")throw e;}
   }
@@ -134,6 +147,6 @@ try{
 }catch(error){run.status="hard_blocker / stopped";run.hardBlocker??={id:"P7B-2-D3",reason:error.message};}
 finally{
   if(browser)await browser.close();if(server)await writeFile(resolve(output,"server.log"),server.safeLog.replaceAll(realKey,"[redacted]"));if(runtime)await runtime.stop();
-  try{run.ledger=JSON.parse(await readFile(resolve(output,"ledger.json"),"utf8"));}catch{run.ledger={requests:0,inputTokens:0,outputTokens:0,estimatedCny:0};}
+  run.ledger=await readOptional("ledger.json"); // Absent/ambiguous accounting is unknown, never fabricated zero usage.
   await save("verdict.json",run);console.log(JSON.stringify({output,sourceSha:run.sourceSha,status:run.status,trials:run.trials.length,ledger:run.ledger,hardBlocker:run.hardBlocker}));
 }process.exitCode=run.hardBlocker?1:0;
