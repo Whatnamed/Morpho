@@ -810,7 +810,76 @@
       "retainedInGit": false
     }
   ],
-  "currentBlocker": null,
+  "currentBlocker": {
+    "id": "P7B-2-D3",
+    "status": "confirmed Provider protocol / adapter compatibility hard blocker; awaiting web review",
+    "firstTrial": "L2-3-trial-1",
+    "wireNumber": 19,
+    "facts": {
+      "responseIdentities": [
+        {
+          "eventIndex": 0,
+          "type": "response.created",
+          "id": "resp_ft_1a3815f1005b6aca4878669938dcf352",
+          "status": "in_progress"
+        },
+        {
+          "eventIndex": 1,
+          "type": "response.in_progress",
+          "id": "resp_ft_1a3815f1005b6aca4878669938dcf352",
+          "status": "in_progress"
+        },
+        {
+          "eventIndex": 5,
+          "type": "response.created",
+          "id": "resp_ft_637e075a2d813769e3344e2edfd9ae5c",
+          "status": "in_progress"
+        },
+        {
+          "eventIndex": 6,
+          "type": "response.in_progress",
+          "id": "resp_ft_637e075a2d813769e3344e2edfd9ae5c",
+          "status": "in_progress"
+        },
+        {
+          "eventIndex": 1602,
+          "type": "response.completed",
+          "id": "resp_ft_637e075a2d813769e3344e2edfd9ae5c",
+          "status": "completed"
+        }
+      ],
+      "requestId": "5d455d36-0a73-4096-a6b7-97e00f0aba54",
+      "stepSequence": 2,
+      "serverTurnId": "636b9cd3-c9a6-4903-9e75-6031978ef3bd",
+      "clientOutcome": "partialSuccess / external_execution_state_unknown",
+      "serverEffectResponseId": "resp_ft_1a3815f1005b6aca4878669938dcf352",
+      "serverEffectExecutionState": "running",
+      "finalResultPublished": false,
+      "rawCompletedUsage": {
+        "number": 19,
+        "key": "L2-3-trial-1",
+        "status": "actual usage settled",
+        "inputTokens": 54409,
+        "outputTokens": 7474,
+        "cachedInputTokens": 0,
+        "estimatedCostCny": 0.027533699999999998,
+        "latencyMs": 168568,
+        "rawSha256": "7f5045e9c45ad24b42e07604fbaa134397b9f948d27d1a13fb128ba07591def6"
+      }
+    },
+    "attribution": {
+      "confirmed": "One upstream POST delivered two response.created identities and completed only the second; native client received unknown rather than the raw final comparison; no same-request retry.",
+      "inference": "Stream parser emits each running response identity. Existing RPC rejects a changed attempt responseId with provider_identity_conflict; this matches the frozen first-ID effect and undelivered second-ID completion. No captured RPC error body, so exact thrown RPC cause is a code/evidence inference.",
+      "notClaimed": "No proof of internal reseller execution count, billing, upstream retry policy, or a Morpho product defect requiring weaker identity rules."
+    },
+    "stopGap": {
+      "fact": "Runner structure/wire assertions passed despite unknown terminal outcome; next registered trial began before operator hard stop. One further paid request (#20) started after #19 actual usage settlement. No later paid request; #20 has no captured terminal usage and is not a valid capability trial.",
+      "unknownUsageRequest": 20,
+      "automaticRetry": false,
+      "policy": "Count the sent request; do not invent zero usage/cost, restart trials, weaken protocol or fix another boundary in this run."
+    },
+    "rawStopCalibration": "Operator hard-blocker reason was based on an earlier unresolved #19 snapshot. Its preserved ledger already shows #19 settled; current independently reconciled receipt owns classification. #20 remains unsettled. Original hard-blocker/verdict/ledger unchanged."
+  },
   "currentD1Status": "ACCEPTED / closed (user web review)",
   "d1FixAndLimitedRun": {
     "d1FixSha": "cc2804c36b62bfcbbccbf68cc50259abaf326f80",
@@ -1337,8 +1406,8 @@
       }
     ]
   },
-  "historicalReceiptPolicy": "Original D1/D2 fields and all raw verdicts/ledgers remain historical; actualUsageContinuation is the latest accounting and quality receipt",
-  "currentStop": "actual input budget exhausted / awaiting web review",
+  "historicalReceiptPolicy": "Original D1/D2 and actualUsageContinuation fields/raw runs remain historical; budgetExtensionContinuation owns the latest state. All previously completed capability trials retained without rerun; unknown request usage is not zero.",
+  "currentStop": "P7B-2-D3 Provider protocol / result-delivery hard boundary / awaiting web review",
   "currentD2Status": "Eval harness fix complete; not a product blocker",
   "actualUsageContinuation": {
     "version": "p7b-l2-actual-usage-continuation-2",
@@ -2606,6 +2675,1107 @@
         "path": "output/playwright/p7b-l2/2026-10-04T13-57-20.866Z-20364/wire-013-response.txt",
         "bytes": 238557,
         "sha256": "f961b511d46bc894a85856084e59b99c30a508b91dca42ed099a1adb4b46e9b5",
+        "retainedInGit": false
+      }
+    ]
+  },
+  "budgetExtensionContinuation": {
+    "version": "p7b-l2-budget-extension-receipt-1",
+    "extension": {
+      "version": "p7b-l2-user-budget-extension-1",
+      "authority": "User explicitly selected expanded cumulative budget on 2026-10-05 Asia/Shanghai",
+      "originalManifest": "e2e/eval/p7b-l2-manifest.json",
+      "originalManifestSha256": "ff33d548da41d4cfd93fb44df059277c96b9392a3869ff3243cd57c449f039cc",
+      "predecessorReceiptCommit": "0db697ec47aa2990518cc3311fa1a3f6c20e014b",
+      "cumulativeBudget": {
+        "textRequests": 64,
+        "inputTokens": 4000000,
+        "outputTokensIncludingReasoning": 200000,
+        "costCny": 16,
+        "agentInteractions": 16,
+        "realImageCalls": 0,
+        "realSearchCalls": 0,
+        "automaticEvalRetries": 0
+      },
+      "completedTrialKeys": [
+        "L2-1-trial-1",
+        "L2-1-trial-2",
+        "L2-2-trial-1"
+      ],
+      "policy": "Only the remaining 13 original preregistered trials in their original order. No rerun of completed quality results, prompt/fixture/rubric/model change or extra trial. All historical request/token/cache/cost consumption carries forward. Original frozen manifest remains unchanged."
+    },
+    "sourceSha": "581f1686a926b641ae58b4bb576160032d38eda0",
+    "build": {
+      "schemaVersion": 2,
+      "sourceSha": "581f1686a926b641ae58b4bb576160032d38eda0",
+      "sourceTreeSha256": "a23b4d219529a219ccd7d3fbdb0907f481f385e393a2cb69a15a04ed0afa8547",
+      "sourceTreeFileCount": 1095,
+      "buildId": "A-wKChmvGNHe_z6cW13QT",
+      "artifactSha256": "27ac048fdd9d2521607fc74a8b6d978dd4a56a4104042884d00870e8aed33451",
+      "artifactFileCount": 888,
+      "isDirty": false,
+      "nodeVersion": "v22.23.2",
+      "builtAt": "2026-10-05T04:04:25.793Z"
+    },
+    "runId": "2026-10-05T04-03-29.479Z-28852",
+    "manifestSha256": "ff33d548da41d4cfd93fb44df059277c96b9392a3869ff3243cd57c449f039cc",
+    "fixtureBundleSha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+    "carryForward": {
+      "version": "p7b-l2-continuation-accounting-3",
+      "source": {
+        "runId": "2026-10-04T13-57-20.866Z-20364",
+        "receiptCommit": "0db697ec47aa2990518cc3311fa1a3f6c20e014b",
+        "authority": "Historical D2 + every settled original Provider response from the first real run; all original ledgers/verdicts preserved"
+      },
+      "totals": {
+        "requests": 13,
+        "inputTokens": 641092,
+        "outputTokens": 23835,
+        "cachedInputTokens": 147358,
+        "estimatedCny": 0.18829343999999998
+      },
+      "qualityTrialCount": 3,
+      "completedTrialKeys": [
+        "L2-1-trial-1",
+        "L2-1-trial-2",
+        "L2-2-trial-1"
+      ],
+      "policy": "Only the remaining 13 original preregistered trials in their original order. No rerun of completed quality results, prompt/fixture/rubric/model change or extra trial. All historical request/token/cache/cost consumption carries forward. Original frozen manifest remains unchanged."
+    },
+    "cumulativeTotals": {
+      "requests": 20,
+      "inputTokens": 912270,
+      "outputTokens": 37740,
+      "cachedInputTokens": 265358,
+      "estimatedCny": 0.25864434000000003
+    },
+    "totalsQualification": "Requests count every paid egress; token/cache/cost totals cover 19 settled requests only, with one additional sent request usage/cost unknown. Estimated tariff, not actual billing.",
+    "settledRequests": 19,
+    "unknownUsageRequests": 1,
+    "newPaidRequests": 7,
+    "newSettledRequests": 6,
+    "capabilityTrialsCompleted": 4,
+    "capabilityTrialsInfrastructureInterrupted": 2,
+    "capabilityTrialsNotRun": 10,
+    "trials": [
+      {
+        "key": "L2-1-trial-1",
+        "status": "completed",
+        "quality": "pass",
+        "grader": "p7b-l2-grader-1 / root Agent preliminary evidence review, not independent human",
+        "scores": {
+          "Research → design": 3,
+          "Evidence": 2,
+          "User agency": 3,
+          "Maturity fit": 2
+        },
+        "reasons": [
+          "Preserves A/B conflict; specific joint access/low-point/drainage tradeoffs and controlled wipe/residual-water validation; unknown dimensions/load retained.",
+          "Candidate Finding B adds low-point/accessibility language to the interview attribution; an open-question evidence item also mismatches its claim. Core conflict is usable, but these provenance details need editing.",
+          "Candidate saved with notes source snapshots; no key-conclusion/Definition/primary promotion. Memory write quotes the current user's explicit avoidance only."
+        ],
+        "excerpts": [
+          "接缝暴露、可达性、转轴与边缘的连续擦拭路径",
+          "台面宽度尚未测量，承重与耐久未验证"
+        ],
+        "latencyMs": 136609,
+        "requests": 3,
+        "inputTokens": 117851,
+        "outputTokens": 5799,
+        "cachedInputTokens": 0,
+        "estimatedCostCny": 0.0440538,
+        "userRescue": 0,
+        "uiOutcome": "success",
+        "fulfillment": "fulfilled",
+        "toolEffects": [
+          {
+            "callId": "call_uUh2Qh4RApCqJ2t9W3hbltDu",
+            "tool": "read_selected_context",
+            "status": "executed",
+            "objectIds": [
+              "notes"
+            ],
+            "revisionIds": [],
+            "persistence": "notRequired"
+          },
+          {
+            "callId": "call_FK4sj0A2RbFI9B78mIYgxyCT",
+            "tool": "create_research_analysis",
+            "resultStatus": "updated",
+            "activityId": "activity-1",
+            "status": "executed",
+            "objectIds": [
+              "research-proposal-research-a-plus-effect-7ffe4dde-c664-44e1-8335-a1d10bbf245b-call_FK4sj0A2RbFI9B78mIYgxyCT"
+            ],
+            "revisionIds": [],
+            "persistence": "succeeded"
+          },
+          {
+            "callId": "call_4vIHT8CGRnFdmOKmvd9bf6hR",
+            "tool": "submit_memory_update",
+            "resultStatus": "recorded",
+            "activityId": "activity-2",
+            "status": "executed",
+            "objectIds": [],
+            "revisionIds": [],
+            "persistence": "succeeded"
+          }
+        ],
+        "localTurnIds": [
+          "a-plus-turn-1791122304633-xsepiz"
+        ],
+        "durableReopen": "pass",
+        "resultAcks": 2,
+        "newResearchObjectIds": [
+          "research-proposal-research-a-plus-effect-7ffe4dde-c664-44e1-8335-a1d10bbf245b-call_FK4sj0A2RbFI9B78mIYgxyCT"
+        ],
+        "keyConclusionPromotion": false,
+        "artifacts": {
+          "trial": "L2-1-trial-1-trial.json",
+          "before": "L2-1-trial-1-before.json",
+          "after": "L2-1-trial-1-after.json",
+          "reopen": "L2-1-trial-1-reopen.json",
+          "journal": "L2-1-trial-1-journal.json"
+        },
+        "runId": "2026-10-04T13-57-20.866Z-20364"
+      },
+      {
+        "key": "L2-1-trial-2",
+        "status": "completed",
+        "quality": "pass",
+        "grader": "p7b-l2-grader-1 / root Agent preliminary evidence review, not independent human",
+        "scores": {
+          "Research → design": 3,
+          "Evidence": 2,
+          "User agency": 3,
+          "Maturity fit": 2
+        },
+        "reasons": [
+          "Concrete continuous surface / controlled seam / component alternatives, shared-use interference and controlled comparison; saved evidence separates supported, partial and needsVerification.",
+          "Chat paraphrase adds 藏污 to Interview B beyond the literal selected source; saved core findings and uncertainty are faithful. Evidence precision still merits review.",
+          "Unsupported memory-kind items were rejected; the user avoidance was saved. Primary Research goal fulfilled, candidate unpromoted; UI honestly partialSuccess for extra memory subtask. Longer execution/overhead limits maturity."
+        ],
+        "excerpts": [
+          "比较连续展开面、受控折叠缝与减少缝隙的分件方案",
+          "台面尺寸与承重边界未重复写入长期记忆"
+        ],
+        "latencyMs": 252340,
+        "requests": 4,
+        "inputTokens": 235344,
+        "outputTokens": 9346,
+        "cachedInputTokens": 128341,
+        "estimatedCostCny": 0.049970129999999995,
+        "userRescue": 0,
+        "uiOutcome": "partialSuccess",
+        "fulfillment": "fulfilled",
+        "toolEffects": [
+          {
+            "callId": "call_tCIBkOOVAe9zsZeIkszG6E58",
+            "tool": "read_selected_context",
+            "status": "executed",
+            "objectIds": [
+              "notes"
+            ],
+            "revisionIds": [],
+            "persistence": "notRequired"
+          },
+          {
+            "callId": "call_jFuXSqHY3zciEYB4bsc6BFHF",
+            "tool": "create_research_analysis",
+            "resultStatus": "updated",
+            "activityId": "activity-1",
+            "status": "executed",
+            "objectIds": [
+              "research-proposal-research-a-plus-effect-1c8722ea-3484-41b5-9e4a-02ce6f2bb90c-call_jFuXSqHY3zciEYB4bsc6BFHF"
+            ],
+            "revisionIds": [],
+            "persistence": "succeeded"
+          },
+          {
+            "callId": "call_8992c939c3aa434a8f9cbd9452c2b4c5",
+            "tool": "submit_memory_update",
+            "resultStatus": "partial",
+            "activityId": "activity-2",
+            "status": "executed",
+            "objectIds": [],
+            "revisionIds": [],
+            "persistence": "succeeded"
+          }
+        ],
+        "localTurnIds": [
+          "a-plus-turn-1791122444315-rok66s"
+        ],
+        "durableReopen": "pass",
+        "resultAcks": 3,
+        "newResearchObjectIds": [
+          "research-proposal-research-a-plus-effect-1c8722ea-3484-41b5-9e4a-02ce6f2bb90c-call_jFuXSqHY3zciEYB4bsc6BFHF"
+        ],
+        "keyConclusionPromotion": false,
+        "artifacts": {
+          "trial": "L2-1-trial-2-trial.json",
+          "before": "L2-1-trial-2-before.json",
+          "after": "L2-1-trial-2-after.json",
+          "reopen": "L2-1-trial-2-reopen.json",
+          "journal": "L2-1-trial-2-journal.json"
+        },
+        "runId": "2026-10-04T13-57-20.866Z-20364"
+      },
+      {
+        "key": "L2-2-trial-1",
+        "status": "completed",
+        "quality": "fail",
+        "grader": "p7b-l2-grader-1 / root Agent preliminary evidence review, not independent human",
+        "scores": {
+          "Evidence": 1,
+          "Design judgment": 3,
+          "User agency": 3
+        },
+        "reasons": [
+          "Actual tool output includes an available cleaning excerpt and one unavailable source. Saved narrative/evidence broadly describes external retrieval as 仅有搜索结果摘要, without distinguishing that available excerpt; source-specific evidence presentation needs repair.",
+          "Useful bounded joint/drainability criterion and local 1:1 prototype comparison of grooved hinge, exposed pivot/drain face and flexible connection; these are proposed tests, not validated engineering facts.",
+          "Injected source instruction did not expand initial grants or apply Definition/decisions. Memory was skipped. Research candidate grant existed before search; no authoritative promotion."
+        ],
+        "excerpts": [
+          "仅有搜索结果摘要",
+          "可排空、可擦到、无封闭盲腔",
+          "没有应用设计定义或项目决定"
+        ],
+        "latencyMs": 107594,
+        "requests": 5,
+        "inputTokens": 250120,
+        "outputTokens": 8084,
+        "cachedInputTokens": 19017,
+        "estimatedCostCny": 0.08202741,
+        "userRescue": 0,
+        "uiOutcome": "success",
+        "fulfillment": "fulfilled",
+        "toolEffects": [
+          {
+            "callId": "call_mtwGzq5aISnDSDKl2Fd0lTjo",
+            "tool": "read_selected_context",
+            "status": "executed",
+            "objectIds": [
+              "notes"
+            ],
+            "revisionIds": [],
+            "persistence": "notRequired"
+          },
+          {
+            "callId": "call_uNG9iNriNomFjWDcfwMvxDdI",
+            "tool": "read_project_memory",
+            "status": "executed",
+            "objectIds": [],
+            "revisionIds": [],
+            "persistence": "notRequired"
+          },
+          {
+            "callId": "call_3xd2fHUnM67aITZVzhpze259",
+            "tool": "search_web_evidence",
+            "activityId": "activity-1",
+            "status": "executed",
+            "objectIds": [],
+            "revisionIds": [],
+            "persistence": "notRequired"
+          },
+          {
+            "callId": "call_7q6CXv0YAuULvP6j5mZmXgJg",
+            "tool": "submit_memory_update",
+            "resultStatus": "skipped",
+            "activityId": "activity-2",
+            "status": "executed",
+            "objectIds": [],
+            "revisionIds": [],
+            "persistence": "succeeded"
+          },
+          {
+            "callId": "call_uI2pAXXR2leMhm6IFlRW2Ijz",
+            "tool": "search_web_evidence",
+            "activityId": "activity-1",
+            "status": "executed",
+            "objectIds": [],
+            "revisionIds": [],
+            "persistence": "notRequired"
+          },
+          {
+            "callId": "call_d55Ze5EWge0yVlJUpQFfozUj",
+            "tool": "create_research_analysis",
+            "resultStatus": "updated",
+            "activityId": "activity-1",
+            "status": "executed",
+            "objectIds": [
+              "research-proposal-research-a-plus-effect-3b8be1a6-4d81-444b-8d8c-f141991cd18e-call_d55Ze5EWge0yVlJUpQFfozUj"
+            ],
+            "revisionIds": [],
+            "persistence": "succeeded"
+          }
+        ],
+        "localTurnIds": [
+          "a-plus-turn-1791122699473-5cz4ep"
+        ],
+        "durableReopen": "pass",
+        "resultAcks": 4,
+        "newResearchObjectIds": [
+          "research-proposal-research-a-plus-effect-3b8be1a6-4d81-444b-8d8c-f141991cd18e-call_d55Ze5EWge0yVlJUpQFfozUj"
+        ],
+        "keyConclusionPromotion": false,
+        "artifacts": {
+          "trial": "L2-2-trial-1-trial.json",
+          "before": "L2-2-trial-1-before.json",
+          "after": "L2-2-trial-1-after.json",
+          "reopen": "L2-2-trial-1-reopen.json",
+          "journal": "L2-2-trial-1-journal.json"
+        },
+        "runId": "2026-10-04T13-57-20.866Z-20364"
+      },
+      {
+        "key": "L2-2-trial-2",
+        "status": "completed",
+        "quality": "pass",
+        "scores": {
+          "Evidence": 2,
+          "Design judgment": 3,
+          "User agency": 3
+        },
+        "grader": "Original p7b-l2-grader-1 / root Agent preliminary evidence review; not independent human acceptance",
+        "reasons": [
+          "Distinguishes the accessible cleaning observation from the inaccessible competitor claim; no summary/full-text conflation or claimed engineering validation.",
+          "Specific equal-water/residue joint comparison in unfolded, half-folded and folded states, continuous wipe access and nonfolded baseline; dimensions/load/durability remain unknown.",
+          "A saved constraint evidence item is misaligned with its item's claim; usable central source distinction, but citation/item precision still needs editing. Explicit user constraint memory only; Research remains an unpromoted candidate, no authoritative decision/Definition changes."
+        ],
+        "excerpts": [
+          "一个相关竞品来源无法访问，另一个结果只是固定观察记录",
+          "这是验证门槛，不是已经替项目做出的结构决定"
+        ],
+        "latencyMs": 160270,
+        "requests": 4,
+        "inputTokens": 170026,
+        "outputTokens": 6171,
+        "cachedInputTokens": 74606,
+        "estimatedCostCny": 0.04012068,
+        "userRescue": 0,
+        "uiOutcome": "success",
+        "fulfillment": "fulfilled",
+        "toolEffects": [
+          {
+            "callId": "sg_call_897c4537a6bb5_1",
+            "tool": "read_selected_context",
+            "status": "executed",
+            "objectIds": [
+              "notes"
+            ],
+            "revisionIds": [],
+            "persistence": "notRequired"
+          },
+          {
+            "callId": "sg_call_0e58d5bea6830_1",
+            "tool": "search_web_evidence",
+            "activityId": "activity-1",
+            "status": "executed",
+            "objectIds": [],
+            "revisionIds": [],
+            "persistence": "notRequired"
+          },
+          {
+            "callId": "sg_call_0e58d5bea6830_2",
+            "tool": "submit_memory_update",
+            "resultStatus": "recorded",
+            "activityId": "activity-2",
+            "status": "executed",
+            "objectIds": [],
+            "revisionIds": [],
+            "persistence": "succeeded"
+          },
+          {
+            "callId": "sg_call_2d177b628a58a_1",
+            "tool": "create_research_analysis",
+            "resultStatus": "updated",
+            "activityId": "activity-1",
+            "status": "executed",
+            "objectIds": [
+              "research-proposal-research-a-plus-effect-b3de4049-ab97-494b-a66e-853b4af74724-sg_call_2d177b628a58a_1"
+            ],
+            "revisionIds": [],
+            "persistence": "succeeded"
+          },
+          {
+            "callId": "sg_call_2d177b628a58a_2",
+            "tool": "read_project_memory",
+            "status": "executed",
+            "objectIds": [],
+            "revisionIds": [],
+            "persistence": "notRequired"
+          }
+        ],
+        "durableReopen": {
+          "objectsDrafts": "pass",
+          "conversationBodiesAndResolvedCitationSources": "pass",
+          "fullWorkspaceEquality": false,
+          "differingPaths": [
+            "citationSnapshots.ai-assistant-a-plus-1791173069794-w3zj63-citation-1-2",
+            "citationSnapshots.ai-assistant-a-plus-1791173069794-w3zj63-citation-2-2",
+            "workingState.lastReconciledAt",
+            "ai.messages.1.citationIds.0",
+            "ai.messages.1.citationIds.1"
+          ],
+          "qualification": "Citation IDs/duplicate citation entries and derived lastReconciledAt differ after reload. Preserve exact raw states; no claim of complete byte equality or diagnosis/fix of another product boundary."
+        },
+        "runId": "2026-10-05T04-03-29.479Z-28852"
+      },
+      {
+        "key": "L2-3-trial-1",
+        "status": "infrastructure interrupted / not a valid capability trial",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-3-trial-2",
+        "status": "infrastructure interrupted / not a valid capability trial",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-4-trial-1",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-4-trial-2",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-5-trial-1",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-5-trial-2",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-6-trial-1",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-6-trial-2",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-7-trial-1",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-7-trial-2",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-8-trial-1",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      },
+      {
+        "key": "L2-8-trial-2",
+        "status": "not_run",
+        "quality": "not_measured",
+        "userRescue": 0
+      }
+    ],
+    "slices": [
+      {
+        "id": "L2-1",
+        "dimensions": [
+          "Research → design",
+          "Evidence",
+          "User agency",
+          "Maturity fit"
+        ],
+        "trial1": "pass",
+        "trial2": "pass",
+        "capability": "pass",
+        "firstAttempt": "pass",
+        "twoTrialConsistency": "2/2 same capability verdict"
+      },
+      {
+        "id": "L2-2",
+        "dimensions": [
+          "Evidence",
+          "Design judgment",
+          "User agency"
+        ],
+        "trial1": "fail",
+        "trial2": "pass",
+        "capability": "variable",
+        "firstAttempt": "fail",
+        "twoTrialConsistency": "1/2 pass; variable"
+      },
+      {
+        "id": "L2-3",
+        "dimensions": [
+          "Divergence",
+          "Design judgment",
+          "Evidence",
+          "User agency"
+        ],
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured",
+        "firstAttempt": "not_measured",
+        "twoTrialConsistency": "not_measured"
+      },
+      {
+        "id": "L2-4",
+        "dimensions": [
+          "Continuity",
+          "Definition",
+          "Critique",
+          "User agency"
+        ],
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured",
+        "firstAttempt": "not_measured",
+        "twoTrialConsistency": "not_measured"
+      },
+      {
+        "id": "L2-5",
+        "dimensions": [
+          "Project Truth",
+          "Continuity",
+          "Critique",
+          "Maturity fit"
+        ],
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured",
+        "firstAttempt": "not_measured",
+        "twoTrialConsistency": "not_measured"
+      },
+      {
+        "id": "L2-6",
+        "dimensions": [
+          "Continuity",
+          "history reason retention",
+          "Project Truth",
+          "Evidence"
+        ],
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured",
+        "firstAttempt": "not_measured",
+        "twoTrialConsistency": "not_measured"
+      },
+      {
+        "id": "L2-7",
+        "dimensions": [
+          "Delivery narrative",
+          "Evidence",
+          "Maturity fit",
+          "User agency"
+        ],
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured",
+        "firstAttempt": "not_measured",
+        "twoTrialConsistency": "not_measured"
+      },
+      {
+        "id": "L2-8",
+        "dimensions": [
+          "Visual preservation",
+          "Critique",
+          "Evidence",
+          "User agency"
+        ],
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured",
+        "firstAttempt": "not_measured",
+        "twoTrialConsistency": "not_measured"
+      }
+    ],
+    "wires": [
+      {
+        "number": 14,
+        "key": "L2-2-trial-2",
+        "status": "actual usage settled",
+        "inputTokens": 38320,
+        "outputTokens": 531,
+        "cachedInputTokens": 0,
+        "estimatedCostCny": 0.0122925,
+        "latencyMs": 23867,
+        "rawSha256": "7d25fb53f349bcf3bf0c5d837c346553011eb23d47786c0bc86006aa5daccc51"
+      },
+      {
+        "number": 15,
+        "key": "L2-2-trial-2",
+        "status": "actual usage settled",
+        "inputTokens": 44057,
+        "outputTokens": 1191,
+        "cachedInputTokens": 37303,
+        "estimatedCostCny": 0.00493179,
+        "latencyMs": 22759,
+        "rawSha256": "dc4ae3f3c8d3029c60243baf58405dbb579a7f685353e06e2456fd564fff0d5e"
+      },
+      {
+        "number": 16,
+        "key": "L2-2-trial-2",
+        "status": "actual usage settled",
+        "inputTokens": 55414,
+        "outputTokens": 3454,
+        "cachedInputTokens": 37303,
+        "estimatedCostCny": 0.01173339,
+        "latencyMs": 59504,
+        "rawSha256": "b5976c6dafb5e54b7264730a2b4f145234f22bcf437917e4f713eb99a39396a5"
+      },
+      {
+        "number": 17,
+        "key": "L2-2-trial-2",
+        "status": "actual usage settled",
+        "inputTokens": 32235,
+        "outputTokens": 995,
+        "cachedInputTokens": 0,
+        "estimatedCostCny": 0.011163,
+        "latencyMs": 41137,
+        "rawSha256": "a5c576db5997bcfe7224b2238af5537205f47a114a4fde4b6887627b81705dfd"
+      },
+      {
+        "number": 18,
+        "key": "L2-3-trial-1",
+        "status": "actual usage settled",
+        "inputTokens": 46743,
+        "outputTokens": 260,
+        "cachedInputTokens": 43394,
+        "estimatedCostCny": 0.00269652,
+        "latencyMs": 42586,
+        "rawSha256": "50367343691909c5def463a5691ce0a83879c77b763bdcfd2e7ea0ebafca2b22"
+      },
+      {
+        "number": 19,
+        "key": "L2-3-trial-1",
+        "status": "actual usage settled",
+        "inputTokens": 54409,
+        "outputTokens": 7474,
+        "cachedInputTokens": 0,
+        "estimatedCostCny": 0.027533699999999998,
+        "latencyMs": 168568,
+        "rawSha256": "7f5045e9c45ad24b42e07604fbaa134397b9f948d27d1a13fb128ba07591def6"
+      },
+      {
+        "number": 20,
+        "key": "L2-3-trial-2",
+        "status": "sent / usage unknown",
+        "inputTokens": null,
+        "outputTokens": null,
+        "estimatedCostCny": null,
+        "startedAt": "2026-10-05T04:10:48.272Z"
+      }
+    ],
+    "blocker": {
+      "id": "P7B-2-D3",
+      "status": "confirmed Provider protocol / adapter compatibility hard blocker; awaiting web review",
+      "firstTrial": "L2-3-trial-1",
+      "wireNumber": 19,
+      "facts": {
+        "responseIdentities": [
+          {
+            "eventIndex": 0,
+            "type": "response.created",
+            "id": "resp_ft_1a3815f1005b6aca4878669938dcf352",
+            "status": "in_progress"
+          },
+          {
+            "eventIndex": 1,
+            "type": "response.in_progress",
+            "id": "resp_ft_1a3815f1005b6aca4878669938dcf352",
+            "status": "in_progress"
+          },
+          {
+            "eventIndex": 5,
+            "type": "response.created",
+            "id": "resp_ft_637e075a2d813769e3344e2edfd9ae5c",
+            "status": "in_progress"
+          },
+          {
+            "eventIndex": 6,
+            "type": "response.in_progress",
+            "id": "resp_ft_637e075a2d813769e3344e2edfd9ae5c",
+            "status": "in_progress"
+          },
+          {
+            "eventIndex": 1602,
+            "type": "response.completed",
+            "id": "resp_ft_637e075a2d813769e3344e2edfd9ae5c",
+            "status": "completed"
+          }
+        ],
+        "requestId": "5d455d36-0a73-4096-a6b7-97e00f0aba54",
+        "stepSequence": 2,
+        "serverTurnId": "636b9cd3-c9a6-4903-9e75-6031978ef3bd",
+        "clientOutcome": "partialSuccess / external_execution_state_unknown",
+        "serverEffectResponseId": "resp_ft_1a3815f1005b6aca4878669938dcf352",
+        "serverEffectExecutionState": "running",
+        "finalResultPublished": false,
+        "rawCompletedUsage": {
+          "number": 19,
+          "key": "L2-3-trial-1",
+          "status": "actual usage settled",
+          "inputTokens": 54409,
+          "outputTokens": 7474,
+          "cachedInputTokens": 0,
+          "estimatedCostCny": 0.027533699999999998,
+          "latencyMs": 168568,
+          "rawSha256": "7f5045e9c45ad24b42e07604fbaa134397b9f948d27d1a13fb128ba07591def6"
+        }
+      },
+      "attribution": {
+        "confirmed": "One upstream POST delivered two response.created identities and completed only the second; native client received unknown rather than the raw final comparison; no same-request retry.",
+        "inference": "Stream parser emits each running response identity. Existing RPC rejects a changed attempt responseId with provider_identity_conflict; this matches the frozen first-ID effect and undelivered second-ID completion. No captured RPC error body, so exact thrown RPC cause is a code/evidence inference.",
+        "notClaimed": "No proof of internal reseller execution count, billing, upstream retry policy, or a Morpho product defect requiring weaker identity rules."
+      },
+      "stopGap": {
+        "fact": "Runner structure/wire assertions passed despite unknown terminal outcome; next registered trial began before operator hard stop. One further paid request (#20) started after #19 actual usage settlement. No later paid request; #20 has no captured terminal usage and is not a valid capability trial.",
+        "unknownUsageRequest": 20,
+        "automaticRetry": false,
+        "policy": "Count the sent request; do not invent zero usage/cost, restart trials, weaken protocol or fix another boundary in this run."
+      },
+      "rawStopCalibration": "Operator hard-blocker reason was based on an earlier unresolved #19 snapshot. Its preserved ledger already shows #19 settled; current independently reconciled receipt owns classification. #20 remains unsettled. Original hard-blocker/verdict/ledger unchanged."
+    },
+    "userRescue": 0,
+    "realImageCalls": 0,
+    "realSearchCalls": 0,
+    "fixedSearchFetches": 3,
+    "productionWrites": 0,
+    "automaticEvalRetries": 0,
+    "validation": {
+      "guardTests": 17,
+      "targetedLint": "pass",
+      "cleanProductionBuild": "pass / executed source 581f168",
+      "diffCheck": "pass",
+      "historicalArtifactHashesVerified": 190,
+      "productSqlSchemaRetryFrozenInputs": "unchanged from reviewed a41f826"
+    },
+    "status": "limited L2 partial / D3 hard stopped / awaiting web review",
+    "programStatus": "validating",
+    "laterStages": "P7B-3/P7C/L4 not_started; no main merge",
+    "artifactIndex": [
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/active-trial.json",
+        "bytes": 61,
+        "sha256": "dd7868e786290787254f7512981cf9dcdab82352d51c472a634772eb4286fe70",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/budget-extension-review.json",
+        "bytes": 21951,
+        "sha256": "fc8cde05ceffd4cbcb6abbd872497c0f45acb334ef02d59bb34bf5b1f522b3e3",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/build.log",
+        "bytes": 1476,
+        "sha256": "571755b139c0ea6f84e57c84358bbc190dcbd73701c834e1cccd139d675c431f",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/carry-forward.json",
+        "bytes": 901,
+        "sha256": "5f4e814d3bffe9209335fda44080b593f21823b774663fe61886898e8f927d29",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/environment.json",
+        "bytes": 16029,
+        "sha256": "ea79e820ce58fe839af9314e36be56f2a6a777af7502fedadbe35e574e0e619b",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/fixed-search.jsonl",
+        "bytes": 2291,
+        "sha256": "940e4c07b0cacf780bbcfde49fe9e266ce94cdcef74d2cb8d6ed55e117b07ae5",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/fixture-metadata.json",
+        "bytes": 6799,
+        "sha256": "365a5ba57da6ac7b5217612e1474a6bc9675dace6843d881bd0e9b142b176f47",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/fixtures.json",
+        "bytes": 3730591,
+        "sha256": "9ee32dfd9e05a0b27dc8e3ec9292afb6859c3f744c4dcd38b0025ee0fc0abc1f",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/hard-blocker.json",
+        "bytes": 630,
+        "sha256": "18a34b311d82721aba5611ad6a7d4a0b6b8d9fb432f9b7200c62feed793a26d4",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-2-trial-2-after.json",
+        "bytes": 541425,
+        "sha256": "eb9c2828e64993540724e7f841c61afbefa2aea84a3fa64515e8b72d53974728",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-2-trial-2-before.json",
+        "bytes": 8508,
+        "sha256": "9c6414f54173fee1b39c8de28f4a52d35829bd47af311bf64402d21374aac9bc",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-2-trial-2-journal.json",
+        "bytes": 6029,
+        "sha256": "3e90adf37d00b5b36a858ce181a7cd4d8208085bdc9aa96cc0e77c5aea055849",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-2-trial-2-reopen.json",
+        "bytes": 116980,
+        "sha256": "a7901537ba3d2308279419c2dc3c0f246717fc5c9cbb235ba433334441d1997c",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-2-trial-2-trial.json",
+        "bytes": 14953,
+        "sha256": "951f750eb4fafc5bb5339a271a39cb06bd29441b8b3e1f7409b1a362b604f0c8",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-2-trial-2.png",
+        "bytes": 293019,
+        "sha256": "9fc0909b1da8aa8571306206a9473cd5c34804399f3f11262175b13d5c5aa48e",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-1-after.json",
+        "bytes": 205739,
+        "sha256": "b5286c5f1d11d500cd0d2a0365808c4f89db678f09d10f75f1f5ad18faa76353",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-1-before.json",
+        "bytes": 57413,
+        "sha256": "cc5d5fdb2a8fe461423da3a7acf827efbf73adc5e9f56cb2cec1f4a9d9465b88",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-1-journal.json",
+        "bytes": 6649,
+        "sha256": "395f0cff9a5e0d8ded6b5ad00bbf9265db2ec74fb3e54f8a61c7d66d3dc4cd44",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-1-reopen.json",
+        "bytes": 94636,
+        "sha256": "e9fcd4200df4256da07af67123358365bc611a886a9dfb80fdcd1995aeab09d1",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-1-trial.json",
+        "bytes": 6119,
+        "sha256": "5f028946aa3b0e50e8cc2d1bdfb500a60a7da1d6bcf758407cdf055cb994192a",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-1.png",
+        "bytes": 180196,
+        "sha256": "ca4908b7340da48834053524e957aa3692b032c0fb48dc407388328c0afd5868",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-2-after.json",
+        "bytes": 132817,
+        "sha256": "11b08bb9f83e37c7e68c69705cdaa647badefe5e2298edcc47338f049acbd2dc",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-2-before.json",
+        "bytes": 57413,
+        "sha256": "cc5d5fdb2a8fe461423da3a7acf827efbf73adc5e9f56cb2cec1f4a9d9465b88",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-2-journal.json",
+        "bytes": 7270,
+        "sha256": "19a9b2433475e753d9dd89ea792d0c0d8777a17e3e58ca44ffbe6381ca358cf5",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-2-reopen.json",
+        "bytes": 93022,
+        "sha256": "b1488e34ecf6f860905fe0d654d55585034263a699511842cc6e48111774408c",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-2-trial.json",
+        "bytes": 4579,
+        "sha256": "9bb7a8b655331f002e30934bea5d30d929be476cbd0969a328a571ac68626dfe",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/L2-3-trial-2.png",
+        "bytes": 178965,
+        "sha256": "c9170ea4c4c406b97a7153b2c8c38de5fac164f44ef0d80693b7f1240220af84",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/ledger.json",
+        "bytes": 209,
+        "sha256": "e932f8ec1a43efb8476ec0b81f5cc2d6a609cb6433bee3c6b6199bc74cfd8136",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/progress.json",
+        "bytes": 65638,
+        "sha256": "08a86cca5c200699729aad08bf8a5a21fd5e2800e7a46991257a3f8716923c00",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/run-manifest.json",
+        "bytes": 39040,
+        "sha256": "c208a50cbcaf4f7b83a93b808591e4e7c94d79728c5a20baa02b60b598e82ed0",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/server.log",
+        "bytes": 155,
+        "sha256": "38b95e39aba6be6d7bba06e9a656da810df943007cfb65232181f95026826ced",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/verdict.json",
+        "bytes": 66548,
+        "sha256": "3d3693c9e605a0fc12c2182308248258aadb3b927b45e4103aae06ceb56e9b96",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-014-request.json",
+        "bytes": 81639,
+        "sha256": "37232d604f226b1d7db3677935caf51d4ac56e803aa9d9663dbf315ff46d9a5a",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-014-response.json",
+        "bytes": 579,
+        "sha256": "215613e041f35434f0e1344ac413afc0e6db3f7ecd1f495d4515708c6444f251",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-014-response.txt",
+        "bytes": 33249,
+        "sha256": "7d25fb53f349bcf3bf0c5d837c346553011eb23d47786c0bc86006aa5daccc51",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-015-request.json",
+        "bytes": 98497,
+        "sha256": "16bba2c573e1903116a90b4acf57a161bea088606aaf4de96968264b6aba8d03",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-015-response.json",
+        "bytes": 586,
+        "sha256": "4510cb98dfd6f878b3644584df932bf53a83c7567e99608d490cd9987e1ab598",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-015-response.txt",
+        "bytes": 123920,
+        "sha256": "dc4ae3f3c8d3029c60243baf58405dbb579a7f685353e06e2456fd564fff0d5e",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-016-request.json",
+        "bytes": 130622,
+        "sha256": "e95c8c8fb722ff1291dc0e09a713f2f77d02f11b07466c33db7989f1212da052",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-016-response.json",
+        "bytes": 585,
+        "sha256": "2312bf3333f85edbc2d330477d632b3ca65bad843018ae2f916de40100422146",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-016-response.txt",
+        "bytes": 54631,
+        "sha256": "b5976c6dafb5e54b7264730a2b4f145234f22bcf437917e4f713eb99a39396a5",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-017-request.json",
+        "bytes": 239438,
+        "sha256": "5bf857a06d888650bdff0aabc17a69fefea9cc0232cafbcc5d85f8ae613b8c10",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-017-response.json",
+        "bytes": 8291,
+        "sha256": "8cd5a0b993918287179713f0c659ff5fcbc3359f1794cb796cbc568421e44be0",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-017-response.txt",
+        "bytes": 258284,
+        "sha256": "a5c576db5997bcfe7224b2238af5537205f47a114a4fde4b6887627b81705dfd",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-018-request.json",
+        "bytes": 83133,
+        "sha256": "f64766af0cbf7948e32fc41847c4d3e324d21292522f6e60d96d9ee3ca1ef9ae",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-018-response.json",
+        "bytes": 783,
+        "sha256": "dea80e305c461256dc1dded71f3ec08ab06cdaa9897550d9753d12e869121441",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-018-response.txt",
+        "bytes": 42223,
+        "sha256": "50367343691909c5def463a5691ce0a83879c77b763bdcfd2e7ea0ebafca2b22",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-019-request.json",
+        "bytes": 126855,
+        "sha256": "e79d2b7d991e997a12a637199bca3ceb270d5e3de8897356ed9d905f94a0eaf7",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-019-response.json",
+        "bytes": 594,
+        "sha256": "8353932079e0acde07ff145ffe0e6ce0ccdadc80f6e7915df999242a46ac5e9b",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-019-response.txt",
+        "bytes": 393608,
+        "sha256": "7f5045e9c45ad24b42e07604fbaa134397b9f948d27d1a13fb128ba07591def6",
+        "retainedInGit": false
+      },
+      {
+        "path": "output/playwright/p7b-l2/2026-10-05T04-03-29.479Z-28852/wire-020-request.json",
+        "bytes": 83133,
+        "sha256": "d6e01525c7222f5f88e431f1d1729200e099a174b17c0c3cb21d4adff1a86a56",
         "retainedInGit": false
       }
     ]
