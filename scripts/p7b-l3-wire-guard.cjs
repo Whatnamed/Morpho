@@ -7,9 +7,10 @@ function allowedDownload(url){return url.protocol==="https:"&&!url.username&&!ur
   manifest.provider.imageHostAllowlist.includes(url.hostname)||(manifest.provider.imageHostAllowlist.includes("file*.aitohumanize.com")&&/^file[0-9]+\.aitohumanize\.com$/.test(url.hostname))||[manifest.provider.baseUrl,...manifest.provider.fallbackBaseUrls].some(b=>new URL(b).hostname===url.hostname));}
 function rememberResults(key,raw){let value;try{value=JSON.parse(raw);}catch{return;}const found=downloads.get(key)??new Set();function visit(v){if(typeof v==="string"&&v.startsWith("https://")){try{const u=new URL(v);if(allowedDownload(u))found.add(u.href);}catch{}}else if(Array.isArray(v))v.forEach(visit);else if(v&&typeof v==="object")Object.values(v).forEach(visit);}visit(value);downloads.set(key,found);}
 let ledger={paidSubmissions:manifest.historical?.paidSubmissions??0,estimatedCostCny:manifest.historical?.estimatedCostCny??0,textRequests:0,baselineSubmissions:0,attempts:[...(manifest.historical?.attempts??[])]};
+if(process.env.MORPHO_L3_LEDGER_SEED){ledger=JSON.parse(fs.readFileSync(process.env.MORPHO_L3_LEDGER_SEED,"utf8"));if(ledger.paidSubmissions!==2||ledger.baselineSubmissions!==1||ledger.estimatedCostCny!==0.06||ledger.attempts.length!==2)throw Error("Invalid D3 continuation ledger seed");}
 function write(name,value){const target=path.join(root,name),temp=target+".tmp",fd=fs.openSync(temp,"w");try{fs.writeFileSync(fd,typeof value==="string"?value:JSON.stringify(value,null,2)+"\n");fs.fsyncSync(fd);}finally{fs.closeSync(fd);}fs.renameSync(temp,target);}
 write("paid-ledger.json",ledger);
-function hard(reason,detail={}){if(!fs.existsSync(path.join(root,"hard-blocker.json")))write("hard-blocker.json",{id:manifest.historical?"P7B-3-D3":"P7B-3-D1",reason,...detail,ledger});throw Error("L3 hard stop: "+reason);}
+function hard(reason,detail={}){if(!fs.existsSync(path.join(root,"hard-blocker.json")))write("hard-blocker.json",{id:process.env.MORPHO_L3_LEDGER_SEED?"P7B-3-D4":manifest.historical?"P7B-3-D3":"P7B-3-D1",reason,...detail,ledger});throw Error("L3 hard stop: "+reason);}
 globalThis.fetch=async(input,init)=>{
   const url=new URL(typeof input==="string"?input:input instanceof URL?input.href:input.url),method=init?.method??"GET";
   if(["127.0.0.1","localhost","[::1]"].includes(url.hostname))return native(input,init);

@@ -8,6 +8,7 @@ import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore"
 import { saveBlobAsLocalAsset,readImageBlobDimensions } from "@/infrastructure/assets/localAssetWorkflow";
 import { resolveGenerationSettings } from "@/features/workspace/imageGenerationSettings";
 import { parseWorkspace } from "@/domain/morpho/workspace";
+import { hashProviderImageDataUrl } from "@/domain/morpho/providerInputSnapshot";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import type { VisualGenerationPlan } from "@/domain/operations/types";
 import type { WorkspaceVisualGenerationExecutionPorts } from "@/features/workspace/workspaceVisualGenerationExecution";
@@ -77,4 +78,4 @@ async function damageIntent(key:string,mode:"missing"|"corrupt"){if(mode==="miss
 
 async function exportImage(storageKey:string){const b=await indexedDbBlobStore.get(storageKey);if(!b)throw Error("Asset missing");return{mimeType:b.type,base64:await new Promise<string>((yes,no)=>{const reader=new FileReader();reader.onload=()=>yes(String(reader.result).split(",")[1]);reader.onerror=()=>no(reader.error);reader.readAsDataURL(b);})};}
 
-(window as unknown as {l3:unknown}).l3={initialize,execute,exportImage,recover,capture:()=>captureRecoveryState(seed),rehydrate:rehydrateRecoveryCapture,damageIntent};
+(window as unknown as {l3:unknown}).l3={initialize,execute,exportImage,recover,hashProviderImageDataUrl,capture:()=>captureRecoveryState(seed),rehydrate:rehydrateRecoveryCapture,damageIntent};

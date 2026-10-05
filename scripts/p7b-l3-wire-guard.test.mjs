@@ -5,11 +5,11 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 const require=createRequire(import.meta.url),source=readFileSync(new URL("./p7b-l3-wire-guard.cjs",import.meta.url),"utf8"),frozen=JSON.parse(readFileSync(new URL("../e2e/eval/p7b-l3-manifest.json",import.meta.url),"utf8"));
-function harness({noPaid=false,budget={},transport,historical,imageHostAllowlist}={}){
+function harness({noPaid=false,budget={},transport,historical,imageHostAllowlist,seed}={}){
   const files=new Map(),calls=[],durability=[],handles=new Map();let handle=0,key="attempt-1";
   const pixel=Buffer.from("authorized unit-test pixels"),sha=createHash("sha256").update(pixel).digest("hex"),manifest={...frozen,historical,provider:{...frozen.provider,...(imageHostAllowlist?{imageHostAllowlist}:{})},budget:{...frozen.budget,...budget}},fixture={seed:{aliases:{parent:"A"},workspaceValue:JSON.stringify({objects:{A:{assetId:"asset-A"}}})},assets:[{assetId:"asset-A",contentHash:sha}],attempts:["attempt-1","attempt-2"].map(key=>({key,plan:{items:[{prompt:"Frozen prompt"}]}}))};
-  const fs={readFileSync:p=>p==="manifest"?JSON.stringify(manifest):p.endsWith("fixture.json")?JSON.stringify(fixture):p.endsWith("active-attempt.json")?JSON.stringify({key}):files.get(p),existsSync:p=>files.has(p),openSync:p=>{handles.set(++handle,p);return handle;},writeFileSync:(p,b)=>files.set(typeof p==="number"?handles.get(p):p,b),fsyncSync:fd=>durability.push(handles.get(fd)),closeSync:()=>{},renameSync:(a,b)=>{files.set(b,files.get(a));files.delete(a);}};
-  const context=vm.createContext({require:n=>n==="node:fs"?fs:require(n),process:{env:{MORPHO_L3_OUTPUT:"output",MORPHO_L3_MANIFEST:"manifest",MORPHO_L3_NO_PAID:String(noPaid)}},URL,Buffer,Response,fetch:async(i,init)=>{calls.push({i,init});return transport?transport(i,init):Response.json({id:"task-1",status:"running"});}});vm.runInContext(source,context);
+  const fs={readFileSync:p=>p==="manifest"?JSON.stringify(manifest):p==="seed"?JSON.stringify(seed):p.endsWith("fixture.json")?JSON.stringify(fixture):p.endsWith("active-attempt.json")?JSON.stringify({key}):files.get(p),existsSync:p=>files.has(p),openSync:p=>{handles.set(++handle,p);return handle;},writeFileSync:(p,b)=>files.set(typeof p==="number"?handles.get(p):p,b),fsyncSync:fd=>durability.push(handles.get(fd)),closeSync:()=>{},renameSync:(a,b)=>{files.set(b,files.get(a));files.delete(a);}};
+  const context=vm.createContext({require:n=>n==="node:fs"?fs:require(n),process:{env:{MORPHO_L3_OUTPUT:"output",MORPHO_L3_MANIFEST:"manifest",MORPHO_L3_NO_PAID:String(noPaid),...(seed?{MORPHO_L3_LEDGER_SEED:"seed"}:{})}},URL,Buffer,Response,fetch:async(i,init)=>{calls.push({i,init});return transport?transport(i,init):Response.json({id:"task-1",status:"running"});}});vm.runInContext(source,context);
   const body={model:frozen.provider.model,aspectRatio:frozen.provider.providerAspectRatio,replyType:"json",prompt:"Frozen prompt",images:["data:image/jpeg;base64,"+pixel.toString("base64")]};
   return{calls,durability,fetch:(changes={})=>context.fetch(frozen.provider.baseUrl+"/v1/api/generate",{method:"POST",body:JSON.stringify({...body,...changes})}),json:suffix=>JSON.parse([...files].find(([p])=>p.endsWith(suffix))[1]),activate:next=>{key=next;},context};
 }
@@ -46,4 +46,9 @@ test("same-result CDN GET and redirects are allowed only after the bound Provide
   const h=harness({imageHostAllowlist:["file*.aitohumanize.com"],transport:(url,init)=>init.method==="POST"?Response.json({id:"same-task",status:"succeeded",results:[{url:resultUrl}]}):url===resultUrl?new Response(null,{status:302,headers:{location:redirected}}):new Response("pixels",{headers:{"content-type":"image/png"}})});
   await h.fetch();await h.context.fetch(resultUrl,{method:"GET"});await h.context.fetch(redirected,{method:"GET"});assert.equal(h.calls.length,3);assert.equal(h.json("paid-ledger.json").paidSubmissions,1);
   const absent=harness({imageHostAllowlist:["file*.aitohumanize.com"]});await assert.rejects(absent.context.fetch(resultUrl,{method:"GET"}),/Unexpected external route/);assert.equal(absent.calls.length,0);
+});
+test("D3 continuation carries two paid submissions and refuses to regenerate the completed first trial",async()=>{
+  const seed={paidSubmissions:2,baselineSubmissions:1,estimatedCostCny:0.06,textRequests:0,attempts:[{key:"historical-D1"},{key:"attempt-1"}]};
+  const blocked=harness({seed,budget:{paidSubmissions:9,baselineSubmissions:8}});await assert.rejects(blocked.fetch(),/Duplicate/);assert.equal(blocked.calls.length,0);assert.equal(blocked.json("paid-ledger.json").paidSubmissions,2);
+  const h=harness({seed,budget:{paidSubmissions:9,baselineSubmissions:8}});h.activate("attempt-2");await h.fetch();assert.equal(h.json("paid-ledger.json").paidSubmissions,3);assert.equal(h.json("paid-ledger.json").baselineSubmissions,2);assert.equal(h.json("paid-ledger.json").estimatedCostCny,0.09);
 });
