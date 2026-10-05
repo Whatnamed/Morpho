@@ -812,7 +812,7 @@
   ],
   "currentBlocker": {
     "id": "P7B-2-D3",
-    "status": "confirmed Provider protocol / adapter compatibility hard blocker; awaiting web review",
+    "status": "confirmed external Provider protocol / compatibility blocker; product fail-closed is correct",
     "firstTrial": "L2-3-trial-1",
     "wireNumber": 19,
     "facts": {
@@ -878,7 +878,8 @@
       "automaticRetry": false,
       "policy": "Count the sent request; do not invent zero usage/cost, restart trials, weaken protocol or fix another boundary in this run."
     },
-    "rawStopCalibration": "Operator hard-blocker reason was based on an earlier unresolved #19 snapshot. Its preserved ledger already shows #19 settled; current independently reconciled receipt owns classification. #20 remains unsettled. Original hard-blocker/verdict/ledger unchanged."
+    "rawStopCalibration": "Operator hard-blocker reason was based on an earlier unresolved #19 snapshot. Its preserved ledger already shows #19 settled; current independently reconciled receipt owns classification. #20 remains unsettled. Original hard-blocker/verdict/ledger unchanged.",
+    "stopGapStatus": "Eval harness corrected; external Provider remains blocked"
   },
   "currentD1Status": "ACCEPTED / closed (user web review)",
   "d1FixAndLimitedRun": {
@@ -1406,9 +1407,9 @@
       }
     ]
   },
-  "historicalReceiptPolicy": "Original D1/D2 and actualUsageContinuation fields/raw runs remain historical; budgetExtensionContinuation owns the latest state. All previously completed capability trials retained without rerun; unknown request usage is not zero.",
-  "currentStop": "P7B-2-D3 Provider protocol / result-delivery hard boundary / awaiting web review",
-  "currentD2Status": "Eval harness fix complete; not a product blocker",
+  "historicalReceiptPolicy": "Original D1/D2, actualUsageContinuation and budgetExtensionContinuation receipts/raw runs remain immutable history. closeout owns the final partial/blocked status; all four quality verdicts unchanged and request 20 usage remains unknown.",
+  "currentStop": "confirmed external Provider protocol / compatibility blocker; no retry or remaining trials on current Provider",
+  "currentD2Status": "ACCEPTED / closed (user web review)",
   "actualUsageContinuation": {
     "version": "p7b-l2-actual-usage-continuation-2",
     "fixSha": "51cb6533de54ba037e5dc2fe1df90f967aa48060",
@@ -3779,5 +3780,108 @@
         "retainedInGit": false
       }
     ]
+  },
+  "currentStatus": "partial evidence / blocked_external_provider",
+  "closeout": {
+    "version": "p7b-l2-partial-external-closeout-1",
+    "date": "2026-10-05 Asia/Shanghai",
+    "reviewedHead": "ff57b38c2fb49f5367cb94c6d3aad71fd07c12a7",
+    "harnessStopGapFixSha": "3be0f552541bd104d439edd9eec08c8150d625fc",
+    "status": "partial evidence / blocked_external_provider",
+    "programStatus": "validating",
+    "packageAccepted": false,
+    "realTextCapabilityAccepted": false,
+    "d1": "ACCEPTED / closed",
+    "d2": "ACCEPTED / closed",
+    "d3": "confirmed external Provider protocol / compatibility blocker; first identity binding fail-closed is correct",
+    "contract": "Durable stop before usage drain or any next trial; late usage only settles cost. Delivered success/quality failure requires actual usage settled before advancing. Unknown/missing usage never becomes zero. No second responseId acceptance, Provider retry or new paid egress.",
+    "capabilityTrialsCompleted": 4,
+    "results": [
+      {
+        "id": "L2-1",
+        "trial1": "pass",
+        "trial2": "pass",
+        "capability": "pass"
+      },
+      {
+        "id": "L2-2",
+        "trial1": "fail",
+        "trial2": "pass",
+        "capability": "variable"
+      },
+      {
+        "id": "L2-3",
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured"
+      },
+      {
+        "id": "L2-4",
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured"
+      },
+      {
+        "id": "L2-5",
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured"
+      },
+      {
+        "id": "L2-6",
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured"
+      },
+      {
+        "id": "L2-7",
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured"
+      },
+      {
+        "id": "L2-8",
+        "trial1": "not_measured",
+        "trial2": "not_measured",
+        "capability": "not_measured"
+      }
+    ],
+    "cumulativeRequests": 20,
+    "settledRequests": 19,
+    "unknownUsageRequests": 1,
+    "knownUsage": {
+      "inputTokens": 912270,
+      "outputTokens": 37740,
+      "cachedInputTokens": 265358,
+      "estimatedCny": 0.25864434
+    },
+    "request20": {
+      "sent": true,
+      "usage": null,
+      "cost": null,
+      "validCapabilityTrial": false,
+      "policy": "Unknown consumption retained; no inferred settlement"
+    },
+    "validation": {
+      "terminalTests": 9,
+      "guardTests": 17,
+      "total": 26,
+      "targetedLint": "pass",
+      "runnerSyntax": "pass",
+      "diffCheck": "pass",
+      "zeroPaidOriginalEvidenceReplay": "D3 stops before next trial; original four verdicts unchanged and terminal gates continue",
+      "historicalArtifactHashesVerified": 241,
+      "productParserJournalRpcSqlSchemaFrozenInputs": "unchanged from reviewed ff57b38",
+      "newPaidRequests": 0
+    },
+    "replayArtifact": {
+      "path": "output/playwright/p7b-l2/closeout-terminal-replay/replay.json",
+      "sha256": "80a300615ef433a1a5cae4642c287d4a08a1ff3d810bf23c16e736af7a14d70f",
+      "bytes": 981,
+      "retainedInGit": false
+    },
+    "integrationScope": "Normal ff-only integration of accepted D1 product fix, corrected Eval harness and partial/blocked evidence; preserve all commits. Does not accept P7B-2 or real-text capability.",
+    "laterStages": "P7B-3/P7C/L4 not_started",
+    "rawArtifactPolicy": "Retain ignored local diagnostics; no raw zip/screenshots/state dumps in Git"
   }
 }
