@@ -10,6 +10,7 @@
 |---|---|---|
 | [`runbook.md`](./runbook.md) | **权威现役运维手册** | 包含本地构建、代码验证命令、发布门禁、数据库防线与安全操作规范。任何日常工程检查与部署以此为准。 |
 | [`remediation-program-map.md`](./remediation-program-map.md) | **现役修复程序地图** | 包含 14 个 remediation package 的交付顺序、依赖图、验收标准及证据指纹。是当前中长期系统修复的唯一导航入口。 |
+| [`p7-aggregate-disposition.md`](./p7-aggregate-disposition.md) | **P7 当前阶段处置 / 证据入口** | Overall deferred，incomplete baseline / not release-accepted；保留子阶段结论，P7C/L4 not_run / deferred。 |
 | [`case-study-seed.md`](./case-study-seed.md) | **现役数据流程** | 内置案例项目（`project-morpho-case-study`）的生成、提取与更新规范。 |
 | [`cloudflare-workers.md`](./cloudflare-workers.md) | **备用架构说明** | Cloudflare Workers / OpenNext 部署方案与打包边界。当前正式环境部署于 Vercel，本方案保留为备用能力。 |
 

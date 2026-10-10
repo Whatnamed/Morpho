@@ -28,7 +28,7 @@
 
 | 文档 | 说明 | 状态与用途 |
 |---|---|---|
-| [`real-world-project-eval-acceptance-architecture.md`](./real-world-project-eval-acceptance-architecture.md) | 真实项目评测与验收架构设计（L0–L4 分层 Eval、项目轨迹、故障归因、真实 Provider 与 designer acceptance） | 评测套件设计输入 |
+| [`real-world-project-eval-acceptance-architecture.md`](./real-world-project-eval-acceptance-architecture.md) | 真实项目评测与验收架构设计（L0–L4 分层 Eval、项目轨迹、故障归因、真实 Provider 与 designer acceptance） | 历史评测设计输入；当前已执行范围与阶段处置见 [P7 Aggregate Disposition](../operations/p7-aggregate-disposition.md)，不把提案或 Agent 初评分作为整体 acceptance |
 | [`design-intelligence-capability-orchestration-review.md`](./design-intelligence-capability-orchestration-review.md) | 设计智能能力编排、策略路由与模型协同审查 | 能力层演化参考 |
 
 ---
