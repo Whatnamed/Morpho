@@ -18,12 +18,13 @@ import {
   Upload
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import type { MorphoWorkspace } from "@/domain/morpho/types";
+import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudy";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import {
   initializeLocalProjectCatalog,
+  loadLocalProjectCatalogSnapshot,
   loadProjectWorkspace,
   saveProjectWorkspace,
   upsertProjectSummary,
@@ -56,8 +57,12 @@ import {
   MAX_PROJECT_TITLE_LENGTH,
   type ProjectDeletionPlan
 } from "@/infrastructure/persistence/projectLifecycle";
-import { useWorkspaceAssetUrls } from "@/features/workspace/useWorkspaceAssetUrls";
-import { getProjectPreviewAssets, ProjectCanvasPreview } from "./ProjectCanvasPreview";
+import {
+  ProjectCanvasPreview,
+  type ProjectPreviewSnapshot,
+  type ProjectPreviewStatus
+} from "./ProjectCanvasPreview";
+import { useProjectHomePreviews } from "./useProjectHomePreviews";
 
 type ProjectHomeClientProps = {
   account: AccountAccessSnapshot | null;
@@ -99,7 +104,6 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<ProjectSortKey>("opened");
   const [accountOpen, setAccountOpen] = useState(false);
-  const [projectWorkspaces, setProjectWorkspaces] = useState<Record<string, MorphoWorkspace>>({});
   const [isSigningOut, startSignOutTransition] = useTransition();
   const [inspectedBackup, setInspectedBackup] = useState<InspectedEditableProjectBackupBundle | null>(null);
   const [restoreBusyLabel, setRestoreBusyLabel] = useState<string | null>(null);
@@ -110,6 +114,8 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
   const [actionBusyLabel, setActionBusyLabel] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<RestoreMessage | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
+  const invalidatePreviewsRef = useRef<(projectIds?: readonly string[]) => void>(() => {});
 
   useEffect(() => {
     let isCancelled = false;
@@ -124,7 +130,15 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
 
       if (isCancelled) return;
       setCatalog(result.catalog);
-      void ensureCurrentCaseStudyAssets();
+      const diagnostics = await ensureCurrentCaseStudyAssets();
+      if (
+        !isCancelled &&
+        result.didMigrate &&
+        diagnostics.length === 0 &&
+        result.catalog.projects.some((project) => project.id === CURRENT_CASE_STUDY_ID)
+      ) {
+        invalidatePreviewsRef.current([CURRENT_CASE_STUDY_ID]);
+      }
     });
 
     return () => {
@@ -152,30 +166,6 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
     };
   }, []);
 
-  useEffect(() => {
-    if (!catalog) {
-      return;
-    }
-
-    let isCancelled = false;
-    queueMicrotask(() => {
-      const next: Record<string, MorphoWorkspace> = {};
-      for (const project of catalog.projects) {
-        const loaded = loadProjectWorkspace(window.localStorage, project.id);
-        if (loaded.status === "ok") {
-          next[project.id] = loaded.workspace;
-        }
-      }
-      if (!isCancelled) {
-        setProjectWorkspaces(next);
-      }
-    });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [catalog]);
-
   const projects = useMemo(() => {
     const source = catalog?.projects ?? [];
     const normalizedQuery = query.trim().toLowerCase();
@@ -187,14 +177,40 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
 
   const isSearching = query.trim().length > 0;
   const recentProject = catalog?.projects.find((project) => project.id === catalog.recentProjectId) ?? catalog?.projects[0];
-  const gridProjects = isSearching ? projects : projects.filter((project) => project.id !== recentProject?.id);
-  const previewAssets = useMemo(() => getProjectPreviewAssets(projectWorkspaces), [projectWorkspaces]);
-  const previewAssetUrls = useWorkspaceAssetUrls(previewAssets);
+  const gridProjects = useMemo(
+    () => (isSearching ? projects : projects.filter((project) => project.id !== recentProject?.id)),
+    [isSearching, projects, recentProject?.id]
+  );
+  const visibleGridProjectIds = useMemo(() => gridProjects.map((project) => project.id), [gridProjects]);
   // Local-first: without required auth the workspace entry stays usable; with
   // required auth the closed-test gate keeps its existing behavior.
   const canUseProjects = !authRequired || account?.accessStatus === "active";
   const localOnly = !authRequired && !account;
   const workspaceName = localOnly ? "本地工作区" : `${getAccountDisplayName(account?.email)} 的工作区`;
+
+  const refreshCatalogFromStorage = useCallback(() => {
+    const snapshot = loadLocalProjectCatalogSnapshot(window.localStorage);
+    if (snapshot.status === "ok") {
+      setCatalog(snapshot.catalog);
+      setCatalogError(null);
+    } else if (snapshot.status === "failed") {
+      setCatalogError(snapshot.reason);
+    }
+  }, []);
+
+  const { getPreviewState, storageKeyUrls, registerCardElement, invalidateProjects } = useProjectHomePreviews({
+    catalog,
+    recentProjectId: !isSearching ? recentProject?.id : undefined,
+    visibleGridProjectIds,
+    scrollRootRef: mainScrollRef,
+    enabled: canUseProjects,
+    onExternalCatalogChange: refreshCatalogFromStorage
+  });
+  useEffect(() => {
+    invalidatePreviewsRef.current = invalidateProjects;
+  }, [invalidateProjects]);
+
+  const heroPreviewState = !isSearching && recentProject ? getPreviewState(recentProject.id) : null;
 
   const openProject = (projectId: string) => {
     router.push(`/projects/${encodeURIComponent(projectId)}`);
@@ -208,6 +224,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
     saveProjectWorkspace(window.localStorage, workspace);
     const nextCatalog = upsertProjectSummary(window.localStorage, workspace);
     setCatalog(nextCatalog);
+    invalidateProjects([projectId]);
     openProject(projectId);
   };
 
@@ -236,6 +253,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
     }
 
     setCatalog(result.catalog);
+    invalidateProjects([projectAction.project.id]);
     setProjectAction(null);
     setActionMessage({ tone: "success", text: `已改名为“${result.workspace.project.title}”。` });
   };
@@ -258,6 +276,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
       }
 
       setCatalog(result.catalog);
+      invalidateProjects([project.id]);
       setProjectAction(null);
 
       const cleanup = await Promise.allSettled(
@@ -345,6 +364,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
         return;
       }
       setInspectedBackup(null);
+      invalidateProjects([result.projectId]);
       openProject(result.projectId);
     } catch {
       setRestoreMessage({ tone: "error", text: "恢复备份失败，请重新选择备份包后再试。" });
@@ -464,7 +484,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
         </div>
       </aside>
 
-      <section className="phome-main">
+      <section className="phome-main" ref={mainScrollRef}>
         <div className="phome-main-column">
           <header className="phome-topbar">
             <div className="phome-topbar-title">
@@ -585,7 +605,8 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
                       </div>
                       <HeroSignals
                         project={recentProject}
-                        workspace={projectWorkspaces[recentProject.id]}
+                        preview={heroPreviewState?.preview}
+                        previewStatus={heroPreviewState?.status ?? "pending"}
                         subtitleText={displayProjectSubtitle(recentProject, "从一句想法、一张图或一个文件开始这个项目。")}
                       />
                       <span className="phome-hero-enter">
@@ -594,8 +615,9 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
                       </span>
                     </div>
                     <ProjectCanvasPreview
-                      workspace={projectWorkspaces[recentProject.id]}
-                      assetUrls={previewAssetUrls}
+                      preview={heroPreviewState?.preview}
+                      previewStatus={heroPreviewState?.status ?? "pending"}
+                      storageKeyUrls={storageKeyUrls}
                       className="phome-hero-cover"
                     />
                   </button>
@@ -619,18 +641,23 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
                   </span>
                 </div>
                 <div className="phome-grid">
-                  {gridProjects.map((project) => (
-                    <ProjectCard
-                      project={project}
-                      workspace={projectWorkspaces[project.id]}
-                      assetUrls={previewAssetUrls}
-                      key={project.id}
-                      onOpen={() => openProject(project.id)}
-                      onRename={startRename}
-                      onDelete={startDelete}
-                      actionsDisabled={Boolean(actionBusyLabel)}
-                    />
-                  ))}
+                  {gridProjects.map((project) => {
+                    const previewState = getPreviewState(project.id);
+                    return (
+                      <ProjectCard
+                        project={project}
+                        preview={previewState.preview}
+                        previewStatus={previewState.status}
+                        storageKeyUrls={storageKeyUrls}
+                        onRegisterElement={registerCardElement}
+                        key={project.id}
+                        onOpen={() => openProject(project.id)}
+                        onRename={startRename}
+                        onDelete={startDelete}
+                        actionsDisabled={Boolean(actionBusyLabel)}
+                      />
+                    );
+                  })}
                   {!isSearching ? <CreateProjectCard onCreate={createProject} disabled={!canUseProjects} /> : null}
                   {isSearching && projects.length === 0 ? (
                     <div className="phome-blank">
@@ -692,27 +719,28 @@ export function LocalStorageFooter({
 
 function HeroSignals({
   project,
-  workspace,
+  preview,
+  previewStatus,
   subtitleText
 }: {
   project: LocalProjectSummary;
-  workspace?: MorphoWorkspace;
+  preview?: ProjectPreviewSnapshot;
+  previewStatus: ProjectPreviewStatus;
   subtitleText: string;
 }) {
-  const activeObjects = workspace
-    ? Object.values(workspace.objects).filter((object) => object.visibility === "active")
-    : [];
-  const imageCount = activeObjects.filter((object) => object.type === "image").length;
+  const hasConfirmedCounts = previewStatus === "ready" && preview !== undefined;
+  const objectCountDisplay = hasConfirmedCounts ? String(preview.activeObjectCount) : "—";
+  const imageCountDisplay = hasConfirmedCounts ? String(preview.activeImageCount) : "—";
   const note = project.continuityNote && project.continuityNote !== subtitleText ? project.continuityNote : null;
 
   return (
     <div className="phome-hero-signals">
       <span className="phome-hero-figure">
-        <strong>{activeObjects.length}</strong>
+        <strong>{objectCountDisplay}</strong>
         <small>画布对象</small>
       </span>
       <span className="phome-hero-figure">
-        <strong>{imageCount}</strong>
+        <strong>{imageCountDisplay}</strong>
         <small>视觉素材</small>
       </span>
       {note ? <span className="phome-hero-note">{note}</span> : null}
@@ -764,25 +792,41 @@ function AccessNotice({ tone, title, body }: { tone: "neutral" | "error"; title:
 
 function ProjectCard({
   project,
-  workspace,
-  assetUrls,
+  preview,
+  previewStatus,
+  storageKeyUrls,
+  onRegisterElement,
   onOpen,
   onRename,
   onDelete,
   actionsDisabled
 }: {
   project: LocalProjectSummary;
-  workspace?: MorphoWorkspace;
-  assetUrls: Record<string, string>;
+  preview?: ProjectPreviewSnapshot;
+  previewStatus: ProjectPreviewStatus;
+  storageKeyUrls: Record<string, string>;
+  onRegisterElement: (projectId: string, element: HTMLElement | null) => void;
   onOpen: () => void;
   onRename: (project: LocalProjectSummary) => void;
   onDelete: (project: LocalProjectSummary) => void;
   actionsDisabled: boolean;
 }) {
+  const cardRef = useCallback(
+    (element: HTMLElement | null) => {
+      onRegisterElement(project.id, element);
+    },
+    [onRegisterElement, project.id]
+  );
+
   return (
-    <article className="phome-card">
+    <article className="phome-card" ref={cardRef} data-project-id={project.id}>
       <button className="phome-card-open" type="button" onClick={onOpen} aria-label={`进入项目：${project.title}`}>
-        <ProjectCanvasPreview workspace={workspace} assetUrls={assetUrls} className="phome-card-cover" />
+        <ProjectCanvasPreview
+          preview={preview}
+          previewStatus={previewStatus}
+          storageKeyUrls={storageKeyUrls}
+          className="phome-card-cover"
+        />
         <div className="phome-card-body">
           <h3>{project.title}</h3>
           <p>{displayProjectSubtitle(project, "尚未添加内容的空白项目。")}</p>

@@ -6987,6 +6987,19 @@ select:focus-visible {
   height: 42%;
 }
 
+.project-preview-unavailable {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
 
 
 .project-cover {

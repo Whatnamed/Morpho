@@ -578,7 +578,7 @@ function recoverCataloglessProjectWorkspaces(storage: Storage, mode: LocalProjec
   return workspaces;
 }
 
-function parseProjectWorkspaceStorageKey(storageKey: string): string | null {
+export function parseProjectWorkspaceStorageKey(storageKey: string): string | null {
   const match = /^morpho\.project\.(.+)\.workspace\.v1$/.exec(storageKey);
   return match?.[1] ?? null;
 }
