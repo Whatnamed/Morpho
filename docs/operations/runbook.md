@@ -268,9 +268,9 @@ npm.cmd run measure:perf5:browser:worktree
 ### Build provenance for browser evidence
 
 A performance browser run must serve the exact production build that it records. Start from a
-clean tracked worktree; `npm.cmd run build:evidence` (or `node ./scripts/build-production.mjs --strict`)
-enforces that clean worktree gate, records `isDirty: false`, and writes the ignored
-`.next/morpho-build-provenance.json` marker containing:
+clean source tree. `npm.cmd run build:evidence` (or `node ./scripts/build-production.mjs --strict`)
+rejects tracked changes and non-ignored untracked files outside `output/`, records `isDirty: false`,
+and writes the ignored `.next/morpho-build-provenance.json` marker containing:
 
 - source commit SHA;
 - SHA-256 digest and file count of the exact tracked plus non-ignored untracked source tree

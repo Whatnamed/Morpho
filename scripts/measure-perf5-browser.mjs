@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import {
-  assertCleanTrackedWorktree,
+  assertCleanWorktree,
   gitSourceSha,
-  isTrackedWorktreeClean,
+  isWorktreeClean,
   nextArtifactDigest,
   readBuildProvenance,
   worktreeSourceDigest
@@ -14,7 +14,7 @@ const allowDirtyExact = process.argv.includes("--allow-dirty-exact");
 
 // 1. Strict clean worktree validation at measurement start
 if (!allowDirtyExact) {
-  assertCleanTrackedWorktree(projectRoot);
+  assertCleanWorktree(projectRoot);
 }
 
 // 2. Validate served build provenance
@@ -24,11 +24,11 @@ if (provenance.sourceSha !== sourceSha) {
   throw new Error(`Served build source SHA ${provenance.sourceSha} does not match current HEAD ${sourceSha}. Rebuild with npm run build:evidence first.`);
 }
 if (provenance.isDirty && !allowDirtyExact) {
-  throw new Error("Served build was created from a dirty tracked worktree. Rebuild with npm run build:evidence on a clean commit.");
+  throw new Error("Served build was created from a dirty source tree. Rebuild with npm run build:evidence on a clean commit.");
 }
-const isDirty = !isTrackedWorktreeClean(projectRoot);
+const isDirty = !isWorktreeClean(projectRoot);
 if (Boolean(provenance.isDirty) !== isDirty) {
-  throw new Error("Served build dirty-state does not match the current tracked working tree. Rebuild first.");
+  throw new Error("Served build dirty-state does not match the current source tree. Rebuild first.");
 }
 const sourceTree = await worktreeSourceDigest(projectRoot);
 if (

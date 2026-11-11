@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import {
-  assertCleanTrackedWorktree,
+  assertCleanWorktree,
   gitSourceSha,
   nextArtifactDigest,
   readBuildProvenance,
@@ -29,9 +29,9 @@ const isStrict =
 
 if (isStrict) {
   if (provenance.isDirty) {
-    throw new Error("Served build was created from a dirty tracked worktree. Clean build required for evidence.");
+    throw new Error("Served build was created from a dirty source tree. Clean build required for evidence.");
   }
-  assertCleanTrackedWorktree(projectRoot);
+  assertCleanWorktree(projectRoot);
 }
 const artifact = await nextArtifactDigest(projectRoot);
 if (artifact.digest !== provenance.artifactSha256 || artifact.fileCount !== provenance.artifactFileCount) {

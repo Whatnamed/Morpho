@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { execFileSync } from "node:child_process";
 import type { FullConfig } from "@playwright/test";
 import { createServer } from "vite";
+import { assertCleanWorktree, gitSourceSha } from "../scripts/build-provenance.mjs";
 
 export const SEED_PAYLOAD_PATH = resolve(process.cwd(), "e2e/.seed/seed.json");
 export const PERF_SEED_PAYLOAD_PATH = resolve(process.cwd(), "e2e/.seed/perf-seed.json");
@@ -19,7 +19,7 @@ export const PHASE5_SEED_PAYLOAD_PATH = resolve(process.cwd(), "e2e/.seed/phase5
  * `e2e/.seed/`, which is gitignored.
  */
 export default async function globalSetup(config: FullConfig): Promise<void> {
-  const sourceSha = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const sourceSha = gitSourceSha();
   if (process.env.MORPHO_EXPECTED_BUILD_SOURCE_SHA && process.env.MORPHO_EXPECTED_BUILD_SOURCE_SHA !== sourceSha) {
     throw new Error(`Expected build source SHA ${process.env.MORPHO_EXPECTED_BUILD_SOURCE_SHA} does not match HEAD ${sourceSha}.`);
   }
@@ -28,10 +28,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   const needsPhase5Seed = projectNames.includes("perf5");
 
   if (process.env.MORPHO_REQUIRE_CLEAN_BUILD === "true") {
-    const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" }).trim();
-    if (status) {
-      throw new Error(`Performance evidence requires a clean tracked worktree at measurement time:\n${status}`);
-    }
+    assertCleanWorktree();
   }
 
   const server = await createServer({

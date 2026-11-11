@@ -2,9 +2,9 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
-  assertCleanTrackedWorktree,
+  assertCleanWorktree,
   gitSourceSha,
-  isTrackedWorktreeClean,
+  isWorktreeClean,
   nextArtifactDigest,
   worktreeSourceDigest,
   writeBuildProvenance
@@ -17,10 +17,10 @@ const isStrict =
   process.env.MORPHO_REQUIRE_CLEAN_BUILD === "true";
 
 if (isStrict) {
-  assertCleanTrackedWorktree(projectRoot);
+  assertCleanWorktree(projectRoot);
 }
 
-const isDirty = !isTrackedWorktreeClean(projectRoot);
+const isDirty = !isWorktreeClean(projectRoot);
 const sourceSha = gitSourceSha(projectRoot);
 const sourceTree = await worktreeSourceDigest(projectRoot);
 const environment = {

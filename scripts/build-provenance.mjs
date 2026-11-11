@@ -5,6 +5,7 @@ import { join, relative, resolve } from "node:path";
 
 export const NEXT_BUILD_DIR = ".next";
 export const PROVENANCE_FILE = "morpho-build-provenance.json";
+const LOCAL_EVIDENCE_DIRECTORY = "output/";
 
 export function gitSourceSha(projectRoot = process.cwd()) {
   return execFileSync("git", ["rev-parse", "HEAD"], {
@@ -13,21 +14,22 @@ export function gitSourceSha(projectRoot = process.cwd()) {
   }).trim();
 }
 
-export function isTrackedWorktreeClean(projectRoot = process.cwd()) {
-  const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
-    cwd: projectRoot,
-    encoding: "utf8"
-  }).trim();
-  return status.length === 0;
+function worktreeSourceChanges(projectRoot) {
+  return execFileSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=all", "--", ".", `:(top,exclude)${LOCAL_EVIDENCE_DIRECTORY}`],
+    { cwd: projectRoot, encoding: "utf8" }
+  ).trimEnd();
 }
 
-export function assertCleanTrackedWorktree(projectRoot = process.cwd()) {
-  const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], {
-    cwd: projectRoot,
-    encoding: "utf8"
-  }).trim();
+export function isWorktreeClean(projectRoot = process.cwd()) {
+  return worktreeSourceChanges(projectRoot).length === 0;
+}
+
+export function assertCleanWorktree(projectRoot = process.cwd()) {
+  const status = worktreeSourceChanges(projectRoot);
   if (status) {
-    throw new Error(`Build provenance requires a clean tracked worktree:\n${status}`);
+    throw new Error(`Build provenance requires a clean source tree:\n${status}`);
   }
 }
 
@@ -55,7 +57,7 @@ export async function worktreeSourceDigest(projectRoot = process.cwd()) {
     .split("\0")
     .filter(Boolean)
     .map((path) => path.replaceAll("\\", "/"))
-    .filter((path) => !path.startsWith("output/"))
+    .filter((path) => !path.startsWith(LOCAL_EVIDENCE_DIRECTORY))
     .sort();
   const hash = createHash("sha256");
   for (const path of files) {
