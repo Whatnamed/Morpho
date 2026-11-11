@@ -368,6 +368,9 @@ test.describe("project home on-demand preview", () => {
       return Boolean(img && img.complete && img.naturalWidth > 0);
     });
 
+    // Ensure startup case-study asset verification has finished before resetting spy counters.
+    await page.waitForFunction(() => window.localStorage.getItem("morpho.case-study.install.v1") !== null);
+
     // Scrolling back to top and down again must not trigger duplicate workspace parses or IDB reads.
     await page.evaluate(() => (window as unknown as { __resetHomeSpy: () => void }).__resetHomeSpy());
     await page.evaluate(() => {
