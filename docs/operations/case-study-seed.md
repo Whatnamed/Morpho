@@ -26,6 +26,12 @@ public/case-study/current/assets/
 
 这些文件由脚本生成，不手工编辑。资源以内容 hash 命名并去重；workspace 只保存运行时 storage key，不包含 Base64 二进制或本机路径。
 
+## 升级已有案例
+
+要将仓库里的案例更新到当前 Workspace schema，运行 `npm.cmd run case-study:upgrade`。
+脚本会重写 `currentCaseWorkspace.generated.json` 和 `currentCaseDiagnostics.generated.json`。
+运行后检查这两个文件的 Git diff。
+
 ## 敏感信息
 
 导入拒绝 API key、Bearer credential、JWT、Authorization/Cookie 类字段和不安全 reference-only URL。它会清理本地路径、`blob:`、`localhost`、临时签名 URL 和邮箱。生成的诊断只记录清理类别和数量，不记录原始敏感值。

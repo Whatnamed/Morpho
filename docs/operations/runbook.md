@@ -252,7 +252,6 @@ npm.cmd run typecheck
 npm.cmd test
 npm.cmd run build
 npm.cmd run test:e2e:build
-npm.cmd run case-study:upgrade
 ```
 
 `npm.cmd run test:e2e:build` builds once and then runs only the `chromium` acceptance project
@@ -301,7 +300,8 @@ Expected results:
 - `typecheck`: `tsc --noEmit` completes.
 - `test`: Vitest runs domain, persistence, import, query, AiJWS/OpenAI-compatible, and GrsAI tests.
 - `build`: `next build` completes and prerenders static pages/routes where applicable.
-- `case-study:upgrade`: upgrades the generated current-case workspace to schema 16; running it twice must leave the workspace hash unchanged.
+
+To regenerate the tracked built-in case study files, follow the [case study maintenance procedure](./case-study-seed.md#升级已有案例).
 
 GitHub CI runs the same core quality gate in `.github/workflows/quality.yml` on pushes to `main` and on pull requests:
 
