@@ -3,12 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import {
   estimateOriginStorage,
   formatStorageSize,
+  isLocalTextStorageUnderPressure,
   isOriginStorageUnderPressure,
+  LOCAL_TEXT_STORAGE_WARNING_BYTES,
+  measureLocalTextStorage,
   ORIGIN_STORAGE_PRESSURE_SHARE,
   readStorageDurability,
   requestStorageDurability,
   type StorageManagerLike
 } from "./storageDurability";
+import { createMemoryStorage } from "./memoryStorage";
+import { localStorageEntryBytes } from "./storageFootprint";
 
 describe("readStorageDurability", () => {
   it("reports an unknown grant when the browser has no StorageManager", async () => {
@@ -138,5 +143,80 @@ describe("formatStorageSize", () => {
   it("refuses to invent a size", () => {
     expect(formatStorageSize(Number.NaN)).toBe("未知");
     expect(formatStorageSize(-1)).toBe("未知");
+  });
+});
+
+describe("measureLocalTextStorage", () => {
+  it("reports unknown when localStorage is unavailable or throws", () => {
+    expect(measureLocalTextStorage(null)).toEqual({ status: "unknown" });
+
+    const memory = createMemoryStorage();
+    const brokenLength: Storage = {
+      ...memory,
+      get length(): number {
+        throw new DOMException("blocked", "SecurityError");
+      },
+      key: memory.key.bind(memory),
+      getItem: memory.getItem.bind(memory),
+      setItem: memory.setItem.bind(memory),
+      removeItem: memory.removeItem.bind(memory),
+      clear: memory.clear.bind(memory)
+    };
+    expect(measureLocalTextStorage(brokenLength)).toEqual({ status: "unknown" });
+
+    memory.setItem("ok", "123");
+    memory.setItem("bad", "456");
+    const brokenRead: Storage = {
+      ...memory,
+      get length() {
+        return memory.length;
+      },
+      key: (index) => memory.key(index),
+      getItem: (key) => {
+        if (key === "bad") {
+          throw new DOMException("blocked", "SecurityError");
+        }
+        return memory.getItem(key);
+      },
+      setItem: memory.setItem.bind(memory),
+      removeItem: memory.removeItem.bind(memory),
+      clear: memory.clear.bind(memory)
+    };
+    expect(measureLocalTextStorage(brokenRead)).toEqual({ status: "unknown" });
+  });
+
+  it("measures UTF-16 quota bytes without parsing values", () => {
+    const memory = createMemoryStorage();
+    memory.setItem("k1", "{not-json");
+    memory.setItem("k2", "中文");
+
+    expect(measureLocalTextStorage(memory)).toEqual({
+      status: "ok",
+      quotaBytes: localStorageEntryBytes("k1", "{not-json") + localStorageEntryBytes("k2", "中文"),
+      entryCount: 2
+    });
+  });
+});
+
+describe("isLocalTextStorageUnderPressure", () => {
+  it("never warns on unknown usage", () => {
+    expect(isLocalTextStorageUnderPressure({ status: "unknown" })).toBe(false);
+  });
+
+  it("warns at or above the conservative local text threshold and stays quiet below it", () => {
+    expect(
+      isLocalTextStorageUnderPressure({
+        status: "ok",
+        quotaBytes: LOCAL_TEXT_STORAGE_WARNING_BYTES - 1,
+        entryCount: 1
+      })
+    ).toBe(false);
+    expect(
+      isLocalTextStorageUnderPressure({
+        status: "ok",
+        quotaBytes: LOCAL_TEXT_STORAGE_WARNING_BYTES,
+        entryCount: 1
+      })
+    ).toBe(true);
   });
 });

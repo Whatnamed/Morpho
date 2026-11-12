@@ -142,5 +142,31 @@ describe("measureStorageUsage", () => {
     const usage = measureStorageUsage(guarded);
     expect(usage.entryCount).toBe(1);
     expect(usage.entries[0]?.key).toBe("readable");
+    expect(usage.unreadableCount).toBe(1);
+    expect(usage.measurementFailed).toBe(true);
+  });
+
+  it("marks measurementFailed when storage.length itself throws", () => {
+    const storage = createMemoryStorage();
+    const broken: Storage = {
+      ...storage,
+      get length(): number {
+        throw new DOMException("blocked", "SecurityError");
+      },
+      key: storage.key.bind(storage),
+      getItem: storage.getItem.bind(storage),
+      setItem: storage.setItem.bind(storage),
+      removeItem: storage.removeItem.bind(storage),
+      clear: storage.clear.bind(storage)
+    };
+
+    const usage = measureStorageUsage(broken);
+    expect(usage).toEqual({
+      entryCount: 0,
+      quotaBytes: 0,
+      entries: [],
+      unreadableCount: 0,
+      measurementFailed: true
+    });
   });
 });

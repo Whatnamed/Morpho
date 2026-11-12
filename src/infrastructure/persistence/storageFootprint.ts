@@ -187,6 +187,8 @@ export type StorageUsage = {
   entryCount: number;
   quotaBytes: number;
   entries: StorageUsageEntry[];
+  unreadableCount: number;
+  measurementFailed: boolean;
 };
 
 /**
@@ -194,14 +196,29 @@ export type StorageUsage = {
  * A failing write is bounded by the whole origin, so the whole origin is measured.
  */
 export function measureStorageUsage(storage: Storage): StorageUsage {
+  let length: number;
+  try {
+    length = storage.length;
+  } catch {
+    return {
+      entryCount: 0,
+      quotaBytes: 0,
+      entries: [],
+      unreadableCount: 0,
+      measurementFailed: true
+    };
+  }
+
   const entries: StorageUsageEntry[] = [];
   let quotaBytes = 0;
+  let unreadableCount = 0;
 
-  for (let index = 0; index < storage.length; index += 1) {
+  for (let index = 0; index < length; index += 1) {
     let key: string | null = null;
     try {
       key = storage.key(index);
     } catch {
+      unreadableCount += 1;
       continue;
     }
     if (key === null) {
@@ -212,6 +229,7 @@ export function measureStorageUsage(storage: Storage): StorageUsage {
     try {
       value = storage.getItem(key);
     } catch {
+      unreadableCount += 1;
       continue;
     }
     if (value === null) {
@@ -226,6 +244,8 @@ export function measureStorageUsage(storage: Storage): StorageUsage {
   return {
     entryCount: entries.length,
     quotaBytes,
-    entries: entries.sort((a, b) => b.quotaBytes - a.quotaBytes)
+    entries: entries.sort((a, b) => b.quotaBytes - a.quotaBytes),
+    unreadableCount,
+    measurementFailed: unreadableCount > 0
   };
 }
