@@ -19,8 +19,9 @@ import {
   saveProjectWorkspace,
   summarizeProject
 } from "@/infrastructure/persistence/localProjectStore";
+import { createMemoryStorage } from "@/infrastructure/persistence/memoryStorage";
 import { ensureCurrentCaseStudyAssetsWithResult } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
-import { getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
+import { getAssetObjectUrl, indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import { extractProjectPreviewSnapshot } from "./ProjectCanvasPreview";
 import { ProjectHomeClient } from "./ProjectHomeClient";
 
@@ -45,6 +46,11 @@ vi.mock("@/infrastructure/assets/currentCaseStudyAssetInstaller", () => ({
 vi.mock("@/infrastructure/assets/indexedDbAssetStore", () => ({
   indexedDbBlobStore: { delete: vi.fn(async () => {}) },
   getAssetObjectUrl: vi.fn(async (storageKey: string) => `blob:test:${storageKey}`)
+}));
+
+vi.mock("@/infrastructure/persistence/projectWriteLock", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/infrastructure/persistence/projectWriteLock")>(),
+  acquireProjectWriteLease: async () => ({ status: "granted", release: () => {} })
 }));
 
 vi.mock("@/infrastructure/persistence/storageDurability", () => ({
@@ -168,6 +174,7 @@ describe("ProjectHomeClient on-demand previews", () => {
       root.unmount();
     });
     container.remove();
+    vi.restoreAllMocks();
     URL.revokeObjectURL = originalRevokeObjectURL;
     if (originalIntersectionObserver) {
       window.IntersectionObserver = originalIntersectionObserver;
@@ -199,6 +206,60 @@ describe("ProjectHomeClient on-demand previews", () => {
       }
     }
   }
+
+  it("preserves files after failed and partially completed deletion, then repairs the residual list entry", async () => {
+    const storage = createMemoryStorage();
+    vi.spyOn(window, "localStorage", "get").mockReturnValue(storage);
+    const target = buildSampleImageProject("p-delete", "删除失败测试", "2026-10-10T10:00:00.000Z");
+    const other = createBlankWorkspace("p-keep");
+    saveProjectWorkspace(window.localStorage, target);
+    saveProjectWorkspace(window.localStorage, other);
+    const rawCatalog = JSON.stringify(createCatalog([summarizeProject(target), summarizeProject(other)], target.project.id));
+    const key = getProjectWorkspaceStorageKey(target.project.id);
+    window.localStorage.setItem(CATALOG_STORAGE_KEY, rawCatalog);
+    const rawWorkspace = window.localStorage.getItem(key);
+    const deleteBlob = vi.mocked(indexedDbBlobStore.delete);
+    deleteBlob.mockClear();
+    await act(async () => root.render(createElement(ProjectHomeClient, { account: null, authRequired: false })));
+
+    const click = async (label: string, byText = false) => {
+      const button = [...container.querySelectorAll("button")].find((entry) =>
+        byText ? entry.textContent?.trim() === label : entry.getAttribute("aria-label") === label
+      );
+      expect(button).toBeDefined();
+      await act(async () => button!.click());
+    };
+
+    await click("删除项目：删除失败测试");
+    const remove = vi.spyOn(storage, "removeItem").mockImplementation(() => {});
+    try {
+      await click("删除项目", true);
+      expect(container.textContent).toContain("无法确认项目内容已删除");
+      expect(window.localStorage.getItem(key)).toBe(rawWorkspace);
+      expect(window.localStorage.getItem(CATALOG_STORAGE_KEY)).toBe(rawCatalog);
+      expect(deleteBlob).not.toHaveBeenCalled();
+    } finally {
+      remove.mockRestore();
+    }
+
+    const set = vi.spyOn(storage, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    try {
+      await click("删除项目", true);
+      expect(container.textContent).toContain("项目内容已删除，项目列表更新失败");
+      expect(window.localStorage.getItem(key)).toBeNull();
+      expect(window.localStorage.getItem(CATALOG_STORAGE_KEY)).toBe(rawCatalog);
+      expect(deleteBlob).not.toHaveBeenCalled();
+    } finally {
+      set.mockRestore();
+    }
+
+    await click("重试更新列表", true);
+    expect(container.textContent).toContain("已更新项目列表");
+    expect(JSON.parse(window.localStorage.getItem(CATALOG_STORAGE_KEY)!).projects).toEqual([
+      expect.objectContaining({ id: other.project.id })
+    ]);
+    expect(deleteBlob).not.toHaveBeenCalled();
+  });
 
   it("shows placeholder signals instead of 0 before Hero resolves, renders real counts once ready, and isolates corrupt/offscreen cards", async () => {
     const hero = buildSampleImageProject("p-hero", "主方向项目", "2026-10-10T10:00:00.000Z");

@@ -21,7 +21,7 @@ export type ProjectWriteLease =
   | {
       /** This tab may write the project. */
       status: "granted";
-      release: () => void;
+      release: () => void | Promise<void>;
     }
   | {
       /** Another tab already holds the project. This tab must stay read-only. */
@@ -52,6 +52,16 @@ export function getLockManager(): LockManagerLike | undefined {
   return (navigator as Navigator & { locks?: LockManagerLike }).locks;
 }
 
+export const PROJECT_CATALOG_WRITE_LOCK_NAME = "morpho.projects.catalog.write";
+
+// Different projects share one catalog. Hold this lock only around its read/modify/write.
+export function withProjectCatalogLock<T>(operation: () => T, signal?: AbortSignal): T | Promise<T> {
+  if (typeof window === "undefined" || !navigator.locks?.request) {
+    return operation();
+  }
+  return navigator.locks.request(PROJECT_CATALOG_WRITE_LOCK_NAME, { signal }, operation);
+}
+
 export function acquireProjectWriteLease(
   projectId: string,
   // Omitting this asks the browser. Passing `null` states that there is no lock
@@ -79,20 +89,25 @@ export function acquireProjectWriteLease(
       }
     };
 
-    void Promise.resolve(
-      locks.request(getProjectWriteLockName(projectId), { mode: "exclusive", ifAvailable: true }, async (lock) => {
+    const request: Promise<void> = Promise.resolve()
+      .then(() => locks.request(getProjectWriteLockName(projectId), { mode: "exclusive", ifAvailable: true }, async (lock) => {
         if (!lock) {
           settle({ status: "heldElsewhere" });
           return;
         }
 
-        settle({ status: "granted", release });
+        settle({
+          status: "granted",
+          release: () => {
+            release();
+            return request;
+          }
+        });
         await heldUntilReleased;
-      })
-    ).catch(() => {
-      // A rejected request tells us nothing about who holds the project, and
-      // refusing to save on that basis would lose more work than it protects.
-      settle({ status: "unsupported" });
-    });
+      }))
+      .then(
+        () => undefined,
+        () => settle({ status: "unsupported" })
+      );
   });
 }

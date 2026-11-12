@@ -153,6 +153,30 @@ describe("workspace persistence controller", () => {
     });
     expect(state.error).toBeUndefined();
   });
+
+  it("keeps a late catalog completion from replacing a newer save result", async () => {
+    type Result = Exclude<ReturnType<WorkspacePersistenceWriter>, { status: "catalogPending" }>;
+    let finishOlder!: (result: Result) => void;
+    let finishNewer!: (result: Result) => void;
+    const older = new Promise<Result>((resolve) => { finishOlder = resolve; });
+    const newer = new Promise<Result>((resolve) => { finishNewer = resolve; });
+    const writer = vi.fn<WorkspacePersistenceWriter>()
+      .mockReturnValueOnce({ status: "catalogPending", savedAt: "older", completion: older })
+      .mockReturnValueOnce({ status: "catalogPending", savedAt: "newer", completion: newer });
+    const controller = createWorkspacePersistenceController({ writer });
+    controller.schedule(makeWorkspace("project-a", "older"));
+    expect(controller.flush()).toMatchObject({ phase: "saved", lastSavedAt: "older" });
+    const oldFlush = controller.flushAndWait();
+    expect(controller.getState()).toMatchObject({ phase: "saving", isDirty: true });
+    controller.schedule(makeWorkspace("project-a", "newer"));
+    const newFlush = controller.flushAndWait();
+    finishOlder({ status: "failed", stage: "catalog", kind: "unknown", reason: "older catalog" });
+    finishNewer({ status: "ok", savedAt: "newer" });
+    await expect(newFlush).resolves.toMatchObject({ phase: "saved", lastSavedAt: "newer" });
+    await expect(oldFlush).resolves.toMatchObject({ phase: "saved", lastSavedAt: "newer" });
+    expect(controller.flush()).toMatchObject({ phase: "saved", isDirty: false });
+    controller.dispose();
+  });
 });
 
 function makeWorkspace(projectId: string, title: string): MorphoWorkspace {

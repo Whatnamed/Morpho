@@ -53,10 +53,7 @@ describe("acquireProjectWriteLease", () => {
     expect(first.status).toBe("granted");
     if (first.status !== "granted") return;
 
-    first.release();
-    // The holder's callback resumes, returns, and only then does the manager
-    // drop the name. A macrotask boundary drains that whole microtask chain.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await first.release();
 
     const second = await acquireProjectWriteLease("project-a", locks);
     expect(second.status).toBe("granted");

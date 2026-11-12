@@ -25,11 +25,12 @@ import {
   deleteProjectWorkspace,
   getProjectWorkspaceStorageKey,
   loadLocalProjectCatalogSnapshot,
-  summarizeProject,
-  writeCatalog,
+  persistProjectSummary,
+  removeProjectSummary,
   writeProjectWorkspace,
   type LocalProjectCatalog
 } from "@/infrastructure/persistence/localProjectStore";
+import { acquireProjectWriteLease, withProjectCatalogLock } from "@/infrastructure/persistence/projectWriteLock";
 
 type ExportArchiveOptions = {
   blobStore: BlobStore;
@@ -51,6 +52,7 @@ type RestoreBackupOptions = {
   now?: () => string;
   createProjectId?: () => string;
   createRuntimeStorageKey?: (assetId: AssetId, projectId: string) => string;
+  isCancelled?: () => boolean;
 };
 
 export type EditableProjectBackupInspectionPreview = {
@@ -302,69 +304,71 @@ export async function restoreEditableProjectBackupBundle(
   }
 
   const projectId = projectIdResolution.projectId;
-  const projectTitle = nextRestoredProjectTitle(revalidation.manifest.sourceProject.title, baseCatalog);
-  const createRuntimeStorageKey =
-    options.createRuntimeStorageKey ?? ((assetId: AssetId, restoredProjectId: string) => `blob:${restoredProjectId}:${assetId}`);
-
-  const plan = planEditableProjectBackupRestore(revalidation.manifest, revalidation.files, {
-    restoredAt,
-    projectId,
-    projectTitle,
-    createRuntimeStorageKey: (assetId) => createRuntimeStorageKey(assetId, projectId)
-  });
-
-  if (plan.status !== "ok") {
-    return {
-      status: "failed",
-      reason: plan.reason,
-      diagnostics: plan.diagnostics
-    };
-  }
+  const fail = (reason: string): RestoreResult => ({ status: "failed", reason, diagnostics: revalidation.diagnostics });
+  const lease = await acquireProjectWriteLease(projectId);
+  if (lease.status === "heldElsewhere") return fail("这个恢复副本正在其他标签页写入，请重试恢复。");
 
   const writtenBlobKeys: string[] = [];
+  let keepBlobs = false;
   try {
+    if (options.isCancelled?.()) return fail("已取消恢复。");
+    if (!isRestoredProjectIdAvailable(projectId, revalidation.manifest.sourceProject.id, baseCatalog, options.storage)) {
+      return fail("无法为恢复副本保留独立的项目，请重试恢复。");
+    }
+    const createRuntimeStorageKey =
+      options.createRuntimeStorageKey ?? ((assetId: AssetId, restoredProjectId: string) => `blob:${restoredProjectId}:${assetId}`);
+    const plan = planEditableProjectBackupRestore(revalidation.manifest, revalidation.files, {
+      restoredAt,
+      projectId,
+      projectTitle: revalidation.manifest.sourceProject.title,
+      createRuntimeStorageKey: (assetId) => createRuntimeStorageKey(assetId, projectId)
+    });
+    if (plan.status !== "ok") return { status: "failed", reason: plan.reason, diagnostics: plan.diagnostics };
+
     for (const assetWrite of plan.assetWrites) {
+      if (options.isCancelled?.()) return fail("已取消恢复。");
       await options.blobStore.put(assetWrite.storageKey, new Blob([new Uint8Array(assetWrite.bytes)], { type: assetWrite.mimeType }));
       writtenBlobKeys.push(assetWrite.storageKey);
     }
+
+    return await withProjectCatalogLock((): RestoreResult => {
+      if (options.isCancelled?.()) return fail("已取消恢复。");
+      const latest = loadLocalProjectCatalogSnapshot(options.storage);
+      if (latest.status === "failed") return fail(latest.reason);
+      const catalog = latest.status === "ok" ? latest.catalog : createCatalog([]);
+      if (!isRestoredProjectIdAvailable(projectId, revalidation.manifest.sourceProject.id, catalog, options.storage)) {
+        return fail("无法为恢复副本保留独立的项目，请重试恢复。");
+      }
+      const workspace = {
+        ...plan.workspace,
+        project: {
+          ...plan.workspace.project,
+          title: nextRestoredProjectTitle(revalidation.manifest.sourceProject.title, catalog)
+        }
+      };
+      keepBlobs = true;
+      const workspaceWrite = writeProjectWorkspace(options.storage, workspace);
+      const written = workspaceWrite.status === "ok" ? persistProjectSummary(options.storage, workspace) : workspaceWrite;
+      if (written.status === "ok") return { status: "ok", projectId, workspace, diagnostics: revalidation.diagnostics };
+
+      if (deleteProjectWorkspace(options.storage, projectId).status === "failed") {
+        return fail("恢复未完成，无法确认恢复副本已移除。已保留本次写入的文件。");
+      }
+      keepBlobs = false;
+      if (workspaceWrite.status === "ok" && removeProjectSummary(options.storage, projectId).status === "failed") {
+        return fail("恢复未完成，副本内容已移除，项目列表可能仍有残留。");
+      }
+      return fail(written.reason);
+    });
   } catch (error) {
-    await cleanupWrittenBlobs(options.blobStore, writtenBlobKeys);
-    return {
-      status: "failed",
-      reason: error instanceof Error ? error.message : "Backup restore failed while writing asset blobs.",
-      diagnostics: revalidation.diagnostics
-    };
+    return fail(error instanceof Error ? error.message : "恢复备份失败。");
+  } finally {
+    try {
+      if (!keepBlobs) await cleanupWrittenBlobs(options.blobStore, writtenBlobKeys);
+    } finally {
+      if (lease.status === "granted") await lease.release();
+    }
   }
-
-  const workspaceWrite = writeProjectWorkspace(options.storage, plan.workspace);
-  if (workspaceWrite.status !== "ok") {
-    await cleanupWrittenBlobs(options.blobStore, writtenBlobKeys);
-    deleteProjectWorkspace(options.storage, projectId);
-    return {
-      status: "failed",
-      reason: workspaceWrite.reason,
-      diagnostics: revalidation.diagnostics
-    };
-  }
-
-  const nextCatalog = upsertCatalogProject(baseCatalog, plan.workspace);
-  const catalogWrite = writeCatalog(options.storage, nextCatalog);
-  if (catalogWrite.status !== "ok") {
-    deleteProjectWorkspace(options.storage, projectId);
-    await cleanupWrittenBlobs(options.blobStore, writtenBlobKeys);
-    return {
-      status: "failed",
-      reason: catalogWrite.reason,
-      diagnostics: revalidation.diagnostics
-    };
-  }
-
-  return {
-    status: "ok",
-    projectId,
-    workspace: plan.workspace,
-    diagnostics: revalidation.diagnostics
-  };
 }
 
 export function downloadProjectBundleFile(file: File | Blob, fileName?: string): void {
@@ -677,11 +681,6 @@ function nextRestoredProjectTitle(sourceTitle: string, catalog: LocalProjectCata
     index += 1;
   }
   return `${sourceTitle}（恢复副本 ${index}）`;
-}
-
-function upsertCatalogProject(catalog: LocalProjectCatalog, workspace: MorphoWorkspace): LocalProjectCatalog {
-  const summary = summarizeProject(workspace);
-  return createCatalog([summary, ...catalog.projects.filter((project) => project.id !== summary.id)], summary.id);
 }
 
 async function cleanupWrittenBlobs(blobStore: BlobStore, storageKeys: string[]): Promise<void> {

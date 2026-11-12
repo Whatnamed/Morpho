@@ -1,5 +1,9 @@
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import type { StorageWriteFailureKind } from "@/infrastructure/persistence/localProjectStore";
+import type {
+  ProjectPersistenceResult,
+  ProjectPersistenceWrite,
+  StorageWriteFailureKind
+} from "@/infrastructure/persistence/localProjectStore";
 
 /**
  * `readOnly` is not a failure: another tab holds this project, so this tab
@@ -45,23 +49,12 @@ export function canMutateWorkspace({
   );
 }
 
-export type WorkspacePersistenceWriteResult =
-  | {
-      status: "ok";
-      savedAt: string;
-    }
-  | {
-      status: "failed";
-      kind: StorageWriteFailureKind;
-      reason: string;
-      stage: "workspace" | "catalog";
-    };
-
-export type WorkspacePersistenceWriter = (workspace: MorphoWorkspace) => WorkspacePersistenceWriteResult;
+export type WorkspacePersistenceWriter = (workspace: MorphoWorkspace) => ProjectPersistenceWrite;
 
 export type WorkspacePersistenceController = {
   schedule(workspace: MorphoWorkspace): void;
   flush(): WorkspacePersistenceState;
+  flushAndWait(): WorkspacePersistenceState | Promise<WorkspacePersistenceState>;
   dispose(): void;
   getState(): WorkspacePersistenceState;
 };
@@ -86,6 +79,9 @@ export function createWorkspacePersistenceController({
   let latestWorkspace: MorphoWorkspace | undefined;
   let debounceTimer: ReturnType<typeof setTimeout> | undefined;
   let maxWaitTimer: ReturnType<typeof setTimeout> | undefined;
+  let writeVersion = 0;
+  let pendingWrite: Promise<WorkspacePersistenceState> | undefined;
+  let workspaceSavedAt: string | undefined;
 
   function publish(nextState: WorkspacePersistenceState) {
     state = nextState;
@@ -111,9 +107,9 @@ export function createWorkspacePersistenceController({
     clearMaxWaitTimer();
   }
 
-  function writeLatest(): WorkspacePersistenceState {
+  function writeLatest(): WorkspacePersistenceState | Promise<WorkspacePersistenceState> {
     if (!latestWorkspace) {
-      return state;
+      return pendingWrite ?? state;
     }
 
     const workspaceToPersist = latestWorkspace;
@@ -121,26 +117,36 @@ export function createWorkspacePersistenceController({
     clearTimers();
     publish({ ...state, phase: "saving", isDirty: true });
 
-    const result = writer(workspaceToPersist);
-    if (result.status === "ok") {
+    const version = ++writeVersion;
+    const finish = (result: ProjectPersistenceResult): WorkspacePersistenceState | Promise<WorkspacePersistenceState> => {
+      if (version !== writeVersion) return pendingWrite ?? state;
+      pendingWrite = undefined;
+      if (result.status === "ok") {
+        publish({
+          phase: "saved",
+          isDirty: latestWorkspace !== undefined,
+          lastSavedAt: result.savedAt
+        });
+        return state;
+      }
+
+      latestWorkspace ??= workspaceToPersist;
       publish({
-        phase: "saved",
-        isDirty: false,
-        lastSavedAt: result.savedAt
+        phase: "error",
+        isDirty: true,
+        lastSavedAt: state.lastSavedAt,
+        error: result.reason,
+        failedStage: result.stage,
+        failureKind: result.kind
       });
       return state;
-    }
+    };
 
-    latestWorkspace = workspaceToPersist;
-    publish({
-      phase: "error",
-      isDirty: true,
-      lastSavedAt: state.lastSavedAt,
-      error: result.reason,
-      failedStage: result.stage,
-      failureKind: result.kind
-    });
-    return state;
+    const result = writer(workspaceToPersist);
+    if (result.status !== "catalogPending") return finish(result);
+    workspaceSavedAt = result.savedAt;
+    pendingWrite = result.completion.then(finish);
+    return pendingWrite;
   }
 
   function ensureMaxWaitTimer() {
@@ -167,11 +173,19 @@ export function createWorkspacePersistenceController({
       ensureMaxWaitTimer();
     },
     flush() {
+      const result = writeLatest();
+      // Local checkpoints depend on the verified workspace body. The queued
+      // catalog result still controls the save status and manual save feedback.
+      return result instanceof Promise ? { phase: "saved", isDirty: false, lastSavedAt: workspaceSavedAt } : result;
+    },
+    flushAndWait() {
       return writeLatest();
     },
     dispose() {
       clearTimers();
       latestWorkspace = undefined;
+      writeVersion += 1;
+      pendingWrite = undefined;
     },
     getState() {
       return state;

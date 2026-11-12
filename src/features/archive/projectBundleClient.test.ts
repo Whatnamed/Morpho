@@ -381,7 +381,7 @@ describe("project bundle client", () => {
     expect(arrayBuffer).not.toHaveBeenCalled();
   });
 
-  test("restores the same inspected backup twice with distinct project ids and runtime storage keys", async () => {
+  test("keeps both concurrent restores in the latest catalog with distinct titles and storage keys", async () => {
     const workspace = createBundleFixtureWorkspace();
     const blobStore = new MemoryBlobStore({
       "blob:asset-cover": "cover-bytes",
@@ -404,21 +404,11 @@ describe("project bundle client", () => {
       throw new Error("backup inspection should be ready for repeat restore assertions");
     }
 
-    const ids = ["project-restored-a", "project-restored-b"];
-    const first = await restoreEditableProjectBackupBundle(inspected, {
-      blobStore,
-      storage,
-      now: () => NOW,
-      createProjectId: () => ids.shift() ?? "project-restored-extra",
-      createRuntimeStorageKey: (assetId, projectId) => `blob:${projectId}:${assetId}`
-    });
-    const second = await restoreEditableProjectBackupBundle(inspected, {
-      blobStore,
-      storage,
-      now: () => NOW,
-      createProjectId: () => ids.shift() ?? "project-restored-extra",
-      createRuntimeStorageKey: (assetId, projectId) => `blob:${projectId}:${assetId}`
-    });
+    const [first, second] = await Promise.all(
+      ["project-restored-a", "project-restored-b"].map((id) => restoreEditableProjectBackupBundle(inspected, {
+        blobStore, storage, now: () => NOW, createProjectId: () => id
+      }))
+    );
 
     expect(first.status).toBe("ok");
     expect(second.status).toBe("ok");
@@ -426,6 +416,7 @@ describe("project bundle client", () => {
       throw new Error("repeat restore should be ready for assertions");
     }
     expect(first.projectId).not.toBe(second.projectId);
+    expect(first.workspace.project.title).not.toBe(second.workspace.project.title);
     expect(first.workspace.assets["asset-cover"]?.storageKey).not.toBe(second.workspace.assets["asset-cover"]?.storageKey);
     expect(storage.getItem(CATALOG_STORAGE_KEY)).toContain(first.projectId);
     expect(storage.getItem(CATALOG_STORAGE_KEY)).toContain(second.projectId);
@@ -819,45 +810,67 @@ describe("project bundle client", () => {
     expect(storage.getItem(getProjectWorkspaceStorageKey(workspace.project.id))).toBeNull();
   });
 
-  test("cleans up newly written blobs and does not persist a project when restore persistence fails", async () => {
-    const workspace = createBundleFixtureWorkspace();
-    const blobStore = new MemoryBlobStore({
-      "blob:asset-cover": "cover-bytes",
-      "blob:asset-brief": "brief-bytes"
-    });
-    const storage = createMemoryStorage(CATALOG_STORAGE_KEY);
+  test.each(["confirmed", "catalog-write", "workspace-read-back"] as const)(
+    "handles failed restore compensation for %s removal",
+    async (failure) => {
+      const workspace = createBundleFixtureWorkspace();
+      const blobStore = new MemoryBlobStore({
+        "blob:asset-cover": "cover-bytes",
+        "blob:asset-brief": "brief-bytes"
+      });
+      const storage = createMemoryStorage(failure === "workspace-read-back" ? undefined : CATALOG_STORAGE_KEY);
+      const key = getProjectWorkspaceStorageKey("project-failed");
+      const read = storage.getItem;
+      if (failure !== "confirmed") {
+        storage.removeItem = () => { throw new Error("blocked removal"); };
+      }
+      if (failure === "workspace-read-back") {
+        storage.getItem = (name) => {
+          const value = read(name);
+          if (name === key && value !== null) throw new Error("blocked verification");
+          return value;
+        };
+      }
 
-    const exported = await exportEditableProjectBackupBundle(workspace, {
-      blobStore,
-      createdAt: NOW,
-      chat: "full",
-      projectContinuity: "current"
-    });
+      const exported = await exportEditableProjectBackupBundle(workspace, {
+        blobStore,
+        createdAt: NOW,
+        chat: "full",
+        projectContinuity: "current"
+      });
 
-    expect(exported.status).toBe("ok");
-    if (exported.status !== "ok") {
-      throw new Error("backup export should be ready for failure assertions");
+      expect(exported.status).toBe("ok");
+      if (exported.status !== "ok") {
+        throw new Error("backup export should be ready for failure assertions");
+      }
+
+      const inspected = await inspectEditableProjectBackupBundle(exported.file);
+      expect(inspected.status).toBe("ok");
+      if (inspected.status !== "ok") {
+        throw new Error("backup inspection should be ready for failure assertions");
+      }
+
+      const restored = await restoreEditableProjectBackupBundle(inspected, {
+        blobStore,
+        storage,
+        now: () => NOW,
+        createProjectId: () => "project-failed",
+        createRuntimeStorageKey: (assetId, projectId) => `blob:${projectId}:${assetId}`
+      });
+
+      expect(restored.status).toBe("failed");
+      if (failure === "confirmed") {
+        expect(read(key)).toBeNull();
+        expect(await blobStore.get("blob:project-failed:asset-cover")).toBeNull();
+        expect(await blobStore.get("blob:project-failed:asset-brief")).toBeNull();
+      } else {
+        expect(restored).toMatchObject({ reason: expect.stringContaining("已保留本次写入的文件") });
+        expect(read(key)).not.toBeNull();
+        expect(await blobStore.get("blob:project-failed:asset-cover")).not.toBeNull();
+        expect(await blobStore.get("blob:project-failed:asset-brief")).not.toBeNull();
+      }
     }
-
-    const inspected = await inspectEditableProjectBackupBundle(exported.file);
-    expect(inspected.status).toBe("ok");
-    if (inspected.status !== "ok") {
-      throw new Error("backup inspection should be ready for failure assertions");
-    }
-
-    const restored = await restoreEditableProjectBackupBundle(inspected, {
-      blobStore,
-      storage,
-      now: () => NOW,
-      createProjectId: () => "project-failed",
-      createRuntimeStorageKey: (assetId, projectId) => `blob:${projectId}:${assetId}`
-    });
-
-    expect(restored.status).toBe("failed");
-    expect(await blobStore.get("blob:project-failed:asset-cover")).toBeNull();
-    expect(await blobStore.get("blob:project-failed:asset-brief")).toBeNull();
-    expect(storage.getItem(getProjectWorkspaceStorageKey("project-failed"))).toBeNull();
-  });
+  );
 });
 
 async function exportFixtureAtRawInput(targetInputBytes: number) {

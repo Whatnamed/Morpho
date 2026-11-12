@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
 import { createBlankWorkspace, serializeWorkspace } from "@/domain/morpho/workspace";
@@ -18,7 +18,8 @@ import {
   deleteLocalProjectRecords,
   MAX_PROJECT_TITLE_LENGTH,
   planLocalProjectDeletion,
-  renameLocalProject
+  renameLocalProject,
+  sameProjectDeletionPlan
 } from "./projectLifecycle";
 
 function asset(id: string, storageKey: string): AssetRecord {
@@ -58,7 +59,7 @@ describe("planLocalProjectDeletion", () => {
 
     const result = planLocalProjectDeletion(storage, "project-a");
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: "ok",
       plan: {
         projectId: "project-a",
@@ -119,7 +120,33 @@ describe("planLocalProjectDeletion", () => {
   it("refuses to plan a deletion for a project it cannot read", () => {
     const storage = createMemoryStorage();
 
-    expect(planLocalProjectDeletion(storage, "project-missing").status).toBe("failed");
+    expect(planLocalProjectDeletion(storage, "project-missing").status).toBe("missing");
+  });
+
+  it("reads old workspace data without migrating it on disk, and detects changes to the previewed content", () => {
+    const storage = createMemoryStorage();
+    const key = getProjectWorkspaceStorageKey("project-a");
+    const workspace = projectWith("project-a", []);
+    const legacy = JSON.stringify({ ...workspace, schemaVersion: 17 });
+    storage.setItem(key, legacy);
+    expect(loadProjectWorkspace(storage, "project-a", { mode: "readOnly" })).toMatchObject({ didMigrate: true });
+    const before = planLocalProjectDeletion(storage, "project-a");
+    expect(storage.getItem(key)).toBe(legacy);
+
+    saveProjectWorkspace(storage, { ...workspace, ui: { ...workspace.ui, aiOpen: false } });
+    const after = planLocalProjectDeletion(storage, "project-a");
+    if (before.status !== "ok" || after.status !== "ok") throw new Error("Expected two readable previews.");
+    expect(sameProjectDeletionPlan(before.plan, after.plan)).toBe(false);
+  });
+
+  it("retains every blob when storage key enumeration fails", () => {
+    const storage = createMemoryStorage();
+    seedProjects(storage, [projectWith("project-a", [asset("asset-1", "blob:only-a")])]);
+    vi.spyOn(storage, "key").mockImplementation(() => { throw new Error("blocked"); });
+    expect(planLocalProjectDeletion(storage, "project-a")).toMatchObject({
+      status: "ok",
+      plan: { exclusiveStorageKeys: [], sharedStorageKeys: ["blob:only-a"], unreadableProjectCount: 1 }
+    });
   });
 });
 
@@ -181,13 +208,41 @@ describe("deleteLocalProjectRecords", () => {
   });
 
   it("reports a catalog write failure without pretending the project survived", () => {
-    const storage = createMemoryStorage({ failSetKeys: [CATALOG_STORAGE_KEY] });
+    const storage = createMemoryStorage();
     seedProjects(storage, [projectWith("project-a", []), projectWith("project-b", [])]);
 
+    const originalCatalog = storage.getItem(CATALOG_STORAGE_KEY);
+    const setItem = vi.spyOn(storage, "setItem").mockImplementation(() => { throw new Error("blocked"); });
     const result = deleteLocalProjectRecords(storage, "project-a");
 
-    expect(result.status).toBe("failed");
+    expect(result).toMatchObject({ status: "failed", workspaceDeleted: true });
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBe(originalCatalog);
     expect(storage.getItem(getProjectWorkspaceStorageKey("project-a"))).toBeNull();
+    setItem.mockRestore();
+    expect(deleteLocalProjectRecords(storage, "project-a")).toMatchObject({
+      status: "ok", catalog: { projects: [expect.objectContaining({ id: "project-b" })] }
+    });
+  });
+
+  it.each(["throw", "ignore", "read-back"] as const)("retains the catalog after a %s deletion failure", (failure) => {
+    const storage = createMemoryStorage();
+    seedProjects(storage, [projectWith("project-a", []), projectWith("project-b", [])]);
+    const originalCatalog = storage.getItem(CATALOG_STORAGE_KEY);
+    const key = getProjectWorkspaceStorageKey("project-a");
+    const remove = storage.removeItem;
+    const get = storage.getItem;
+    let attempted = false;
+    vi.spyOn(storage, "removeItem").mockImplementation((key) => {
+      attempted = true;
+      if (failure === "throw") throw new Error("blocked");
+      if (failure === "read-back") remove(key);
+    });
+    vi.spyOn(storage, "getItem").mockImplementation((name) => {
+      if (attempted && name === key && failure === "read-back") throw new Error("blocked");
+      return get(name);
+    });
+    expect(deleteLocalProjectRecords(storage, "project-a")).toMatchObject({ status: "failed", workspaceDeleted: false });
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBe(originalCatalog);
   });
 });
 
@@ -239,5 +294,32 @@ describe("renameLocalProject", () => {
     const storage = createMemoryStorage();
 
     expect(renameLocalProject(storage, "project-missing", "新名称").status).toBe("failed");
+  });
+
+  it("keeps an unreadable catalog and repairs only the latest summary on retry", () => {
+    const storage = createMemoryStorage();
+    const target = projectWith("project-a", []);
+    const other = summarizeProject(projectWith("project-b", []));
+    seedProjects(storage, [target]);
+    writeCatalog(storage, createCatalog([summarizeProject(target), other], other.id));
+    const rawCatalog = storage.getItem(CATALOG_STORAGE_KEY);
+    const get = storage.getItem;
+    const read = vi.spyOn(storage, "getItem").mockImplementation((key) => {
+      if (key === CATALOG_STORAGE_KEY) throw new DOMException("blocked", "SecurityError");
+      return get(key);
+    });
+    expect(renameLocalProject(storage, target.project.id, "已写入")).toMatchObject({ status: "failed", titleSaved: true });
+    expect(loadProjectWorkspace(storage, target.project.id)).toMatchObject({ workspace: { project: { title: "已写入" } } });
+    read.mockRestore();
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBe(rawCatalog);
+
+    saveProjectWorkspace(storage, { ...target, project: { ...target.project, title: "后来修改" } });
+    const latest = storage.getItem(getProjectWorkspaceStorageKey(target.project.id));
+    expect(renameLocalProject(storage, target.project.id)).toMatchObject({
+      status: "ok", catalog: { recentProjectId: other.id, projects: expect.arrayContaining([
+        other, expect.objectContaining({ id: target.project.id, title: "后来修改" })
+      ]) }
+    });
+    expect(storage.getItem(getProjectWorkspaceStorageKey(target.project.id))).toBe(latest);
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { CURRENT_CASE_STUDY_ID } from "../../domain/morpho/caseStudy/currentCaseStudy";
 import { fingerprintCaseStudyWorkspace } from "../../domain/morpho/caseStudy/caseStudyFingerprint";
@@ -14,6 +14,7 @@ import {
   saveProjectWorkspace
 } from "./localProjectStore";
 import { createMemoryStorage } from "./memoryStorage";
+import { deleteLocalProjectRecords } from "./projectLifecycle";
 
 describe("local project catalog persistence", () => {
   it("replaces the sole pristine legacy Nightrail workspace with the current case study", () => {
@@ -216,6 +217,19 @@ describe("local project catalog persistence", () => {
     expect(storage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID))).toBeNull();
   });
 
+  it("does not reinstall a deleted case study when a legacy project remains in the catalog", () => {
+    const storage = createMemoryStorage();
+    expect(initializeLocalProjectCatalog(storage).status).toBe("ok");
+    const legacy = createTestWorkspace();
+    legacy.project.title = "用户的旧项目";
+    expect(persistProjectWorkspaceAndSummary(storage, legacy)).toMatchObject({ status: "ok" });
+    expect(deleteLocalProjectRecords(storage, CURRENT_CASE_STUDY_ID).status).toBe("ok");
+    expect(initializeLocalProjectCatalog(storage)).toMatchObject({
+      status: "ok", catalog: { projects: [expect.objectContaining({ id: legacy.project.id })] }
+    });
+    expect(loadProjectWorkspace(storage, CURRENT_CASE_STUDY_ID).status).toBe("missing");
+  });
+
   it("keeps corrupt legacy workspace raw data when migration fails", () => {
     const storage = createMemoryStorage();
     storage.setItem(LEGACY_WORKSPACE_STORAGE_KEY, "{not-json");
@@ -225,6 +239,31 @@ describe("local project catalog persistence", () => {
     expect(result.status).toBe("failed");
     expect(storage.getItem(CATALOG_STORAGE_KEY)).toBeNull();
     expect(storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)).toBe("{not-json");
+  });
+
+  it("keeps the legacy source and the same case-study workspace when publishing the new catalog fails", () => {
+    const storage = createMemoryStorage();
+    const legacyRaw = serializeWorkspace(createTestWorkspace());
+    storage.setItem(LEGACY_WORKSPACE_STORAGE_KEY, legacyRaw);
+    const setItem = storage.setItem;
+    const blockCatalog = vi.spyOn(storage, "setItem").mockImplementation((key, value) => {
+      if (key === CATALOG_STORAGE_KEY) throw new DOMException("quota", "QuotaExceededError");
+      setItem(key, value);
+    });
+
+    expect(initializeLocalProjectCatalog(storage)).toMatchObject({ status: "failed", kind: "quotaExceeded" });
+    expect(storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)).toBe(legacyRaw);
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBeNull();
+    const caseKey = getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID);
+    const installed = storage.getItem(caseKey);
+    expect(installed).not.toBeNull();
+
+    blockCatalog.mockRestore();
+    expect(initializeLocalProjectCatalog(storage)).toMatchObject({
+      status: "ok", catalog: { recentProjectId: CURRENT_CASE_STUDY_ID }
+    });
+    expect(storage.getItem(caseKey)).toBe(installed);
+    expect(storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)).toBeNull();
   });
 
   it("saves and loads each project workspace independently", () => {

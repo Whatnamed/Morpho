@@ -1,12 +1,13 @@
 import type { MorphoWorkspace } from "../../domain/morpho/types";
 import { parseWorkspace } from "../../domain/morpho/workspace";
 import {
-  createCatalog,
   deleteProjectWorkspace,
+  LEGACY_WORKSPACE_STORAGE_KEY,
   loadLocalProjectCatalogSnapshot,
   loadProjectWorkspace,
-  summarizeProject,
-  writeCatalog,
+  parseProjectWorkspaceStorageKey,
+  persistProjectSummary,
+  removeProjectSummary,
   writeProjectWorkspace,
   type LocalProjectCatalog
 } from "./localProjectStore";
@@ -29,6 +30,7 @@ import {
 export type ProjectDeletionPlan = {
   projectId: string;
   title: string;
+  raw: string;
   /** Blob storage keys no other stored workspace references. Safe to delete. */
   exclusiveStorageKeys: string[];
   /** Blob storage keys that must be kept: shared, or not provably unshared. */
@@ -41,14 +43,9 @@ export type ProjectDeletionPlan = {
 };
 
 export type ProjectDeletionPlanResult =
-  | {
-      status: "ok";
-      plan: ProjectDeletionPlan;
-    }
-  | {
-      status: "failed";
-      reason: string;
-    };
+  | { status: "ok"; plan: ProjectDeletionPlan }
+  | { status: "failed"; reason: string }
+  | { status: "missing"; reason: string };
 
 export type ProjectRecordDeletionResult =
   | {
@@ -58,6 +55,7 @@ export type ProjectRecordDeletionResult =
   | {
       status: "failed";
       reason: string;
+      workspaceDeleted: boolean;
     };
 
 export type ProjectRenameResult =
@@ -69,9 +67,9 @@ export type ProjectRenameResult =
   | {
       status: "failed";
       reason: string;
+      titleSaved?: boolean;
     };
 
-const PROJECT_WORKSPACE_KEY_PATTERN = /^morpho\.project\.(.+)\.workspace\.v1$/;
 export const MAX_PROJECT_TITLE_LENGTH = 80;
 
 /**
@@ -79,12 +77,9 @@ export const MAX_PROJECT_TITLE_LENGTH = 80;
  * The caller shows this to the user and only then commits.
  */
 export function planLocalProjectDeletion(storage: Storage, projectId: string): ProjectDeletionPlanResult {
-  const target = loadProjectWorkspace(storage, projectId);
+  const target = loadProjectWorkspace(storage, projectId, { mode: "readOnly" });
   if (target.status !== "ok") {
-    return {
-      status: "failed",
-      reason: target.reason
-    };
+    return target;
   }
 
   const ownKeys = collectAssetStorageKeys(target.workspace);
@@ -111,11 +106,19 @@ export function planLocalProjectDeletion(storage: Storage, projectId: string): P
     plan: {
       projectId,
       title: target.workspace.project.title,
+      raw: target.raw,
       exclusiveStorageKeys,
       sharedStorageKeys,
       unreadableProjectCount: neighbours.unreadableProjectCount
     }
   };
+}
+
+export function sameProjectDeletionPlan(previous: ProjectDeletionPlan, next: ProjectDeletionPlan): boolean {
+  return previous.raw === next.raw &&
+    previous.unreadableProjectCount === next.unreadableProjectCount &&
+    JSON.stringify(previous.exclusiveStorageKeys) === JSON.stringify(next.exclusiveStorageKeys) &&
+    JSON.stringify(previous.sharedStorageKeys) === JSON.stringify(next.sharedStorageKeys);
 }
 
 /**
@@ -131,48 +134,45 @@ export function deleteLocalProjectRecords(storage: Storage, projectId: string): 
   if (loadedCatalog.status === "failed") {
     return {
       status: "failed",
-      reason: loadedCatalog.reason
+      reason: loadedCatalog.reason,
+      workspaceDeleted: false
     };
   }
 
-  deleteProjectWorkspace(storage, projectId);
+  const removed = deleteProjectWorkspace(storage, projectId);
+  if (removed.status === "failed") {
+    return { status: "failed", workspaceDeleted: false, reason: "无法确认项目内容已删除。项目列表和文件已保留，可以重试。" };
+  }
 
-  const previous = loadedCatalog.status === "ok" ? loadedCatalog.catalog : createCatalog([]);
-  const projects = previous.projects.filter((project) => project.id !== projectId);
-  const recentProjectId =
-    previous.recentProjectId && previous.recentProjectId !== projectId
-      ? previous.recentProjectId
-      : projects[0]?.id;
-  const catalog = createCatalog(projects, recentProjectId);
-
-  const written = writeCatalog(storage, catalog);
+  const written = removeProjectSummary(storage, projectId);
   if (written.status === "failed") {
     return {
       status: "failed",
-      reason: "项目内容已删除，但项目目录未能更新。重新打开页面后目录会自行修复。"
+      reason: "项目内容已删除，项目列表更新失败。可以重试更新列表，图片和文件将保留。",
+      workspaceDeleted: true
     };
   }
 
-  return { status: "ok", catalog };
+  return written;
 }
 
-export function renameLocalProject(storage: Storage, projectId: string, title: string): ProjectRenameResult {
-  const nextTitle = title.trim();
-  if (nextTitle.length === 0) {
+export function renameLocalProject(storage: Storage, projectId: string, title?: string): ProjectRenameResult {
+  const nextTitle = title?.trim();
+  if (nextTitle === "") {
     return { status: "failed", reason: "项目名称不能为空。" };
   }
-  if (nextTitle.length > MAX_PROJECT_TITLE_LENGTH) {
+  if (nextTitle !== undefined && nextTitle.length > MAX_PROJECT_TITLE_LENGTH) {
     return { status: "failed", reason: `项目名称请控制在 ${MAX_PROJECT_TITLE_LENGTH} 个字符以内。` };
   }
 
-  const loaded = loadProjectWorkspace(storage, projectId);
+  const loaded = loadProjectWorkspace(storage, projectId, { mode: "readOnly" });
   if (loaded.status !== "ok") {
     return { status: "failed", reason: loaded.reason };
   }
 
   // A rename is metadata. It must not move the project in "recently updated",
   // which reports when the design work last changed.
-  const workspace: MorphoWorkspace = {
+  const workspace: MorphoWorkspace = nextTitle === undefined ? loaded.workspace : {
     ...loaded.workspace,
     project: {
       ...loaded.workspace.project,
@@ -180,21 +180,18 @@ export function renameLocalProject(storage: Storage, projectId: string, title: s
     }
   };
 
-  const written = writeProjectWorkspace(storage, workspace);
-  if (written.status === "failed") {
-    return { status: "failed", reason: "项目名称未能保存，原名称保持不变。" };
+  if (nextTitle !== undefined && nextTitle !== loaded.workspace.project.title) {
+    const written = writeProjectWorkspace(storage, workspace);
+    if (written.status === "failed") {
+      return { status: "failed", reason: "未能确认项目名称已保存。请重试。" };
+    }
   }
 
-  const loadedCatalog = loadLocalProjectCatalogSnapshot(storage);
-  const previous = loadedCatalog.status === "ok" ? loadedCatalog.catalog : createCatalog([]);
-  const summary = summarizeProject(workspace);
-  const catalog = createCatalog(
-    [summary, ...previous.projects.filter((project) => project.id !== projectId)],
-    previous.recentProjectId ?? projectId
-  );
-  writeCatalog(storage, catalog);
-
-  return { status: "ok", catalog, workspace };
+  const summary = persistProjectSummary(storage, workspace, false);
+  if (summary.status === "failed") {
+    return { status: "failed", titleSaved: true, reason: "项目名称已写入，项目列表更新失败。可以重试更新列表。" };
+  }
+  return { status: "ok", catalog: summary.catalog, workspace };
 }
 
 function collectAssetStorageKeys(workspace: MorphoWorkspace): string[] {
@@ -215,50 +212,35 @@ function collectStorageKeysReferencedByOtherProjects(
   const storageKeys = new Set<string>();
   let unreadableProjectCount = 0;
 
-  for (const storageKey of listProjectWorkspaceStorageKeys(storage)) {
-    const projectId = PROJECT_WORKSPACE_KEY_PATTERN.exec(storageKey)?.[1];
-    if (!projectId || projectId === excludedProjectId) {
-      continue;
-    }
+  try {
+    const length = storage.length;
+    for (let index = 0; index < length; index += 1) {
+      const key = storage.key(index);
+      if (!key) {
+        unreadableProjectCount += 1;
+        continue;
+      }
+      const projectId = parseProjectWorkspaceStorageKey(key);
+      if (key !== LEGACY_WORKSPACE_STORAGE_KEY && (!projectId || projectId === excludedProjectId)) continue;
 
-    let raw: string | null = null;
-    try {
-      raw = storage.getItem(storageKey);
-    } catch {
-      unreadableProjectCount += 1;
-      continue;
+      try {
+        const raw = storage.getItem(key);
+        const parsed = raw === null ? null : parseWorkspace(raw);
+        if (parsed?.status !== "ok" || (projectId && parsed.workspace.project.id !== projectId)) {
+          unreadableProjectCount += 1;
+          continue;
+        }
+        for (const assetStorageKey of collectAssetStorageKeys(parsed.workspace)) {
+          storageKeys.add(assetStorageKey);
+        }
+      } catch {
+        unreadableProjectCount += 1;
+      }
     }
-    if (!raw) {
-      continue;
-    }
-
-    const parsed = parseWorkspace(raw);
-    if (parsed.status === "failed") {
-      unreadableProjectCount += 1;
-      continue;
-    }
-
-    for (const assetStorageKey of collectAssetStorageKeys(parsed.workspace)) {
-      storageKeys.add(assetStorageKey);
-    }
+    if (storage.length !== length) unreadableProjectCount += 1;
+  } catch {
+    unreadableProjectCount += 1;
   }
 
   return { storageKeys, unreadableProjectCount };
-}
-
-function listProjectWorkspaceStorageKeys(storage: Storage): string[] {
-  const keys: string[] = [];
-  for (let index = 0; index < storage.length; index += 1) {
-    let key: string | null = null;
-    try {
-      key = storage.key(index);
-    } catch {
-      continue;
-    }
-    if (key && PROJECT_WORKSPACE_KEY_PATTERN.test(key)) {
-      keys.push(key);
-    }
-  }
-
-  return keys;
 }

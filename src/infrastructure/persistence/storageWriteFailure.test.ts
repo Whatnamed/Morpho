@@ -80,6 +80,16 @@ describe("persistStorageValue failure classification", () => {
       kind: "quotaExceeded"
     });
   });
+
+  it("reports uncertain persistence when a write succeeds but its read-back throws", () => {
+    const storage = createMemoryStorage();
+    const read = storage.getItem;
+    storage.getItem = () => { throw new DOMException("blocked", "SecurityError"); };
+    expect(writeProjectWorkspace(storage, createBlankWorkspace("project-a"))).toMatchObject({
+      status: "failed", kind: "writeNotVerified"
+    });
+    expect(read(getProjectWorkspaceStorageKey("project-a"))).not.toBeNull();
+  });
 });
 
 describe("persistProjectWorkspaceAndSummary", () => {
@@ -123,8 +133,9 @@ describe("describeStorageWriteFailure", () => {
     }
   });
 
-  it("always states that the change is unsaved", () => {
-    for (const kind of kinds) {
+  it("distinguishes unverified writes from rejected writes", () => {
+    expect(describeStorageWriteFailure("writeNotVerified")).toContain("未能确认");
+    for (const kind of ["quotaExceeded", "storageUnavailable", "unknown"] as const) {
       expect(describeStorageWriteFailure(kind)).toContain("没有保存");
     }
   });

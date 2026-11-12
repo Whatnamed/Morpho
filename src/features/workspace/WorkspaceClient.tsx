@@ -224,7 +224,7 @@ type SaveResearchKeyConclusionInput = {
 
 export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
   const router = useRouter();
-  const [workspace, setPersistentWorkspace, persistenceState, flushWorkspace] = usePersistentWorkspace(projectId);
+  const [workspace, setPersistentWorkspace, persistenceState, flushWorkspace, flushWorkspaceAndCatalog] = usePersistentWorkspace(projectId);
   useEffect(() => { void flushPendingExternalResultAcks(projectId, fetch).catch(() => undefined); }, [projectId]);
   const workspaceReady = persistenceState.isWorkspaceLoaded && workspace.project.id === projectId;
   const canMutateWorkspace = resolveCanMutateWorkspace({
@@ -712,14 +712,14 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
     [requestPendingConfirmation, showWorkspaceNotice]
   );
 
-  const handleManualSave = useCallback(() => {
-    const result = flushWorkspace();
+  const handleManualSave = useCallback(async () => {
+    const result = await flushWorkspaceAndCatalog();
     if (result.phase === "readOnly") {
       showWorkspaceNotice("这个标签页仅供查看，不能修改项目。", 2600);
       return;
     }
     showWorkspaceNotice(result.phase === "error" ? "本地保存失败" : "已保存", 1400);
-  }, [flushWorkspace, showWorkspaceNotice]);
+  }, [flushWorkspaceAndCatalog, showWorkspaceNotice]);
 
 
   useEffect(
@@ -1841,7 +1841,7 @@ export function WorkspaceClient({ projectId }: WorkspaceClientProps) {
           handled = true;
           break;
         case "manualSave":
-          handleManualSave();
+          void handleManualSave();
           handled = true;
           break;
         case "closeOrClearSelection":

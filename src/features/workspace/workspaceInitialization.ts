@@ -4,6 +4,7 @@ import { createBlankWorkspace, createCurrentCaseStudyWorkspace } from "@/domain/
 import { interruptActiveOperations } from "@/domain/operations/operations";
 import { ensureCurrentCaseStudyAssets } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
 import {
+  initializeBrowserProjectCatalog,
   initializeLocalProjectCatalog,
   loadProjectWorkspace,
   type LocalProjectStoreMode
@@ -22,6 +23,7 @@ export type WorkspaceInitializationOptions = Readonly<{
   mode?: LocalProjectStoreMode;
   storage?: Storage;
   installCurrentCaseStudyAssets?: typeof ensureCurrentCaseStudyAssets;
+  isCancelled?: () => boolean;
 }>;
 
 export type WorkspaceLeaseLoadResult = Readonly<{
@@ -44,20 +46,26 @@ export async function loadWorkspace(
     return { workspace: createBlankWorkspace(projectId) };
   }
 
-  const catalog = initializeLocalProjectCatalog(storage, { mode });
+  const catalog = mode === "readOnly"
+    ? initializeLocalProjectCatalog(storage, { mode })
+    : await initializeBrowserProjectCatalog(storage, { ownedProjectId: projectId, isCancelled: options.isCancelled }).catch(() => ({
+        status: "failed" as const, reason: "浏览器无法初始化本地项目列表。"
+      }));
   if (catalog.status === "failed") {
     return {
       workspace: createBlankWorkspace(projectId),
       migrationError: catalog.reason
     };
   }
-
-  if (projectId === CURRENT_CASE_STUDY_ID && mode === "writer") {
-    await (options.installCurrentCaseStudyAssets ?? ensureCurrentCaseStudyAssets)();
-  }
+  if (options.isCancelled?.()) return { workspace: createBlankWorkspace(projectId) };
 
   const loaded = loadProjectWorkspace(storage, projectId, { mode });
   if (loaded.status === "ok") {
+    if (projectId === CURRENT_CASE_STUDY_ID && mode === "writer") {
+      await (options.installCurrentCaseStudyAssets ?? ensureCurrentCaseStudyAssets)().catch((error: unknown) => {
+        console.warn("Morpho current case study assets could not be installed.", error);
+      });
+    }
     return { workspace: interruptActiveOperations(loaded.workspace, "browserReload") };
   }
 
@@ -83,12 +91,14 @@ export async function acquireLeaseThenLoadWorkspace(
   dependencies: Readonly<{
     acquireLease?: typeof acquireProjectWriteLease;
     load?: typeof loadWorkspace;
+    isCancelled?: () => boolean;
   }> = {}
 ): Promise<WorkspaceLeaseLoadResult> {
   const lease = await (dependencies.acquireLease ?? acquireProjectWriteLease)(projectId);
   try {
     const loaded = await (dependencies.load ?? loadWorkspace)(projectId, {
-      mode: lease.status === "heldElsewhere" ? "readOnly" : "writer"
+      mode: lease.status === "heldElsewhere" ? "readOnly" : "writer",
+      isCancelled: dependencies.isCancelled
     });
     return { lease, loaded };
   } catch (error) {

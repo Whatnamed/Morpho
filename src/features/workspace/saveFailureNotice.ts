@@ -26,14 +26,14 @@ export function describeSaveFailure(
   if (stage === "catalog") {
     return {
       title: "项目列表未能更新",
-      body: "这个项目的内容已经保存到本机，只是项目列表暂时没有同步。重新打开页面后会自行修复。",
+      body: "这个项目的内容已经保存到本机。可再次保存或重新打开这个项目来更新项目列表。",
       isWorkAtRisk: false
     };
   }
 
   return {
     title: titleFor(kind),
-    body: `当前修改尚未保存，请不要关闭这个页面。${nextStepFor(kind)}`,
+    body: `${kind === "writeNotVerified" ? "未能确认当前修改是否保存" : "当前修改尚未保存"}，请不要关闭这个页面。${nextStepFor(kind)}`,
     isWorkAtRisk: true
   };
 }

@@ -41,7 +41,7 @@ export function WorkspaceCrashRecovery({
     setBusy(true);
     setMessage(null);
     try {
-      const loaded = loadProjectWorkspace(window.localStorage, projectId);
+      const loaded = loadProjectWorkspace(window.localStorage, projectId, { mode: "readOnly" });
       if (loaded.status !== "ok") {
         setMessage({
           tone: "error",

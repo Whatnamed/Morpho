@@ -23,14 +23,16 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudy";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import {
-  initializeLocalProjectCatalog,
+  getProjectWorkspaceStorageKey,
+  initializeBrowserProjectCatalog,
   loadLocalProjectCatalogSnapshot,
   loadProjectWorkspace,
-  saveProjectWorkspace,
-  upsertProjectSummary,
+  persistProjectSummary,
+  writeProjectWorkspace,
   type LocalProjectCatalog,
   type LocalProjectSummary
 } from "@/infrastructure/persistence/localProjectStore";
+import { acquireProjectWriteLease, withProjectCatalogLock } from "@/infrastructure/persistence/projectWriteLock";
 import {
   estimateOriginStorage,
   formatStorageSize,
@@ -54,6 +56,7 @@ import {
   deleteLocalProjectRecords,
   planLocalProjectDeletion,
   renameLocalProject,
+  sameProjectDeletionPlan,
   MAX_PROJECT_TITLE_LENGTH,
   type ProjectDeletionPlan
 } from "@/infrastructure/persistence/projectLifecycle";
@@ -87,11 +90,14 @@ type ProjectAction =
       kind: "rename";
       project: LocalProjectSummary;
       title: string;
+      repairSummary?: boolean;
     }
   | {
       kind: "delete";
       project: LocalProjectSummary;
-      plan: ProjectDeletionPlan;
+      plan?: ProjectDeletionPlan;
+      attempted?: boolean;
+      repairSummary?: boolean;
     };
 
 /** Display-only fallback: the blank-workspace default subtitle reads poorly when repeated on every card. */
@@ -113,43 +119,76 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
   const [projectAction, setProjectAction] = useState<ProjectAction | null>(null);
   const [actionBusyLabel, setActionBusyLabel] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<RestoreMessage | null>(null);
+  const activeActionRef = useRef<AbortController | null>(null);
+  const activeRestoreRef = useRef<{ cancelled: boolean } | null>(null);
+  const pendingCreateId = useRef<string | null>(null);
+  const caseStudyStartup = useRef<Promise<void> | null>(null);
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const invalidatePreviewsRef = useRef<(projectIds?: readonly string[]) => void>(() => {});
   const invalidateAssetStorageKeysRef = useRef<(storageKeys: readonly string[]) => void>(() => {});
 
+  const cancelPendingActions = useCallback(() => {
+    activeActionRef.current?.abort();
+    if (activeRestoreRef.current) activeRestoreRef.current.cancelled = true;
+  }, []);
+
   useEffect(() => {
-    let isCancelled = false;
+    let cancelled = false;
+    const handlePageHide = () => {
+      cancelled = true;
+      cancelPendingActions();
+    };
+    window.addEventListener("pagehide", handlePageHide);
+
     queueMicrotask(async () => {
-      if (isCancelled) return;
+      if (cancelled) return;
+      try {
+        const storage = window.localStorage;
+        const result = await initializeBrowserProjectCatalog(storage, { isCancelled: () => cancelled });
+        if (cancelled) return;
+        if (result.status === "failed") {
+          setCatalogError(result.reason);
+          return;
+        }
+        setCatalog(result.catalog);
+        if (!result.catalog.projects.some((project) => project.id === CURRENT_CASE_STUDY_ID)) return;
 
-      const result = initializeLocalProjectCatalog(window.localStorage);
-      if (result.status === "failed") {
-        setCatalogError(result.reason);
-        return;
-      }
+        const install = async () => {
+          const lease = await acquireProjectWriteLease(CURRENT_CASE_STUDY_ID);
+          try {
+            if (cancelled || lease.status === "heldElsewhere") return;
+            const latest = loadLocalProjectCatalogSnapshot(storage);
+            if (latest.status !== "ok" || !latest.catalog.projects.some((project) => project.id === CURRENT_CASE_STUDY_ID)) return;
+            if (storage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID)) === null) return;
 
-      if (isCancelled) return;
-      setCatalog(result.catalog);
-      const installResult = await ensureCurrentCaseStudyAssetsWithResult();
-      if (isCancelled) return;
-
-      if (installResult.updatedStorageKeys.length > 0) {
-        invalidateAssetStorageKeysRef.current(installResult.updatedStorageKeys);
-      }
-      if (
-        result.didMigrate &&
-        installResult.diagnostics.length === 0 &&
-        result.catalog.projects.some((project) => project.id === CURRENT_CASE_STUDY_ID)
-      ) {
-        invalidatePreviewsRef.current([CURRENT_CASE_STUDY_ID]);
+            const installed = await ensureCurrentCaseStudyAssetsWithResult();
+            if (cancelled) return;
+            invalidateAssetStorageKeysRef.current(installed.updatedStorageKeys);
+            if (installed.diagnostics.length > 0) {
+              setActionMessage({ tone: "warning", text: "内置案例的部分文件未能加载，重新打开案例可重试。" });
+            } else if (result.didMigrate) {
+              invalidatePreviewsRef.current([CURRENT_CASE_STUDY_ID]);
+            }
+          } finally {
+            if (lease.status === "granted") await lease.release();
+          }
+        };
+        caseStudyStartup.current = install().catch(() => {
+          if (!cancelled) setActionMessage({ tone: "warning", text: "内置案例的文件未能准备完成，重新打开案例可重试。" });
+        });
+        await caseStudyStartup.current;
+        caseStudyStartup.current = null;
+      } catch {
+        if (!cancelled) setCatalogError("浏览器无法初始化本地项目列表。");
       }
     });
 
     return () => {
-      isCancelled = true;
+      handlePageHide();
+      window.removeEventListener("pagehide", handlePageHide);
     };
-  }, []);
+  }, [cancelPendingActions]);
 
   // Projects live only in this browser, so the origin being evictable is a real
   // data-loss path rather than a technical detail. Ask for the grant here, on the
@@ -201,6 +240,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
     } else if (snapshot.status === "missing") {
       setCatalog(null);
       setCatalogError(null);
+      activeActionRef.current?.abort();
       setProjectAction(null);
     } else if (snapshot.status === "failed") {
       setCatalogError(snapshot.reason);
@@ -223,96 +263,199 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
 
   const heroPreviewState = !isSearching && recentProject ? getPreviewState(recentProject.id) : null;
 
-  const openProject = (projectId: string) => {
+  const openProject = async (projectId: string) => {
+    cancelPendingActions();
+    if (projectId === CURRENT_CASE_STUDY_ID) await caseStudyStartup.current;
     router.push(`/projects/${encodeURIComponent(projectId)}`);
+  };
+
+  const runProjectAction = async (label: string, operation: (signal: AbortSignal) => Promise<void>) => {
+    if (activeActionRef.current) return;
+    const action = new AbortController();
+    activeActionRef.current = action;
+    setActionMessage(null);
+    setActionBusyLabel(label);
+    try {
+      await operation(action.signal);
+    } catch {
+      if (!action.signal.aborted) setActionMessage({ tone: "error", text: "无法确认操作是否完成，请重试。" });
+    } finally {
+      activeActionRef.current = null;
+      setActionBusyLabel(null);
+    }
+  };
+
+  const withHomeProjectLease = async (
+    projectId: string,
+    signal: AbortSignal,
+    operation: () => Promise<void>,
+    allowUnsupported = false
+  ) => {
+    if (projectId === CURRENT_CASE_STUDY_ID) await caseStudyStartup.current;
+    if (signal.aborted) return;
+    const lease = await acquireProjectWriteLease(projectId);
+    if (lease.status === "granted") signal.addEventListener("abort", lease.release, { once: true });
+    try {
+      if (signal.aborted) return;
+      if (lease.status === "heldElsewhere") {
+        setActionMessage({ tone: "warning", text: "这个项目正在其他标签页编辑。请关闭对应的编辑标签页后重试。" });
+      } else if (lease.status === "unsupported" && !allowUnsupported) {
+        setActionMessage({ tone: "warning", text: "当前浏览器无法保护跨标签页编辑。请在支持 Web Locks 的浏览器中操作。" });
+      } else {
+        await operation();
+      }
+    } finally {
+      if (lease.status === "granted") {
+        signal.removeEventListener("abort", lease.release);
+        await lease.release();
+      }
+    }
   };
 
   const createProject = () => {
     if (!canUseProjects) return;
+    void runProjectAction("正在新建项目…", async (signal) => {
+      const projectId = pendingCreateId.current ?? createProjectId();
+      pendingCreateId.current = projectId;
+      let shouldOpen = false;
+      await withHomeProjectLease(projectId, signal, async () => {
+        await withProjectCatalogLock(() => {
+          if (signal.aborted) return;
+          const storage = window.localStorage;
+          const existing = loadProjectWorkspace(storage, projectId, { mode: "readOnly" });
+          if (existing.status === "failed") {
+            setActionMessage({ tone: "error", text: existing.reason });
+            return;
+          }
 
-    const projectId = createProjectId();
-    const workspace = createBlankWorkspace(projectId);
-    saveProjectWorkspace(window.localStorage, workspace);
-    const nextCatalog = upsertProjectSummary(window.localStorage, workspace);
-    setCatalog(nextCatalog);
-    invalidateProjects([projectId]);
-    openProject(projectId);
+          const workspace = existing.status === "ok" ? existing.workspace : createBlankWorkspace(projectId);
+          if (existing.status === "missing") {
+            const written = writeProjectWorkspace(storage, workspace);
+            if (written.status === "failed") {
+              setActionMessage({ tone: "error", text: `未能确认新项目已保存。${written.reason} 可以重试。` });
+              return;
+            }
+          }
+
+          const summary = persistProjectSummary(storage, workspace);
+          if (summary.status === "failed") {
+            setActionMessage({ tone: "warning", text: "项目内容已写入，项目列表更新失败。再次点击“新建项目”可继续保存同一个项目。" });
+            return;
+          }
+
+          pendingCreateId.current = null;
+          setCatalog(summary.catalog);
+          setCatalogError(null);
+          invalidateProjects([projectId]);
+          shouldOpen = true;
+        }, signal);
+      }, true);
+      if (shouldOpen && !signal.aborted) void openProject(projectId);
+    });
   };
 
   const startRename = (project: LocalProjectSummary) => {
+    if (activeActionRef.current) return;
     setActionMessage(null);
     setProjectAction({ kind: "rename", project, title: project.title });
   };
 
   const startDelete = (project: LocalProjectSummary) => {
+    if (activeActionRef.current) return;
     setActionMessage(null);
     const planned = planLocalProjectDeletion(window.localStorage, project.id);
-    if (planned.status !== "ok") {
-      setActionMessage({ tone: "error", text: `无法读取这个项目：${planned.reason}没有删除任何内容。` });
-      return;
+    if (planned.status === "missing") {
+      setProjectAction({ kind: "delete", project, repairSummary: true });
+    } else if (planned.status === "failed") {
+      setActionMessage({ tone: "error", text: `无法读取这个项目：${planned.reason}` });
+    } else {
+      setProjectAction({ kind: "delete", project: { ...project, title: planned.plan.title }, plan: planned.plan });
     }
-    setProjectAction({ kind: "delete", project, plan: planned.plan });
   };
 
   const commitRename = () => {
     if (projectAction?.kind !== "rename") return;
+    const action = projectAction;
+    void runProjectAction("正在保存名称…", async (signal) => {
+      await withHomeProjectLease(action.project.id, signal, async () => {
+        await withProjectCatalogLock(() => {
+          if (signal.aborted) return;
+          const result = renameLocalProject(window.localStorage, action.project.id, action.repairSummary ? undefined : action.title);
+          if (result.status === "failed") {
+            if (result.titleSaved) setProjectAction({ ...action, repairSummary: true });
+            setActionMessage({ tone: result.titleSaved ? "warning" : "error", text: result.reason });
+            return;
+          }
 
-    const result = renameLocalProject(window.localStorage, projectAction.project.id, projectAction.title);
-    if (result.status !== "ok") {
-      setActionMessage({ tone: "error", text: result.reason });
-      return;
-    }
-
-    setCatalog(result.catalog);
-    invalidateProjects([projectAction.project.id]);
-    setProjectAction(null);
-    setActionMessage({ tone: "success", text: `已改名为“${result.workspace.project.title}”。` });
-  };
-
-  /**
-   * Records first, blobs second. If IndexedDB fails, the user is left with
-   * unreferenced image data — reclaimable later — rather than a project that is
-   * half deleted and can no longer be opened.
-   */
-  const commitDelete = async () => {
-    if (projectAction?.kind !== "delete") return;
-    const { project, plan } = projectAction;
-
-    setActionBusyLabel("正在删除项目…");
-    try {
-      const result = deleteLocalProjectRecords(window.localStorage, project.id);
-      if (result.status !== "ok") {
-        setActionMessage({ tone: "error", text: result.reason });
-        return;
-      }
-
-      setCatalog(result.catalog);
-      invalidateProjects([project.id]);
-      setProjectAction(null);
-
-      const cleanup = await Promise.allSettled(
-        plan.exclusiveStorageKeys.map((storageKey) => indexedDbBlobStore.delete(storageKey))
-      );
-      const failedCleanup = cleanup.filter((entry) => entry.status === "rejected").length;
-      setActionMessage({
-        tone: failedCleanup > 0 ? "warning" : "success",
-        text:
-          failedCleanup > 0
-            ? `已删除“${project.title}”。有 ${failedCleanup} 个图片文件未能清理，不影响其他项目。`
-            : `已删除“${project.title}”。`
+          setCatalog(result.catalog);
+          setCatalogError(null);
+          invalidateProjects([action.project.id]);
+          setProjectAction(null);
+          setActionMessage({
+            tone: "success",
+            text: action.repairSummary ? "项目列表已更新。" : `已改名为“${result.workspace.project.title}”。`
+          });
+        }, signal);
       });
-    } catch {
-      setActionMessage({ tone: "error", text: "删除项目时出错，请刷新页面后确认当前状态。" });
-    } finally {
-      setActionBusyLabel(null);
-    }
+    });
   };
 
-  const exportProjectBackup = async (project: LocalProjectSummary) => {
-    setActionBusyLabel("正在导出备份…");
-    setActionMessage(null);
-    try {
-      const loaded = loadProjectWorkspace(window.localStorage, project.id);
+  const commitDelete = () => {
+    if (projectAction?.kind !== "delete") return;
+    const action = projectAction;
+    const { project, plan } = action;
+    void runProjectAction("正在删除项目…", async (signal) => {
+      await withHomeProjectLease(project.id, signal, async () => {
+        const deleted = await withProjectCatalogLock(() => {
+          if (signal.aborted) return;
+          const storage = window.localStorage;
+          const latest = planLocalProjectDeletion(storage, project.id);
+          const summaryOnly = latest.status === "missing" && (action.attempted || action.repairSummary);
+          if (latest.status !== "ok" && !summaryOnly) {
+            setActionMessage({ tone: "error", text: `无法重新确认项目内容：${latest.reason}` });
+            return;
+          }
+          if (latest.status === "ok" && (!plan || action.repairSummary || !sameProjectDeletionPlan(plan, latest.plan))) {
+            setProjectAction({ kind: "delete", project: { ...project, title: latest.plan.title }, plan: latest.plan });
+            setActionMessage({ tone: "warning", text: "项目内容或文件范围已变化，请重新确认删除。" });
+            return;
+          }
+
+          const result = deleteLocalProjectRecords(storage, project.id);
+          if (result.status === "failed") {
+            setProjectAction({ ...action, attempted: true, repairSummary: result.workspaceDeleted || action.repairSummary });
+            setActionMessage({ tone: result.workspaceDeleted ? "warning" : "error", text: result.reason });
+            return;
+          }
+
+          setCatalog(result.catalog);
+          setCatalogError(null);
+          invalidateProjects([project.id]);
+          setProjectAction(null);
+          return { plan: latest.status === "ok" ? latest.plan : null };
+        }, signal);
+
+        if (!deleted) return;
+        const cleanup = await Promise.allSettled(
+          (deleted.plan?.exclusiveStorageKeys ?? []).map(async (key) => indexedDbBlobStore.delete(key))
+        );
+        if (signal.aborted) return;
+        const failures = cleanup.filter((entry) => entry.status === "rejected").length;
+        setActionMessage({
+          tone: failures > 0 ? "warning" : "success",
+          text: !deleted.plan
+            ? "已更新项目列表。原项目的图片和文件已保留。"
+            : failures > 0
+              ? `已删除“${project.title}”。有 ${failures} 个文件未能清理。`
+              : `已删除“${project.title}”。`
+        });
+      });
+    });
+  };
+
+  const exportProjectBackup = (project: LocalProjectSummary) =>
+    runProjectAction("正在导出备份…", async (signal) => {
+      const loaded = loadProjectWorkspace(window.localStorage, project.id, { mode: "readOnly" });
       if (loaded.status !== "ok") {
         setActionMessage({ tone: "error", text: `无法读取这个项目：${loaded.reason}` });
         return;
@@ -323,6 +466,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
         chat: "full",
         projectContinuity: "current"
       });
+      if (signal.aborted) return;
       if (result.status !== "ok") {
         setActionMessage({ tone: result.status === "blocked" ? "warning" : "error", text: result.reason });
         return;
@@ -330,19 +474,18 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
 
       downloadProjectBundleFile(result.file);
       setActionMessage({ tone: "success", text: "备份已导出。" });
-    } catch {
-      setActionMessage({ tone: "error", text: "导出备份失败，项目内容没有改变。" });
-    } finally {
-      setActionBusyLabel(null);
-    }
-  };
+    });
 
   const inspectBackup = async (file: File) => {
+    if (activeRestoreRef.current) return;
+    const operation = { cancelled: false };
+    activeRestoreRef.current = operation;
     setRestoreBusyLabel("正在读取备份包…");
     setRestoreMessage(null);
     setInspectedBackup(null);
     try {
       const result = await inspectEditableProjectBackupBundle(file);
+      if (operation.cancelled) return;
       if (result.status !== "ok") {
         setRestoreMessage({ tone: "error", text: result.reason });
         return;
@@ -354,32 +497,37 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
           : null
       );
     } catch {
-      setRestoreMessage({ tone: "error", text: "无法读取备份包。文件可能损坏，或不是 Morpho 可编辑备份。" });
+      if (!operation.cancelled) setRestoreMessage({ tone: "error", text: "无法读取备份包。文件可能损坏，或不是 Morpho 可编辑备份。" });
     } finally {
+      activeRestoreRef.current = null;
       setRestoreBusyLabel(null);
     }
   };
 
   const confirmRestore = async () => {
-    if (!inspectedBackup) return;
-
+    if (!inspectedBackup || activeRestoreRef.current) return;
+    const operation = { cancelled: false };
+    activeRestoreRef.current = operation;
     setRestoreBusyLabel("正在恢复为新项目副本…");
     setRestoreMessage(null);
     try {
       const result = await restoreEditableProjectBackupBundle(inspectedBackup, {
         blobStore: indexedDbBlobStore,
-        storage: window.localStorage
+        storage: window.localStorage,
+        isCancelled: () => operation.cancelled
       });
+      if (operation.cancelled) return;
       if (result.status !== "ok") {
         setRestoreMessage({ tone: "error", text: result.reason });
         return;
       }
       setInspectedBackup(null);
       invalidateProjects([result.projectId]);
-      openProject(result.projectId);
+      void openProject(result.projectId);
     } catch {
-      setRestoreMessage({ tone: "error", text: "恢复备份失败，请重新选择备份包后再试。" });
+      if (!operation.cancelled) setRestoreMessage({ tone: "error", text: "恢复备份失败，请重新选择备份包后再试。" });
     } finally {
+      activeRestoreRef.current = null;
       setRestoreBusyLabel(null);
     }
   };
@@ -523,7 +671,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
                   <option value="title">按名称</option>
                 </select>
               </label>
-              <button className="brand-button phome-create" type="button" onClick={createProject} disabled={!canUseProjects}>
+              <button className="brand-button phome-create" type="button" onClick={createProject} disabled={Boolean(actionBusyLabel) || !canUseProjects}>
                 <Plus size={15} />
                 新建项目
               </button>
@@ -542,7 +690,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
           {catalogError ? (
             <section className="home-warning">
               <strong>本地项目目录暂不可用</strong>
-              <p>{catalogError} 原始数据没有被覆盖。</p>
+              <p>{catalogError}</p>
             </section>
           ) : null}
 
@@ -580,7 +728,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
           ) : null}
 
           {actionBusyLabel ? <p className="phome-restore-status" role="status">{actionBusyLabel}</p> : null}
-          {actionMessage ? <p className={`phome-restore-message ${actionMessage.tone}`}>{actionMessage.text}</p> : null}
+          {actionMessage ? <p className={`phome-restore-message ${actionMessage.tone}`} role="status">{actionMessage.text}</p> : null}
           {projectAction ? (
             <ProjectActionCard
               action={projectAction}
@@ -589,6 +737,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
                 setProjectAction((current) => (current?.kind === "rename" ? { ...current, title } : current))
               }
               onCancel={() => {
+                activeActionRef.current?.abort();
                 setProjectAction(null);
                 setActionMessage(null);
               }}
@@ -669,7 +818,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
                       />
                     );
                   })}
-                  {!isSearching ? <CreateProjectCard onCreate={createProject} disabled={!canUseProjects} /> : null}
+                  {!isSearching ? <CreateProjectCard onCreate={createProject} disabled={Boolean(actionBusyLabel) || !canUseProjects} /> : null}
                   {isSearching && projects.length === 0 ? (
                     <div className="phome-blank">
                       <strong>没有匹配的项目</strong>
@@ -920,6 +1069,7 @@ function ProjectActionCard({
             <input
               value={action.title}
               autoFocus
+              disabled={busy || action.repairSummary}
               maxLength={MAX_PROJECT_TITLE_LENGTH}
               onChange={(event) => onTitleChange(event.currentTarget.value)}
               onKeyDown={(event) => {
@@ -935,7 +1085,7 @@ function ProjectActionCard({
             取消
           </button>
           <button className="brand-button" type="button" disabled={busy} onClick={onConfirmRename}>
-            保存名称
+            {action.repairSummary ? "重试更新列表" : "保存名称"}
           </button>
         </div>
       </div>
@@ -946,27 +1096,30 @@ function ProjectActionCard({
   return (
     <div className="phome-restore-card is-danger">
       <div>
-        <strong>删除“{project.title}”？</strong>
-        <p>项目内容、画布、对话与项目记录将从这台设备移除，无法撤销。</p>
-        <ul className="phome-delete-scope">
-          <li>
-            {plan.exclusiveStorageKeys.length > 0
-              ? `同时删除仅本项目使用的 ${plan.exclusiveStorageKeys.length} 个图片或文件。`
-              : "本项目没有可一并清理的独占图片或文件。"}
-          </li>
-          {plan.sharedStorageKeys.length > 0 ? (
-            <li>{plan.sharedStorageKeys.length} 个文件仍被其他项目使用，会保留。</li>
-          ) : null}
-          {plan.unreadableProjectCount > 0 ? (
-            <li>
-              有 {plan.unreadableProjectCount} 个项目暂时读不出来，无法确认文件归属，本次不会清理任何图片文件。
-            </li>
-          ) : null}
-        </ul>
-        <p className="phome-restore-note">建议先导出一份可恢复备份。</p>
+        <strong>{action.repairSummary ? `更新“${project.title}”的列表记录？` : `删除“${project.title}”？`}</strong>
+        {action.repairSummary || !plan ? (
+          <p>项目内容已删除。重试会移除残留的列表记录，图片和文件将保留。</p>
+        ) : (
+          <>
+            <p>项目内容、画布、对话与项目记录将从这台设备移除，无法撤销。</p>
+            <ul className="phome-delete-scope">
+              <li>
+                {plan.exclusiveStorageKeys.length > 0
+                  ? `同时删除仅本项目使用的 ${plan.exclusiveStorageKeys.length} 个图片或文件。`
+                  : "本项目没有可一并清理的独占图片或文件。"}
+              </li>
+              {plan.unreadableProjectCount > 0 ? (
+                <li>有 {plan.unreadableProjectCount} 个项目暂时读不出来，无法确认文件归属，本次不会清理任何图片文件。</li>
+              ) : plan.sharedStorageKeys.length > 0 ? (
+                <li>{plan.sharedStorageKeys.length} 个文件仍被其他项目使用，会保留。</li>
+              ) : null}
+            </ul>
+            <p className="phome-restore-note">建议先导出一份可恢复备份。</p>
+          </>
+        )}
       </div>
       <div className="phome-restore-actions">
-        <button className="plain-button" type="button" disabled={busy} onClick={onExportBackup}>
+        <button className="plain-button" type="button" disabled={busy || action.repairSummary} onClick={onExportBackup}>
           <Download size={14} />
           导出备份
         </button>
@@ -974,7 +1127,7 @@ function ProjectActionCard({
           取消
         </button>
         <button className="brand-button is-danger" type="button" disabled={busy} onClick={onConfirmDelete}>
-          删除项目
+          {action.repairSummary ? "重试更新列表" : "删除项目"}
         </button>
       </div>
     </div>

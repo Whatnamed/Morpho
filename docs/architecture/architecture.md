@@ -710,14 +710,23 @@ migration/repair, or current-case-study asset seeding. A granted lease uses writ
 case-study fallback, and performs no shared localStorage or IndexedDB seed writes. Browsers without an enforceable
 lease keep the existing `unsupported` compatibility path.
 
-Project deletion implements previewed, ownership-checked cleanup of Blobs used exclusively by that project. Deleting a canvas object does not delete Blob data, and object-level or orphan-sweep garbage collection is not implemented. The prerequisites and fail-closed design are recorded in [`asset-gc-evaluation.md`](asset-gc-evaluation.md).
+Home rename and delete take the same project lease at confirmation. They require Web Locks. A separate
+origin-wide Web Lock serializes catalog read/modify/write across project management, workspace saves,
+initialization and restore. New projects can retry a failed catalog write with the same ID in the current
+home session. Rename can retry the summary from the current workspace without rewriting its body.
+
+Project deletion rechecks the previewed workspace and Blob ownership under the lease. A changed preview
+requires confirmation again. Cleanup starts after verified workspace removal and catalog update, and
+retains shared or unverified assets. Retrying a partial deletion repairs the list entry and retains its
+files. Deleting a canvas object does not delete Blob data, and object-level or orphan-sweep garbage
+collection is not implemented. See [`asset-gc-evaluation.md`](asset-gc-evaluation.md).
 
 The deployable starter is `project-morpho-case-study`, generated from an editable backup. Its public case-study assets are hash-addressed under `public/case-study/current/assets/`; first use fetches, verifies, and writes them into the same IndexedDB BlobStore used by ordinary projects. The installer is idempotent and only removes the two known legacy Nightrail seed keys after a confirmed pristine replacement.
 
 M9-A persistence hardening:
 
 - `usePersistentWorkspace` no longer writes the full workspace and catalog on every React state change. It schedules writes through `workspacePersistence` with a 400 ms debounce and a 1200 ms max wait.
-- Pending writes are synchronously flushed on pagehide, visibility-hidden, beforeunload, project switch, and workspace hook unmount.
+- Pending workspace bodies are synchronously flushed on pagehide, visibility-hidden, beforeunload, project switch, and workspace hook unmount. Their catalog updates queue separately and skip snapshots superseded by another save or deletion. Closing a tab can interrupt a pending catalog update. Opening the saved workspace again can retry its summary.
 - Loading and migration errors disable automatic writes, so a temporary blank workspace cannot overwrite existing local project data.
 - `persistProjectWorkspaceAndSummary(...)` reports workspace-write and catalog-write failures separately. Catalog writes are skipped when workspace writes fail; catalog failures keep the already-written workspace and surface a catalog-stage error.
 - Image preview object URLs are reconciled incrementally by `workspaceAssetUrlCache` using `assetId + storageKey`, avoiding full IndexedDB rereads and full URL revocation when unrelated workspace state changes.
@@ -742,7 +751,7 @@ Bundle and restore layer:
 - human-readable archive carries delivery packages, stable delivery references, visual-route fields, research objects, readable source-index objects, and citation snapshots instead of only a raw object subset;
 - human-readable archive bundle output includes Markdown reading files plus every currently readable local asset binary;
 - editable backup bundle output includes only the files required for restore and is blocked when required binaries are missing or mismatched;
-- restore writes every new binary before writing workspace/catalog state, removes newly written blobs on failure, creates a new project id and new runtime storage keys, and never merges into the source project;
+- restore writes binaries under new project-specific keys, then publishes the new workspace and updates the latest catalog. On failure after a workspace write attempt, compensation verifies that the restored workspace is absent before removing its new blobs;
 - editable-backup inspection and restore planning share `validateCurrentMorphoWorkspace(...)`: current v17
   snapshots first canonicalize only the four retired Concept Direction proposal-lineage aliases, then are
   deep-validated before tolerant normalization; every other malformed current field still fails closed. Historical snapshots use the existing migration

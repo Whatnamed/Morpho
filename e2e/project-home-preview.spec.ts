@@ -369,8 +369,8 @@ test.describe("project home on-demand preview", () => {
       return Boolean(img && img.complete && img.naturalWidth > 0);
     });
 
-    // Ensure startup case-study asset verification has finished before resetting spy counters.
-    await page.waitForFunction(() => window.localStorage.getItem("morpho.case-study.install.v1") !== null);
+    // This catalog has no built-in case study, so startup must not install its assets.
+    expect(await page.evaluate(() => window.localStorage.getItem("morpho.case-study.install.v1"))).toBeNull();
 
     // Scrolling back to top and down again must not trigger duplicate workspace parses or IDB reads.
     await page.evaluate(() => (window as unknown as { __resetHomeSpy: () => void }).__resetHomeSpy());
@@ -583,12 +583,12 @@ test.describe("project home on-demand preview", () => {
       }
     }, CURRENT_CASE_STUDY_ID);
 
-    // Gate /case-studies/** fetches until Hero preview has already rendered its pre-repair corrupt/missing state.
+    // Gate case-study fetches until Hero preview renders its pre-repair corrupt/missing state.
     let releaseFetches!: () => void;
     const fetchGate = new Promise<void>((resolve) => {
       releaseFetches = resolve;
     });
-    await page.route("**/case-studies/**", async (route) => {
+    await page.route("**/case-study/current/assets/**", async (route) => {
       await fetchGate;
       await route.continue();
     });
@@ -612,7 +612,7 @@ test.describe("project home on-demand preview", () => {
       },
       expectedHeroImgCount
     );
-    await page.unroute("**/case-studies/**");
+    await page.unroute("**/case-study/current/assets/**");
 
     // 2. Real cross-tab localStorage.clear() triggers StorageEvent -> missing catalog clears UI and revokes active URLs.
     await page.evaluate(() => (window as unknown as { __resetHomeSpy: () => void }).__resetHomeSpy());

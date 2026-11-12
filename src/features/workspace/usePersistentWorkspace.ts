@@ -68,7 +68,7 @@ export function usePersistentWorkspace(projectId: string) {
       void (async () => {
         // Decide the cross-tab writer before any catalog migration, workspace
         // repair, case-study seeding, or other shared persistence work.
-        const { lease, loaded } = await acquireLeaseThenLoadWorkspace(projectId);
+        const { lease, loaded } = await acquireLeaseThenLoadWorkspace(projectId, { isCancelled: () => isCancelled });
         if (isCancelled) {
           if (lease.status === "granted") {
             lease.release();
@@ -152,6 +152,7 @@ export function usePersistentWorkspace(projectId: string) {
   }, [hasLoaded, loadResult.migrationError]);
 
   const flushWorkspace = useCallback(() => controllerRef.current?.flush() ?? persistence, [persistence]);
+  const flushWorkspaceAndCatalog = useCallback(() => controllerRef.current?.flushAndWait() ?? persistence, [persistence]);
   const setReconciledWorkspace = useCallback((action: SetStateAction<MorphoWorkspace>) => {
     setWorkspace((current) => {
       const next = typeof action === "function" ? action(current) : action;
@@ -165,6 +166,7 @@ export function usePersistentWorkspace(projectId: string) {
     workspace,
     setReconciledWorkspace,
     { ...persistence, migrationError: loadResult.migrationError, storageDurability, isWorkspaceLoaded },
-    flushWorkspace
+    flushWorkspace,
+    flushWorkspaceAndCatalog
   ] as const;
 }

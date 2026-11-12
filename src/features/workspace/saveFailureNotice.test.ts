@@ -7,12 +7,12 @@ import { describeSaveFailure } from "./saveFailureNotice";
 const KINDS: StorageWriteFailureKind[] = ["quotaExceeded", "storageUnavailable", "writeNotVerified", "unknown"];
 
 describe("describeSaveFailure", () => {
-  it("tells the user their work is unsaved when the workspace write failed", () => {
+  it("distinguishes rejected and unverified workspace writes", () => {
     for (const kind of KINDS) {
       const notice = describeSaveFailure(kind, "workspace");
 
       expect(notice.isWorkAtRisk).toBe(true);
-      expect(notice.body).toContain("当前修改尚未保存");
+      expect(notice.body).toContain(kind === "writeNotVerified" ? "未能确认当前修改是否保存" : "当前修改尚未保存");
       expect(notice.body).toContain("不要关闭");
     }
   });
