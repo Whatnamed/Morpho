@@ -70,7 +70,7 @@ Phase C Cleanup 的验收基线是 `3dcbbe989dc0606d363750e4f201c5c83f6dd1ab`，
 - Vitest
 - ESLint
 
-Morpho 是 local-first：项目目录（catalog）、工作区（Workspace）、文件、图片和可恢复备份保存在当前浏览器的 localStorage / IndexedDB，而非作为云端项目同步到 Supabase。账号登录不等于项目云端同步；跨设备继续使用时必须使用可编辑项目备份/恢复边界。AI 执行虽会将本轮所需输入传给服务端/Provider 并有上述 24 小时同执行恢复暂存合同，但它不等同于云端项目同步或长期云端资产存储。当前仍不包含云端项目同步、云端文件存储、多人实时协作、对象级/孤儿资产自动 GC 或最终 Figma/PPT/CAD 排版。
+Morpho 是 local-first：项目目录（catalog）、工作区（Workspace）、文件和图片保存在当前浏览器的 localStorage / IndexedDB，而非作为云端项目同步到 Supabase；可恢复备份需要用户主动导出并下载 ZIP，系统不会自动生成或持久保存备份副本。账号登录不等于项目云端同步；跨设备继续使用时必须使用可编辑项目备份/恢复边界。AI 执行虽会将本轮所需输入传给服务端/Provider 并有上述 24 小时同执行恢复暂存合同，但它不等同于云端项目同步或长期云端资产存储。当前仍不包含云端项目同步、云端文件存储、多人实时协作、对象级/孤儿资产自动 GC 或最终 Figma/PPT/CAD 排版。
 
 ## 部署
 
