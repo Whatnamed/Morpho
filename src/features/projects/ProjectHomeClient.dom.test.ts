@@ -523,12 +523,21 @@ describe("ProjectHomeClient on-demand previews", () => {
       quotaBytes: localQuota,
       entryCount: 2
     }));
+    measureMock.mockClear();
     vi.mocked(estimateOriginStorage).mockImplementation(async () => originUsage);
 
     await act(async () => {
       root.render(createElement(ProjectHomeClient, { account: null, authRequired: false }));
       await Promise.resolve();
       await Promise.resolve();
+    });
+
+    // First catalog render must NOT be blocked by scanning localStorage.
+    expect(container.querySelector(".phome-hero h2")?.textContent).toBe("大型文本项目");
+    expect(measureMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
     });
 
     const footerText = () => container.querySelector(".phome-foot")?.textContent ?? "";
@@ -580,6 +589,31 @@ describe("ProjectHomeClient on-demand previews", () => {
     });
     expect(footerText()).not.toContain("本机项目记录较多");
     expect(footerText()).not.toContain("本地图片与文件存储空间已接近上限");
+  });
+
+  it("cancels deferred initial storage scan if unmounted before the idle timer fires", async () => {
+    const sample = createBlankWorkspace("p-unmount");
+    saveProjectWorkspace(window.localStorage, sample);
+    window.localStorage.setItem(
+      CATALOG_STORAGE_KEY,
+      JSON.stringify(createCatalog([summarizeProject(sample)], sample.project.id))
+    );
+    const measureMock = vi.mocked(measureLocalTextStorage);
+    measureMock.mockClear();
+
+    await act(async () => {
+      root.render(createElement(ProjectHomeClient, { account: null, authRequired: false }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.querySelector(".phome-hero")).not.toBeNull();
+    expect(measureMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+      await vi.runAllTimersAsync();
+    });
+    expect(measureMock).not.toHaveBeenCalled();
   });
 
   it("exports backup directly from hero, pending cards, and search results, coalesces duplicate clicks, and refuses missing assets", async () => {

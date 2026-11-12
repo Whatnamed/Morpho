@@ -132,13 +132,19 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
   const invalidatePreviewsRef = useRef<(projectIds?: readonly string[]) => void>(() => {});
   const invalidateAssetStorageKeysRef = useRef<(storageKeys: readonly string[]) => void>(() => {});
   const storageRefreshTimerRef = useRef<number | null>(null);
+  const storageIdleCallbackRef = useRef<number | null>(null);
   const storageRefreshSeqRef = useRef(0);
   const isMountedRef = useRef(true);
 
   const clearScheduledStorageRefresh = useCallback(() => {
-    if (storageRefreshTimerRef.current !== null && typeof window !== "undefined") {
+    if (typeof window === "undefined") return;
+    if (storageRefreshTimerRef.current !== null) {
       window.clearTimeout(storageRefreshTimerRef.current);
       storageRefreshTimerRef.current = null;
+    }
+    if (storageIdleCallbackRef.current !== null && typeof window.cancelIdleCallback === "function") {
+      window.cancelIdleCallback(storageIdleCallbackRef.current);
+      storageIdleCallbackRef.current = null;
     }
   }, []);
 
@@ -152,14 +158,27 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
     });
   }, [clearScheduledStorageRefresh]);
 
-  const scheduleStorageRefresh = useCallback(() => {
-    if (typeof window === "undefined") return;
-    clearScheduledStorageRefresh();
-    storageRefreshTimerRef.current = window.setTimeout(() => {
-      storageRefreshTimerRef.current = null;
-      refreshStorageUsage();
-    }, 80);
-  }, [clearScheduledStorageRefresh, refreshStorageUsage]);
+  const scheduleStorageRefresh = useCallback(
+    (delayMs = 80, deferToIdle = false) => {
+      if (typeof window === "undefined") return;
+      clearScheduledStorageRefresh();
+      storageRefreshTimerRef.current = window.setTimeout(() => {
+        storageRefreshTimerRef.current = null;
+        if (deferToIdle && typeof window.requestIdleCallback === "function") {
+          storageIdleCallbackRef.current = window.requestIdleCallback(
+            () => {
+              storageIdleCallbackRef.current = null;
+              refreshStorageUsage();
+            },
+            { timeout: 500 }
+          );
+          return;
+        }
+        refreshStorageUsage();
+      }, delayMs);
+    },
+    [clearScheduledStorageRefresh, refreshStorageUsage]
+  );
 
   const cancelPendingActions = useCallback(() => {
     activeActionRef.current?.abort();
@@ -181,12 +200,14 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
         const storage = window.localStorage;
         const result = await initializeBrowserProjectCatalog(storage, { isCancelled: () => cancelled });
         if (cancelled) return;
-        refreshStorageUsage();
         if (result.status === "failed") {
           setCatalogError(result.reason);
+          scheduleStorageRefresh(120, true);
           return;
         }
         setCatalog(result.catalog);
+        // Defer storage scan until after initial catalog & visible preview rendering.
+        scheduleStorageRefresh(120, true);
         if (!result.catalog.projects.some((project) => project.id === CURRENT_CASE_STUDY_ID)) return;
 
         const install = async () => {
@@ -206,7 +227,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
               invalidatePreviewsRef.current([CURRENT_CASE_STUDY_ID]);
             }
             if (installed.updatedStorageKeys.length > 0) {
-              refreshStorageUsage();
+              scheduleStorageRefresh(120, true);
             }
           } finally {
             if (lease.status === "granted") await lease.release();
@@ -219,8 +240,8 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
         caseStudyStartup.current = null;
       } catch {
         if (!cancelled) {
-          refreshStorageUsage();
           setCatalogError("浏览器无法初始化本地项目列表。");
+          scheduleStorageRefresh(120, true);
         }
       }
     });
@@ -229,7 +250,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
       handlePageHide();
       window.removeEventListener("pagehide", handlePageHide);
     };
-  }, [cancelPendingActions, clearScheduledStorageRefresh, refreshStorageUsage]);
+  }, [cancelPendingActions, clearScheduledStorageRefresh, scheduleStorageRefresh]);
 
   // Projects live only in this browser, so the origin being evictable is a real
   // data-loss path rather than a technical detail. Ask for the grant here, on the

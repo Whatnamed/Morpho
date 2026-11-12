@@ -179,6 +179,7 @@ async function installHomeSpy(page: Page) {
   await page.addInitScript(() => {
     const spy = {
       wsReads: [] as string[],
+      wsReadsBeforeHeroReady: [] as string[],
       wsParses: [] as string[],
       idbGets: 0,
       idbKeys: [] as string[],
@@ -188,6 +189,7 @@ async function installHomeSpy(page: Page) {
     (window as unknown as { __homeSpy?: typeof spy; __resetHomeSpy?: () => void }).__homeSpy = spy;
     (window as unknown as { __resetHomeSpy?: () => void }).__resetHomeSpy = () => {
       spy.wsReads = [];
+      spy.wsReadsBeforeHeroReady = [];
       spy.wsParses = [];
       spy.idbGets = 0;
       spy.idbKeys = [];
@@ -219,6 +221,9 @@ async function installHomeSpy(page: Page) {
       value(key: string) {
         if (key.startsWith("morpho.project.") && key.endsWith(".workspace.v1")) {
           spy.wsReads.push(key);
+          if (!document.querySelector('.phome-hero .project-canvas-preview[data-preview-status="ready"]')) {
+            spy.wsReadsBeforeHeroReady.push(key);
+          }
         }
         return origGetItem.call(this, key);
       }
@@ -347,12 +352,13 @@ test.describe("project home on-demand preview", () => {
 
     // Bottom card remains unloaded/pending and unparsed; storage footprint scan may read entry lengths at most once on mount.
     const initialCheck = await page.evaluate(() => {
-      const spy = (window as unknown as { __homeSpy: { wsReads: string[]; wsParses: string[]; idbGets: number; urlCreates: number } }).__homeSpy;
+      const spy = (window as unknown as { __homeSpy: { wsReads: string[]; wsReadsBeforeHeroReady: string[]; wsParses: string[]; idbGets: number; urlCreates: number } }).__homeSpy;
       const bottomPreview = document.querySelector('[data-project-id="proj-18"] .project-canvas-preview');
       const corruptPreview = document.querySelector('[data-project-id="proj-corrupt"] .project-canvas-preview');
       const missingImgPreview = document.querySelector('[data-project-id="proj-missing-img"] .project-canvas-preview');
       return {
         wsReads: spy.wsReads,
+        wsReadsBeforeHeroReady: spy.wsReadsBeforeHeroReady,
         wsParses: spy.wsParses,
         idbGets: spy.idbGets,
         bottomStatus: bottomPreview?.getAttribute("data-preview-status"),
@@ -369,6 +375,7 @@ test.describe("project home on-demand preview", () => {
     expect(initialCheck.bottomIsEmpty).toBe(false);
     expect(initialCheck.wsParses).toContain("proj-hero");
     expect(initialCheck.wsParses).not.toContain("proj-18");
+    expect(initialCheck.wsReadsBeforeHeroReady).not.toContain("morpho.project.proj-18.workspace.v1");
     expect(initialCheck.wsReads.filter((key) => key === "morpho.project.proj-18.workspace.v1").length).toBeLessThanOrEqual(1);
     expect(initialCheck.corruptStatus).toBe("error");
     expect(initialCheck.corruptIsEmpty).toBe(false);
