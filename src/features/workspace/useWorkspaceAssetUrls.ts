@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AssetRecord } from "@/domain/morpho/types";
 import { getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
 import { createWorkspaceAssetUrlCache, type WorkspaceAssetUrlCache } from "./workspaceAssetUrlCache";
 
-export function useWorkspaceAssetUrls(assets: Record<string, AssetRecord>): Record<string, string> {
+export function useWorkspaceAssetUrlsController(assets: Record<string, AssetRecord>): {
+  assetUrls: Record<string, string>;
+  invalidateStorageKeys: (storageKeys: Iterable<string>) => void;
+} {
   const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
   const cacheRef = useRef<WorkspaceAssetUrlCache | null>(null);
 
@@ -31,5 +34,13 @@ export function useWorkspaceAssetUrls(assets: Record<string, AssetRecord>): Reco
     };
   }, []);
 
-  return assetUrls;
+  const invalidateStorageKeys = useCallback((storageKeys: Iterable<string>) => {
+    void cacheRef.current?.invalidateStorageKeys(storageKeys);
+  }, []);
+
+  return { assetUrls, invalidateStorageKeys };
+}
+
+export function useWorkspaceAssetUrls(assets: Record<string, AssetRecord>): Record<string, string> {
+  return useWorkspaceAssetUrlsController(assets).assetUrls;
 }

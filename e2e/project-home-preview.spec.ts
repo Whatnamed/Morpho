@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { CURRENT_CASE_STUDY_ID } from "../src/domain/morpho/caseStudy/currentCaseStudyConstants";
 import { seedPayload } from "./fixtures/seed";
 
 type SeedWorkspaceEntry = {
@@ -520,5 +521,114 @@ test.describe("project home on-demand preview", () => {
     await expect(page.locator('[data-project-id="proj-del"]')).toHaveCount(0);
     await page.waitForFunction(() => (window as unknown as { __homeSpy: { urlRevokes: number } }).__homeSpy.urlRevokes > 0);
     await expect(page.locator('.phome-hero img[src^="blob:"]')).toBeVisible();
+  });
+
+  test("refreshes case-study hero after repairing IDB blobs without workspace migration and clears catalog on cross-tab localStorage wipe", async ({
+    page,
+    context
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await installHomeSpy(page);
+
+    // 1. Seed default built-in case study cleanly first so catalog & workspace stay at current schema (didMigrate === false on reload).
+    await page.goto("/", { waitUntil: "load" });
+    await page.waitForFunction(() => window.localStorage.getItem("morpho.case-study.install.v1") !== null);
+    await page.waitForFunction(() => {
+      const imgs = Array.from(document.querySelectorAll('.phome-hero .project-canvas-preview img[src^="blob:"]')) as HTMLImageElement[];
+      return imgs.length >= 2 && imgs.every((img) => img.complete && img.naturalWidth > 0);
+    });
+    const expectedHeroImgCount = await page.locator('.phome-hero .project-canvas-preview img[src^="blob:"]').count();
+
+    // Corrupt one case-study image blob and delete another in IndexedDB while leaving localStorage workspace/marker untouched.
+    await page.evaluate(async (caseStudyId) => {
+      const rawWs = window.localStorage.getItem(`morpho.project.${caseStudyId}.workspace.v1`);
+      if (!rawWs) throw new Error("Expected installed case study workspace");
+      const ws = JSON.parse(rawWs) as {
+        assets: Record<string, { storageKey: string; sourceType: string; mimeType: string }>;
+        objects: Record<string, { type: string; assetId?: string }>;
+        canvas: { instances: Array<{ objectId: string }> };
+      };
+      const heroStorageKeys: string[] = [];
+      for (const inst of ws.canvas.instances) {
+        const obj = ws.objects[inst.objectId];
+        const asset = obj?.type === "image" && obj.assetId ? ws.assets[obj.assetId] : undefined;
+        if (
+          asset &&
+          (asset.sourceType === "originalImage" || asset.sourceType === "aiGeneratedImage") &&
+          !heroStorageKeys.includes(asset.storageKey)
+        ) {
+          heroStorageKeys.push(asset.storageKey);
+        }
+      }
+      if (heroStorageKeys.length < 2) {
+        throw new Error(`Expected >= 2 hero image keys, got ${heroStorageKeys.length}`);
+      }
+
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open("morpho-assets-v1", 1);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction("asset-blobs", "readwrite");
+          const store = tx.objectStore("asset-blobs");
+          store.put(new Blob(["corrupt-not-png"], { type: "image/png" }), heroStorageKeys[0]);
+          store.delete(heroStorageKeys[1]);
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        });
+      } finally {
+        db.close();
+      }
+    }, CURRENT_CASE_STUDY_ID);
+
+    // Gate /case-studies/** fetches until Hero preview has already rendered its pre-repair corrupt/missing state.
+    let releaseFetches!: () => void;
+    const fetchGate = new Promise<void>((resolve) => {
+      releaseFetches = resolve;
+    });
+    await page.route("**/case-studies/**", async (route) => {
+      await fetchGate;
+      await route.continue();
+    });
+
+    await page.reload({ waitUntil: "load" });
+    await page.waitForSelector('.phome-hero .project-canvas-preview[data-preview-status="ready"]');
+    await page.waitForFunction(
+      (expected) => {
+        const imgs = Array.from(document.querySelectorAll('.phome-hero .project-canvas-preview img[src^="blob:"]')) as HTMLImageElement[];
+        return imgs.length < expected || imgs.some((img) => img.complete && img.naturalWidth === 0);
+      },
+      expectedHeroImgCount
+    );
+
+    // Unblock installer -> repairs corrupt blob & installs missing blob -> already-loaded Hero preview refreshes in place.
+    releaseFetches();
+    await page.waitForFunction(
+      (expected) => {
+        const imgs = Array.from(document.querySelectorAll('.phome-hero .project-canvas-preview img[src^="blob:"]')) as HTMLImageElement[];
+        return imgs.length === expected && imgs.every((img) => img.complete && img.naturalWidth > 0);
+      },
+      expectedHeroImgCount
+    );
+    await page.unroute("**/case-studies/**");
+
+    // 2. Real cross-tab localStorage.clear() triggers StorageEvent -> missing catalog clears UI and revokes active URLs.
+    await page.evaluate(() => (window as unknown as { __resetHomeSpy: () => void }).__resetHomeSpy());
+    await context.route("**/__e2e_seed__", async (route) => {
+      await route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><html><body>tab2</body></html>" });
+    });
+    const tab2 = await context.newPage();
+    await tab2.goto("/__e2e_seed__");
+    await tab2.evaluate(() => window.localStorage.clear());
+
+    await expect(page.locator(".phome-hero")).toHaveCount(0);
+    await expect(page.locator(".phome-card")).toHaveCount(0);
+    await expect(page.locator(".phome-blank")).toContainText("这里还没有项目");
+    await page.waitForFunction(() => (window as unknown as { __homeSpy: { urlRevokes: number } }).__homeSpy.urlRevokes > 0);
+
+    await tab2.close();
+    await context.unroute("**/__e2e_seed__");
   });
 });

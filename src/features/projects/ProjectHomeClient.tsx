@@ -39,7 +39,7 @@ import {
   type OriginStorageUsage,
   type StorageDurabilityStatus
 } from "@/infrastructure/persistence/storageDurability";
-import { ensureCurrentCaseStudyAssets } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
+import { ensureCurrentCaseStudyAssetsWithResult } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 import { createBrowserSupabaseClient } from "@/infrastructure/supabase/browser";
 import type { AccountAccessSnapshot } from "@/server/auth/accountAccess";
@@ -116,6 +116,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const invalidatePreviewsRef = useRef<(projectIds?: readonly string[]) => void>(() => {});
+  const invalidateAssetStorageKeysRef = useRef<(storageKeys: readonly string[]) => void>(() => {});
 
   useEffect(() => {
     let isCancelled = false;
@@ -130,11 +131,15 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
 
       if (isCancelled) return;
       setCatalog(result.catalog);
-      const diagnostics = await ensureCurrentCaseStudyAssets();
+      const installResult = await ensureCurrentCaseStudyAssetsWithResult();
+      if (isCancelled) return;
+
+      if (installResult.updatedStorageKeys.length > 0) {
+        invalidateAssetStorageKeysRef.current(installResult.updatedStorageKeys);
+      }
       if (
-        !isCancelled &&
         result.didMigrate &&
-        diagnostics.length === 0 &&
+        installResult.diagnostics.length === 0 &&
         result.catalog.projects.some((project) => project.id === CURRENT_CASE_STUDY_ID)
       ) {
         invalidatePreviewsRef.current([CURRENT_CASE_STUDY_ID]);
@@ -193,22 +198,28 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
     if (snapshot.status === "ok") {
       setCatalog(snapshot.catalog);
       setCatalogError(null);
+    } else if (snapshot.status === "missing") {
+      setCatalog(null);
+      setCatalogError(null);
+      setProjectAction(null);
     } else if (snapshot.status === "failed") {
       setCatalogError(snapshot.reason);
     }
   }, []);
 
-  const { getPreviewState, storageKeyUrls, registerCardElement, invalidateProjects } = useProjectHomePreviews({
-    catalog,
-    recentProjectId: !isSearching ? recentProject?.id : undefined,
-    visibleGridProjectIds,
-    scrollRootRef: mainScrollRef,
-    enabled: canUseProjects,
-    onExternalCatalogChange: refreshCatalogFromStorage
-  });
+  const { getPreviewState, storageKeyUrls, registerCardElement, invalidateProjects, invalidateAssetStorageKeys } =
+    useProjectHomePreviews({
+      catalog,
+      recentProjectId: !isSearching ? recentProject?.id : undefined,
+      visibleGridProjectIds,
+      scrollRootRef: mainScrollRef,
+      enabled: canUseProjects,
+      onExternalCatalogChange: refreshCatalogFromStorage
+    });
   useEffect(() => {
     invalidatePreviewsRef.current = invalidateProjects;
-  }, [invalidateProjects]);
+    invalidateAssetStorageKeysRef.current = invalidateAssetStorageKeys;
+  }, [invalidateAssetStorageKeys, invalidateProjects]);
 
   const heroPreviewState = !isSearching && recentProject ? getPreviewState(recentProject.id) : null;
 

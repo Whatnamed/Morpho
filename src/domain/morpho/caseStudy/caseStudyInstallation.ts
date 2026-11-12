@@ -29,6 +29,7 @@ export type CaseStudyAssetInstallResult = {
   installedCount: number;
   repairedCount: number;
   skippedCount: number;
+  updatedStorageKeys: string[];
 };
 
 export async function installCurrentCaseStudyAssets(
@@ -41,6 +42,7 @@ export async function installCurrentCaseStudyAssets(
   const fetchAsset = options.fetchAsset ?? ((input: string) => fetch(input));
   const previousMarker = options.storage ? readCaseStudyInstallationMarker(options.storage) : null;
   const diagnostics: CaseStudyAssetInstallDiagnostic[] = [];
+  const updatedStorageKeys: string[] = [];
   let installedCount = 0;
   let repairedCount = 0;
   let skippedCount = 0;
@@ -87,6 +89,7 @@ export async function installCurrentCaseStudyAssets(
 
     try {
       await blobStore.put(asset.runtimeStorageKey, blob);
+      updatedStorageKeys.push(asset.runtimeStorageKey);
       if (existing) {
         repairedCount += 1;
       } else {
@@ -115,7 +118,7 @@ export async function installCurrentCaseStudyAssets(
     });
   }
 
-  return { diagnostics, installedCount, repairedCount, skippedCount };
+  return { diagnostics, installedCount, repairedCount, skippedCount, updatedStorageKeys };
 }
 
 export function readCaseStudyInstallationMarker(storage: Storage): CaseStudyInstallationMarker | null {

@@ -4,7 +4,14 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createBlankWorkspace, createInitialWorkspace } from "@/domain/morpho/workspace";
+import {
+  CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
+  CURRENT_CASE_STUDY_FINGERPRINT,
+  CURRENT_CASE_STUDY_ID,
+  CURRENT_CASE_STUDY_VERSION
+} from "@/domain/morpho/caseStudy/currentCaseStudy";
+import { writeCaseStudyInstallationMarker } from "@/domain/morpho/caseStudy/caseStudyInstallation";
+import { createBlankWorkspace, createCurrentCaseStudyWorkspace, createInitialWorkspace } from "@/domain/morpho/workspace";
 import {
   CATALOG_STORAGE_KEY,
   createCatalog,
@@ -12,6 +19,9 @@ import {
   saveProjectWorkspace,
   summarizeProject
 } from "@/infrastructure/persistence/localProjectStore";
+import { ensureCurrentCaseStudyAssetsWithResult } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
+import { getAssetObjectUrl } from "@/infrastructure/assets/indexedDbAssetStore";
+import { extractProjectPreviewSnapshot } from "./ProjectCanvasPreview";
 import { ProjectHomeClient } from "./ProjectHomeClient";
 
 vi.mock("next/navigation", () => ({
@@ -22,7 +32,14 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/infrastructure/assets/currentCaseStudyAssetInstaller", () => ({
-  ensureCurrentCaseStudyAssets: vi.fn(async () => [])
+  ensureCurrentCaseStudyAssets: vi.fn(async () => []),
+  ensureCurrentCaseStudyAssetsWithResult: vi.fn(async () => ({
+    diagnostics: [],
+    installedCount: 0,
+    repairedCount: 0,
+    skippedCount: 0,
+    updatedStorageKeys: []
+  }))
 }));
 
 vi.mock("@/infrastructure/assets/indexedDbAssetStore", () => ({
@@ -97,6 +114,14 @@ describe("ProjectHomeClient on-demand previews", () => {
     window.localStorage.clear();
     observers = [];
     revokedUrls = [];
+    vi.mocked(getAssetObjectUrl).mockImplementation(async (storageKey: string) => `blob:test:${storageKey}`);
+    vi.mocked(ensureCurrentCaseStudyAssetsWithResult).mockImplementation(async () => ({
+      diagnostics: [],
+      installedCount: 0,
+      repairedCount: 0,
+      skippedCount: 0,
+      updatedStorageKeys: []
+    }));
     originalRevokeObjectURL = URL.revokeObjectURL;
     URL.revokeObjectURL = vi.fn((url: string) => {
       revokedUrls.push(url);
@@ -237,5 +262,150 @@ describe("ProjectHomeClient on-demand previews", () => {
       await vi.runAllTimersAsync();
     });
     expect(revokedUrls).toContain("blob:test:blob:p-vis:img");
+  });
+
+  it("refreshes loaded case-study preview assets when installer repairs or installs blobs without workspace migration", async () => {
+    const caseWs = createCurrentCaseStudyWorkspace();
+    const previewSnapshot = extractProjectPreviewSnapshot(caseWs);
+    const previewKeys = Object.keys(previewSnapshot.previewAssets);
+    expect(previewKeys.length).toBeGreaterThanOrEqual(2);
+    const [repairedKey, missingKey, ...stableKeys] = previewKeys as [string, string, ...string[]];
+
+    saveProjectWorkspace(window.localStorage, caseWs);
+    const storedBefore = window.localStorage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID));
+    const catalog = createCatalog([summarizeProject(caseWs)], CURRENT_CASE_STUDY_ID);
+    window.localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(catalog));
+    writeCaseStudyInstallationMarker(window.localStorage, {
+      assetManifestVersion: CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
+      installedVersion: CURRENT_CASE_STUDY_VERSION,
+      projectId: CURRENT_CASE_STUDY_ID,
+      workspaceFingerprint: CURRENT_CASE_STUDY_FINGERPRINT
+    });
+
+    const idbUrls = new Map<string, string | null>([
+      [repairedKey, "blob:corrupt-initial"],
+      [missingKey, null],
+      ...stableKeys.map((key) => [key, `blob:stable:${key}`] as const)
+    ]);
+    vi.mocked(getAssetObjectUrl).mockImplementation(async (storageKey: string) => idbUrls.get(storageKey) ?? null);
+
+    let resolveInstall!: (value: {
+      diagnostics: [];
+      installedCount: number;
+      repairedCount: number;
+      skippedCount: number;
+      updatedStorageKeys: string[];
+    }) => void;
+    vi.mocked(ensureCurrentCaseStudyAssetsWithResult).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveInstall = resolve;
+        })
+    );
+
+    await act(async () => {
+      root.render(createElement(ProjectHomeClient, { account: null, authRequired: false }));
+    });
+
+    // Let Hero workspace preview finish reading BEFORE case-study installer completes (no workspace migration).
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    const getHeroImgSrcs = () =>
+      Array.from(container.querySelectorAll(".phome-hero .project-canvas-preview img")).map((img) =>
+        img.getAttribute("src")
+      );
+    expect(getHeroImgSrcs()).toContain("blob:corrupt-initial");
+    expect(getHeroImgSrcs()).not.toContain("blob:installed-fresh");
+    expect(window.localStorage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID))).toBe(storedBefore);
+
+    // Installer repairs corrupt key & installs missing key even without workspace migration.
+    idbUrls.set(repairedKey, "blob:repaired-fresh");
+    idbUrls.set(missingKey, "blob:installed-fresh");
+    await act(async () => {
+      resolveInstall({
+        diagnostics: [],
+        installedCount: 1,
+        repairedCount: 1,
+        skippedCount: stableKeys.length,
+        updatedStorageKeys: [repairedKey, missingKey]
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const updatedSrcs = getHeroImgSrcs();
+    expect(updatedSrcs).toContain("blob:repaired-fresh");
+    expect(updatedSrcs).toContain("blob:installed-fresh");
+    expect(updatedSrcs).not.toContain("blob:corrupt-initial");
+    expect(revokedUrls).toContain("blob:corrupt-initial");
+  });
+
+  it("clears old catalog and revokes preview URLs when cross-tab localStorage wipe leaves catalog missing", async () => {
+    const hero = buildSampleImageProject("p-hero", "主方向项目", "2026-10-10T10:00:00.000Z");
+    const grid = buildSampleImageProject("p-grid", "列表项目", "2026-10-09T10:00:00.000Z");
+
+    const seedBoth = () => {
+      saveProjectWorkspace(window.localStorage, hero);
+      saveProjectWorkspace(window.localStorage, grid);
+      window.localStorage.setItem(
+        CATALOG_STORAGE_KEY,
+        JSON.stringify(createCatalog([summarizeProject(hero), summarizeProject(grid)], "p-hero"))
+      );
+    };
+    seedBoth();
+
+    await act(async () => {
+      root.render(createElement(ProjectHomeClient, { account: null, authRequired: false }));
+    });
+    await act(async () => {
+      emitIntersection(["p-grid"], true);
+      await vi.runAllTimersAsync();
+    });
+
+    expect(container.querySelector(".phome-hero")).not.toBeNull();
+    expect(container.querySelectorAll(".phome-card")).toHaveLength(1);
+    expect(container.querySelector('[data-project-id="p-grid"] img[src="blob:test:blob:p-grid:img"]')).not.toBeNull();
+
+    // Case A: another tab calls localStorage.clear() -> StorageEvent with key: null.
+    await act(async () => {
+      window.localStorage.clear();
+      window.dispatchEvent(new StorageEvent("storage", { key: null }));
+      await vi.runAllTimersAsync();
+    });
+
+    expect(container.querySelector(".phome-hero")).toBeNull();
+    expect(container.querySelectorAll(".phome-card")).toHaveLength(0);
+    expect(container.textContent).toContain("这里还没有项目");
+    expect(revokedUrls).toContain("blob:test:blob:p-hero:img");
+    expect(revokedUrls).toContain("blob:test:blob:p-grid:img");
+
+    // Re-seed from external tab, flush mount/observers + timers so both images load,
+    // then Case B: another tab removes CATALOG_STORAGE_KEY directly.
+    revokedUrls = [];
+    await act(async () => {
+      seedBoth();
+      window.dispatchEvent(new StorageEvent("storage", { key: CATALOG_STORAGE_KEY, newValue: "{}" }));
+    });
+    await act(async () => {
+      emitIntersection(["p-grid"], true);
+      await vi.runAllTimersAsync();
+    });
+    expect(container.querySelectorAll(".phome-card")).toHaveLength(1);
+    expect(container.querySelector('.phome-hero img[src="blob:test:blob:p-hero:img"]')).not.toBeNull();
+    expect(container.querySelector('[data-project-id="p-grid"] img[src="blob:test:blob:p-grid:img"]')).not.toBeNull();
+
+    await act(async () => {
+      window.localStorage.removeItem(CATALOG_STORAGE_KEY);
+      window.dispatchEvent(new StorageEvent("storage", { key: CATALOG_STORAGE_KEY, newValue: null }));
+      await vi.runAllTimersAsync();
+    });
+
+    expect(container.querySelector(".phome-hero")).toBeNull();
+    expect(container.querySelectorAll(".phome-card")).toHaveLength(0);
+    expect(container.textContent).toContain("这里还没有项目");
+    expect(revokedUrls).toContain("blob:test:blob:p-hero:img");
+    expect(revokedUrls).toContain("blob:test:blob:p-grid:img");
   });
 });

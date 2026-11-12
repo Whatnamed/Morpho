@@ -26,8 +26,16 @@ describe("current case-study asset installation", () => {
     const first = await installCurrentCaseStudyAssets(store, { fetchAsset: fetchPublicCaseAsset });
     const second = await installCurrentCaseStudyAssets(store, { fetchAsset: fetchPublicCaseAsset });
 
-    expect(first).toMatchObject({ diagnostics: [], installedCount: currentCaseStudyAssetManifest.assets.length });
-    expect(second).toMatchObject({ diagnostics: [], skippedCount: currentCaseStudyAssetManifest.assets.length });
+    expect(first).toMatchObject({
+      diagnostics: [],
+      installedCount: currentCaseStudyAssetManifest.assets.length,
+      updatedStorageKeys: currentCaseStudyAssetManifest.assets.map((asset) => asset.runtimeStorageKey)
+    });
+    expect(second).toMatchObject({
+      diagnostics: [],
+      skippedCount: currentCaseStudyAssetManifest.assets.length,
+      updatedStorageKeys: []
+    });
   });
 
   it("repairs a corrupt blob with the generated static asset", async () => {
@@ -39,7 +47,11 @@ describe("current case-study asset installation", () => {
     await store.put(target.runtimeStorageKey, new Blob(["corrupt"], { type: target.mimeType }));
     const repaired = await installCurrentCaseStudyAssets(store, { fetchAsset: fetchPublicCaseAsset });
 
-    expect(repaired).toMatchObject({ diagnostics: [], repairedCount: 1 });
+    expect(repaired).toMatchObject({
+      diagnostics: [],
+      repairedCount: 1,
+      updatedStorageKeys: [target.runtimeStorageKey]
+    });
   });
 
   it("reports a single fetch failure without writing a fake blob", async () => {

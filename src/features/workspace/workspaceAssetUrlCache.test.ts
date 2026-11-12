@@ -127,6 +127,70 @@ describe("workspace asset URL cache", () => {
 
     expect(cache.getUrls()).toEqual({ a: "blob:good-key" });
   });
+
+  it("reloads cached and previously missing storageKeys on invalidation without disturbing unrelated URLs", async () => {
+    const blobs = new Map<string, string | null>([
+      ["k-corrupt", "blob:corrupt-v1"],
+      ["k-missing", null],
+      ["k-keep", "blob:keep-v1"]
+    ]);
+    const revoked: string[] = [];
+    const notifications: Array<Record<string, string>> = [];
+    const cache = createWorkspaceAssetUrlCache({
+      loadUrl: async (storageKey) => blobs.get(storageKey) ?? null,
+      revokeUrl: (url) => revoked.push(url),
+      onChange: (urls) => notifications.push(urls)
+    });
+
+    await cache.reconcile({
+      a: imageAsset("a", "k-corrupt"),
+      b: imageAsset("b", "k-missing"),
+      c: imageAsset("c", "k-keep")
+    });
+    expect(cache.getUrls()).toEqual({ a: "blob:corrupt-v1", c: "blob:keep-v1" });
+
+    // Unreferenced key invalidation should not publish or touch existing URLs.
+    const beforeNoopNotifications = notifications.length;
+    await cache.invalidateStorageKeys(["k-offscreen"]);
+    expect(notifications.length).toBe(beforeNoopNotifications);
+    expect(revoked).toEqual([]);
+
+    // Repair k-corrupt and install k-missing under the same storageKeys.
+    blobs.set("k-corrupt", "blob:repaired-v2");
+    blobs.set("k-missing", "blob:installed-v2");
+    await cache.invalidateStorageKeys(["k-corrupt", "k-missing"]);
+
+    expect(revoked).toEqual(["blob:corrupt-v1"]);
+    expect(cache.getUrls()).toEqual({
+      a: "blob:repaired-v2",
+      b: "blob:installed-v2",
+      c: "blob:keep-v1"
+    });
+  });
+
+  it("prevents a late pre-invalidation read from overwriting a freshly invalidated storageKey reload", async () => {
+    const resolvers: Record<string, Array<(url: string | null) => void>> = {};
+    const revoked: string[] = [];
+    const cache = createWorkspaceAssetUrlCache({
+      loadUrl: (storageKey) =>
+        new Promise((resolve) => {
+          (resolvers[storageKey] ??= []).push(resolve);
+        }),
+      revokeUrl: (url) => revoked.push(url)
+    });
+
+    const firstReconcile = cache.reconcile({ a: imageAsset("a", "k-race") });
+    const reloadPromise = cache.invalidateStorageKeys(["k-race"]);
+
+    resolvers["k-race"]?.[1]?.("blob:fresh-v2");
+    await reloadPromise;
+    expect(cache.getUrls()).toEqual({ a: "blob:fresh-v2" });
+
+    resolvers["k-race"]?.[0]?.("blob:stale-v1");
+    await firstReconcile;
+    expect(cache.getUrls()).toEqual({ a: "blob:fresh-v2" });
+    expect(revoked).toEqual(["blob:stale-v1"]);
+  });
 });
 
 function imageAsset(id: string, storageKey: string): AssetRecord {

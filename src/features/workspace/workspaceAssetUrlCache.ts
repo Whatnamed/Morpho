@@ -2,6 +2,7 @@ import type { AssetRecord } from "@/domain/morpho/types";
 
 export type WorkspaceAssetUrlCache = {
   reconcile(assets: Record<string, AssetRecord>): Promise<Record<string, string>>;
+  invalidateStorageKeys(storageKeys: Iterable<string>): Promise<Record<string, string>>;
   getUrls(): Record<string, string>;
   dispose(): void;
 };
@@ -31,11 +32,16 @@ export function createWorkspaceAssetUrlCache({
 }: WorkspaceAssetUrlCacheOptions): WorkspaceAssetUrlCache {
   let generation = 0;
   let disposed = false;
+  let lastAssets: Record<string, AssetRecord> = {};
   const cached = new Map<string, CachedAssetUrl>();
   const pending = new Map<string, PendingAssetUrl>();
 
+  function snapshotUrls(): Record<string, string> {
+    return Object.fromEntries([...cached.entries()].map(([assetId, entry]) => [assetId, entry.url]));
+  }
+
   function publish(): Record<string, string> {
-    const urls = Object.fromEntries([...cached.entries()].map(([assetId, entry]) => [assetId, entry.url]));
+    const urls = snapshotUrls();
     onChange?.(urls);
     return urls;
   }
@@ -82,56 +88,96 @@ export function createWorkspaceAssetUrlCache({
     }
   }
 
+  async function reconcile(assets: Record<string, AssetRecord>): Promise<Record<string, string>> {
+    if (disposed) {
+      return {};
+    }
+
+    lastAssets = assets;
+    generation += 1;
+    const currentGeneration = generation;
+    const imageAssets = Object.values(assets).filter(isImagePreviewAsset);
+    const desiredKeys = new Map(imageAssets.map((asset) => [asset.id, asset.storageKey]));
+
+    for (const [assetId, entry] of cached) {
+      const desiredStorageKey = desiredKeys.get(assetId);
+      if (!desiredStorageKey || desiredStorageKey !== entry.storageKey) {
+        revokeUrl(entry.url);
+        cached.delete(assetId);
+      }
+    }
+
+    for (const [assetId, entry] of pending) {
+      const desiredStorageKey = desiredKeys.get(assetId);
+      if (!desiredStorageKey || desiredStorageKey !== entry.storageKey) {
+        pending.delete(assetId);
+      }
+    }
+
+    const reads: Promise<void>[] = [];
+    for (const asset of imageAssets) {
+      const current = cached.get(asset.id);
+      const currentPending = pending.get(asset.id);
+      if (current?.storageKey === asset.storageKey || currentPending?.storageKey === asset.storageKey) {
+        continue;
+      }
+
+      pending.set(asset.id, {
+        storageKey: asset.storageKey,
+        generation: currentGeneration
+      });
+      reads.push(loadAsset(asset, currentGeneration));
+    }
+
+    publish();
+    await Promise.all(reads);
+    return publish();
+  }
+
   return {
-    async reconcile(assets) {
+    reconcile,
+    async invalidateStorageKeys(storageKeys) {
       if (disposed) {
         return {};
       }
+      const targetKeys = storageKeys instanceof Set ? storageKeys : new Set(storageKeys);
+      if (targetKeys.size === 0) {
+        return snapshotUrls();
+      }
 
-      generation += 1;
-      const currentGeneration = generation;
-      const imageAssets = Object.values(assets).filter(isImagePreviewAsset);
-      const desiredKeys = new Map(imageAssets.map((asset) => [asset.id, asset.storageKey]));
-
+      let hasTarget = false;
       for (const [assetId, entry] of cached) {
-        const desiredStorageKey = desiredKeys.get(assetId);
-        if (!desiredStorageKey || desiredStorageKey !== entry.storageKey) {
+        if (targetKeys.has(entry.storageKey)) {
           revokeUrl(entry.url);
           cached.delete(assetId);
+          hasTarget = true;
         }
       }
-
       for (const [assetId, entry] of pending) {
-        const desiredStorageKey = desiredKeys.get(assetId);
-        if (!desiredStorageKey || desiredStorageKey !== entry.storageKey) {
+        if (targetKeys.has(entry.storageKey)) {
           pending.delete(assetId);
+          hasTarget = true;
         }
       }
-
-      const reads: Promise<void>[] = [];
-      for (const asset of imageAssets) {
-        const current = cached.get(asset.id);
-        const currentPending = pending.get(asset.id);
-        if (current?.storageKey === asset.storageKey || currentPending?.storageKey === asset.storageKey) {
-          continue;
+      if (!hasTarget) {
+        for (const asset of Object.values(lastAssets)) {
+          if (isImagePreviewAsset(asset) && targetKeys.has(asset.storageKey)) {
+            hasTarget = true;
+            break;
+          }
         }
-
-        pending.set(asset.id, {
-          storageKey: asset.storageKey,
-          generation: currentGeneration
-        });
-        reads.push(loadAsset(asset, currentGeneration));
       }
-
-      publish();
-      await Promise.all(reads);
-      return publish();
+      if (!hasTarget) {
+        return snapshotUrls();
+      }
+      return reconcile(lastAssets);
     },
     getUrls() {
       return publish();
     },
     dispose() {
       disposed = true;
+      lastAssets = {};
       pending.clear();
       for (const entry of cached.values()) {
         revokeUrl(entry.url);

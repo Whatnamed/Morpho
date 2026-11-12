@@ -10,7 +10,7 @@ import {
   type LocalProjectCatalog,
   type ProjectWorkspaceLoadResult
 } from "@/infrastructure/persistence/localProjectStore";
-import { useWorkspaceAssetUrls } from "@/features/workspace/useWorkspaceAssetUrls";
+import { useWorkspaceAssetUrlsController } from "@/features/workspace/useWorkspaceAssetUrls";
 import {
   extractProjectPreviewSnapshot,
   type ProjectPreviewSnapshot,
@@ -50,6 +50,7 @@ export type UseProjectHomePreviewsResult = {
   storageKeyUrls: Record<string, string>;
   registerCardElement: (projectId: string, element: HTMLElement | null) => void;
   invalidateProjects: (projectIds?: readonly string[]) => void;
+  invalidateAssetStorageKeys: (storageKeys: readonly string[]) => void;
 };
 
 function defaultLoadWorkspaceReadOnly(storage: Storage, projectId: string): ProjectWorkspaceLoadResult {
@@ -532,7 +533,17 @@ export function useProjectHomePreviews({
     return assets;
   }, [activeRecentId, catalog, displayedIds, enabled, entriesState, revealedIdsState]);
 
-  const storageKeyUrls = useWorkspaceAssetUrls(activePreviewAssets);
+  const { assetUrls: storageKeyUrls, invalidateStorageKeys } = useWorkspaceAssetUrlsController(activePreviewAssets);
+
+  const invalidateAssetStorageKeys = useCallback(
+    (storageKeys: readonly string[]) => {
+      if (!isMountedRef.current || !latestRef.current.enabled || storageKeys.length === 0) {
+        return;
+      }
+      invalidateStorageKeys(storageKeys);
+    },
+    [invalidateStorageKeys]
+  );
 
   const getPreviewState = useCallback(
     (projectId: string): { status: ProjectPreviewStatus; preview?: ProjectPreviewSnapshot } => {
@@ -555,6 +566,7 @@ export function useProjectHomePreviews({
     getPreviewState,
     storageKeyUrls,
     registerCardElement,
-    invalidateProjects
+    invalidateProjects,
+    invalidateAssetStorageKeys
   };
 }
