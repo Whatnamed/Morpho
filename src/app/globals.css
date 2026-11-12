@@ -9983,14 +9983,16 @@ button.continuity-source-item.is-action:hover .continuity-source-text {
   color: var(--danger);
 }
 
-/* Project management on the home shelf: rename and delete. Kept quiet by
-   default so the shelf still reads as covers, not as a list of controls. */
+/* Project management on the home shelf: backup export, rename, and delete.
+   Visible at rest with muted contrast so backup and keyboard focus stay easy to
+   discover while keeping the covers visually calm. */
 .phome-card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   justify-content: flex-end;
   margin-top: 6px;
-  opacity: 0;
+  opacity: 0.78;
   transition: opacity var(--duration-fast) var(--ease-out);
 }
 

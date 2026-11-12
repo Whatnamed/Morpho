@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { seedPayload } from "./fixtures/seed";
+import { seedPayload, seedTextOnlyProject } from "./fixtures/seed";
 
 /**
  * Browser-side half of the storage capacity evidence.
@@ -85,5 +85,34 @@ test.describe("本地存储容量", () => {
     // The deployable case study has to fit, with room for the user's own work.
     expect(usage.totalBytes).toBeGreaterThan(0);
     expect(usage.totalBytes).toBeLessThan(4 * MIB);
+  });
+
+  test("本机项目记录超过保守提示线时独立提醒，删除减负后消失", async ({ page }) => {
+    const seed = await seedTextOnlyProject(page);
+    await page.goto("/");
+    await expect(page.locator(".phome-hero h2")).toBeVisible();
+
+    const heavyTitle = await page.evaluate(({ workspaceKey }) => {
+      const ws = JSON.parse(window.localStorage.getItem(workspaceKey)!);
+      ws.ai.messages.push({
+        id: "msg-heavy",
+        role: "user",
+        body: "文".repeat(2_200_000),
+        createdAt: "2026-10-01T00:00:00.000Z"
+      });
+      window.localStorage.setItem(workspaceKey, JSON.stringify(ws));
+      return ws.project.title as string;
+    }, seed.textOnly);
+
+    await page.reload();
+    const footer = page.locator(".phome-foot");
+    await expect(footer).toContainText("本机项目记录较多，建议导出备份；图片存储可用空间不代表项目记录仍可继续保存。");
+    await expect(footer).not.toContainText("本地图片与文件存储空间已接近上限");
+    await expect(footer).not.toContainText("%");
+
+    await page.getByRole("button", { name: `删除项目：${heavyTitle}`, exact: true }).click();
+    await page.getByRole("button", { name: "删除项目", exact: true }).click();
+    await expect(page.getByText(`已删除“${heavyTitle}”。`)).toBeVisible();
+    await expect(footer).not.toContainText("本机项目记录较多");
   });
 });

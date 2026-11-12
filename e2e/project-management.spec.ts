@@ -1,7 +1,12 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { getProjectWriteLockName, PROJECT_CATALOG_WRITE_LOCK_NAME } from "../src/infrastructure/persistence/projectWriteLock";
 import { readStoredWorkspace, seedTextOnlyProject } from "./fixtures/seed";
+import type { SeedPayload } from "./support/seedWorkspace";
 
 async function seedTwoProjects(page: Page) {
   const seed = await seedTextOnlyProject(page);
@@ -192,3 +197,74 @@ test("新建正文失败留在首页，列表失败后用同一个项目重试",
   await expect(page.getByRole("button", { name: "导入", exact: true })).toBeEnabled();
   expect((await workspaceKeys()).sort()).toEqual([seed.textOnly.workspaceKey, pending[0]].sort());
 });
+
+test("首页可直接导出备份并恢复为新项目，缺图项目拒绝导出", async ({ page }) => {
+  const seed = await seedTextOnlyProject(page);
+  await page.goto("/");
+  await expect(page.locator(".phome-hero h2")).toBeVisible();
+
+  const textTitle = (JSON.parse(seed.textOnly.workspaceValue) as { project: { title: string } }).project.title;
+  const heroOpenBox = await page.locator(".phome-hero-card").boundingBox();
+  const exportButton = page.getByRole("button", { name: `导出项目备份：${textTitle}`, exact: true });
+  await expect(exportButton).toBeVisible();
+  const exportBox = await exportButton.boundingBox();
+  expect(heroOpenBox).not.toBeNull();
+  expect(exportBox).not.toBeNull();
+  expect(exportBox!.y).toBeGreaterThanOrEqual(heroOpenBox!.y + heroOpenBox!.height);
+
+  await exportButton.focus();
+  await expect(exportButton).toBeFocused();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    exportButton.click()
+  ]);
+  const backupDir = await mkdtemp(join(tmpdir(), "morpho-home-backup-"));
+  const backupPath = join(backupDir, download.suggestedFilename());
+  await download.saveAs(backupPath);
+  expect(download.suggestedFilename()).toMatch(/\.zip$/);
+  await expect(page.getByText("最近已保存内容", { exact: false })).toBeVisible();
+
+  const originalBeforeRestore = await readStoredWorkspace(page, seed.textOnly.projectId);
+  await page.locator('.phome-side-foot input[type="file"]').setInputFiles(backupPath);
+  await expect(page.locator(".phome-restore-card")).toContainText("将恢复为新的独立项目副本");
+  await page.getByRole("button", { name: "恢复为新项目", exact: true }).click();
+  await expect(page).toHaveURL(/\/projects\/project-/);
+  expect(page.url()).not.toContain(seed.textOnly.projectId);
+
+  await page.goto("/");
+  await expect(page.getByText("共 2 个项目")).toBeVisible();
+  expect(await readStoredWorkspace(page, seed.textOnly.projectId)).toEqual(originalBeforeRestore);
+
+  // Add a project whose required image blob is absent in IndexedDB and verify search-result export refuses it.
+  await page.evaluate((payload) => {
+    const catalog = JSON.parse(localStorage.getItem(payload.catalogKey)!);
+    const seedCatalog = JSON.parse(payload.catalogValue);
+    catalog.projects.push(seedCatalog.projects[0]);
+    localStorage.setItem(payload.catalogKey, JSON.stringify(catalog));
+    localStorage.setItem(payload.workspaceKey, payload.workspaceValue);
+  }, seedPayloadSnapshot(seed));
+  await page.reload();
+
+  const searchInput = page.getByPlaceholder("搜索项目名称或课题");
+  await searchInput.fill(seed.seedProjectTitle);
+  const brokenExport = page.getByRole("button", { name: `导出项目备份：${seed.seedProjectTitle}`, exact: true });
+  await expect(brokenExport).toBeVisible();
+
+  let downloadedBroken = false;
+  page.once("download", () => {
+    downloadedBroken = true;
+  });
+  await brokenExport.click();
+  await expect(page.locator(".phome-restore-message.warning, .phome-restore-message.error")).toBeVisible();
+  expect(downloadedBroken).toBe(false);
+});
+
+function seedPayloadSnapshot(seed: SeedPayload) {
+  return {
+    catalogKey: seed.catalogKey,
+    catalogValue: seed.catalogValue,
+    workspaceKey: seed.workspaceKey,
+    workspaceValue: seed.workspaceValue
+  };
+}

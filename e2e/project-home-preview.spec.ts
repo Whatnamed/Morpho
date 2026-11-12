@@ -179,6 +179,7 @@ async function installHomeSpy(page: Page) {
   await page.addInitScript(() => {
     const spy = {
       wsReads: [] as string[],
+      wsParses: [] as string[],
       idbGets: 0,
       idbKeys: [] as string[],
       urlCreates: 0,
@@ -187,10 +188,28 @@ async function installHomeSpy(page: Page) {
     (window as unknown as { __homeSpy?: typeof spy; __resetHomeSpy?: () => void }).__homeSpy = spy;
     (window as unknown as { __resetHomeSpy?: () => void }).__resetHomeSpy = () => {
       spy.wsReads = [];
+      spy.wsParses = [];
       spy.idbGets = 0;
       spy.idbKeys = [];
       spy.urlCreates = 0;
       spy.urlRevokes = 0;
+    };
+
+    const origJsonParse = JSON.parse;
+    JSON.parse = function patchedParse(text: string, reviver?: (this: unknown, key: string, value: unknown) => unknown) {
+      const parsed = origJsonParse.call(this, text, reviver);
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "schemaVersion" in parsed &&
+        "objects" in parsed &&
+        "project" in parsed &&
+        parsed.project &&
+        typeof (parsed.project as { id?: unknown }).id === "string"
+      ) {
+        spy.wsParses.push((parsed.project as { id: string }).id);
+      }
+      return parsed;
     };
 
     const lsProto = window.localStorage.constructor.prototype as Storage;
@@ -326,14 +345,15 @@ test.describe("project home on-demand preview", () => {
     expect(Number(heroSignals[0])).toBeGreaterThan(0);
     expect(Number(heroSignals[1])).toBeGreaterThan(0);
 
-    // Bottom card remains unloaded/pending and unread from localStorage; corrupt/missing cards stay isolated.
+    // Bottom card remains unloaded/pending and unparsed; storage footprint scan may read entry lengths at most once on mount.
     const initialCheck = await page.evaluate(() => {
-      const spy = (window as unknown as { __homeSpy: { wsReads: string[]; idbGets: number; urlCreates: number } }).__homeSpy;
+      const spy = (window as unknown as { __homeSpy: { wsReads: string[]; wsParses: string[]; idbGets: number; urlCreates: number } }).__homeSpy;
       const bottomPreview = document.querySelector('[data-project-id="proj-18"] .project-canvas-preview');
       const corruptPreview = document.querySelector('[data-project-id="proj-corrupt"] .project-canvas-preview');
       const missingImgPreview = document.querySelector('[data-project-id="proj-missing-img"] .project-canvas-preview');
       return {
         wsReads: spy.wsReads,
+        wsParses: spy.wsParses,
         idbGets: spy.idbGets,
         bottomStatus: bottomPreview?.getAttribute("data-preview-status"),
         bottomIsEmpty: bottomPreview?.classList.contains("is-empty"),
@@ -347,7 +367,9 @@ test.describe("project home on-demand preview", () => {
 
     expect(initialCheck.bottomStatus).toBe("pending");
     expect(initialCheck.bottomIsEmpty).toBe(false);
-    expect(initialCheck.wsReads).not.toContain("morpho.project.proj-18.workspace.v1");
+    expect(initialCheck.wsParses).toContain("proj-hero");
+    expect(initialCheck.wsParses).not.toContain("proj-18");
+    expect(initialCheck.wsReads.filter((key) => key === "morpho.project.proj-18.workspace.v1").length).toBeLessThanOrEqual(1);
     expect(initialCheck.corruptStatus).toBe("error");
     expect(initialCheck.corruptIsEmpty).toBe(false);
     expect(initialCheck.corruptText).toContain("预览暂不可用");

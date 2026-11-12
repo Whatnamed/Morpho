@@ -22,6 +22,17 @@ import {
 import { createMemoryStorage } from "@/infrastructure/persistence/memoryStorage";
 import { ensureCurrentCaseStudyAssetsWithResult } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
 import { getAssetObjectUrl, indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
+import {
+  downloadProjectBundleFile,
+  exportEditableProjectBackupBundle
+} from "@/features/archive/projectBundleClient";
+import {
+  estimateOriginStorage,
+  LOCAL_TEXT_STORAGE_WARNING_BYTES,
+  measureLocalTextStorage,
+  type LocalTextStorageUsage,
+  type OriginStorageUsage
+} from "@/infrastructure/persistence/storageDurability";
 import { extractProjectPreviewSnapshot } from "./ProjectCanvasPreview";
 import { ProjectHomeClient } from "./ProjectHomeClient";
 
@@ -44,21 +55,38 @@ vi.mock("@/infrastructure/assets/currentCaseStudyAssetInstaller", () => ({
 }));
 
 vi.mock("@/infrastructure/assets/indexedDbAssetStore", () => ({
-  indexedDbBlobStore: { delete: vi.fn(async () => {}) },
+  indexedDbBlobStore: {
+    get: vi.fn(async () => null),
+    delete: vi.fn(async () => {})
+  },
   getAssetObjectUrl: vi.fn(async (storageKey: string) => `blob:test:${storageKey}`)
 }));
+
+vi.mock("@/features/archive/projectBundleClient", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/archive/projectBundleClient")>();
+  return {
+    ...actual,
+    exportEditableProjectBackupBundle: vi.fn((...args: Parameters<typeof actual.exportEditableProjectBackupBundle>) =>
+      actual.exportEditableProjectBackupBundle(...args)
+    ),
+    downloadProjectBundleFile: vi.fn()
+  };
+});
 
 vi.mock("@/infrastructure/persistence/projectWriteLock", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/infrastructure/persistence/projectWriteLock")>(),
   acquireProjectWriteLease: async () => ({ status: "granted", release: () => {} })
 }));
 
-vi.mock("@/infrastructure/persistence/storageDurability", () => ({
-  requestStorageDurability: vi.fn(async () => "unknown"),
-  estimateOriginStorage: vi.fn(async () => ({ status: "unknown" })),
-  formatStorageSize: vi.fn(() => "0 B"),
-  isOriginStorageUnderPressure: vi.fn(() => false)
-}));
+vi.mock("@/infrastructure/persistence/storageDurability", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/infrastructure/persistence/storageDurability")>();
+  return {
+    ...actual,
+    requestStorageDurability: vi.fn(async () => "unknown"),
+    estimateOriginStorage: vi.fn(async (): Promise<OriginStorageUsage> => ({ status: "unknown" })),
+    measureLocalTextStorage: vi.fn((): LocalTextStorageUsage => actual.measureLocalTextStorage())
+  };
+});
 
 vi.mock("@/infrastructure/supabase/browser", () => ({
   createBrowserSupabaseClient: vi.fn()
@@ -121,6 +149,10 @@ describe("ProjectHomeClient on-demand previews", () => {
     observers = [];
     revokedUrls = [];
     vi.mocked(getAssetObjectUrl).mockImplementation(async (storageKey: string) => `blob:test:${storageKey}`);
+    vi.mocked(indexedDbBlobStore.get).mockImplementation(async () => null);
+    vi.mocked(downloadProjectBundleFile).mockReset();
+    vi.mocked(estimateOriginStorage).mockImplementation(async () => ({ status: "unknown" }));
+    vi.mocked(measureLocalTextStorage).mockImplementation(() => ({ status: "ok", quotaBytes: 0, entryCount: 0 }));
     vi.mocked(ensureCurrentCaseStudyAssetsWithResult).mockImplementation(async () => ({
       diagnostics: [],
       installedCount: 0,
@@ -468,5 +500,178 @@ describe("ProjectHomeClient on-demand previews", () => {
     expect(container.textContent).toContain("这里还没有项目");
     expect(revokedUrls).toContain("blob:test:blob:p-hero:img");
     expect(revokedUrls).toContain("blob:test:blob:p-grid:img");
+  });
+
+  it("separates local text pressure from origin image storage, ignores unknown readings, and coalesces refresh events", async () => {
+    const heavy = createBlankWorkspace("p-heavy");
+    heavy.project.title = "大型文本项目";
+    saveProjectWorkspace(window.localStorage, heavy);
+    window.localStorage.setItem(
+      CATALOG_STORAGE_KEY,
+      JSON.stringify(createCatalog([summarizeProject(heavy)], heavy.project.id))
+    );
+
+    let localQuota = LOCAL_TEXT_STORAGE_WARNING_BYTES;
+    let originUsage: OriginStorageUsage = {
+      status: "ok",
+      usageBytes: 1058,
+      quotaBytes: 3 * 1024 * 1024 * 1024,
+      usedShare: 1058 / (3 * 1024 * 1024 * 1024)
+    };
+    const measureMock = vi.mocked(measureLocalTextStorage).mockImplementation(() => ({
+      status: "ok",
+      quotaBytes: localQuota,
+      entryCount: 2
+    }));
+    vi.mocked(estimateOriginStorage).mockImplementation(async () => originUsage);
+
+    await act(async () => {
+      root.render(createElement(ProjectHomeClient, { account: null, authRequired: false }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const footerText = () => container.querySelector(".phome-foot")?.textContent ?? "";
+    // Local text high while origin estimate shows ~3 GiB free -> show local text warning, NOT origin warning or fake %.
+    expect(footerText()).toContain("本机项目记录较多，建议导出备份；图片存储可用空间不代表项目记录仍可继续保存。");
+    expect(footerText()).not.toContain("本地图片与文件存储空间已接近上限");
+    expect(footerText()).not.toContain("%");
+
+    // Typing in search must NOT re-scan storage.
+    const callsBeforeSearch = measureMock.mock.calls.length;
+    const searchInput = container.querySelector(".phome-search input") as HTMLInputElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(searchInput, "大型");
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      searchInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await vi.runAllTimersAsync();
+    });
+    expect(measureMock.mock.calls.length).toBe(callsBeforeSearch);
+
+    // Rapid storage + visibilitychange events coalesce into a single scan, and reflect lowered pressure (e.g. after delete) or high origin image pressure.
+    localQuota = 1024;
+    originUsage = {
+      status: "ok",
+      usageBytes: 9 * 1024 * 1024,
+      quotaBytes: 10 * 1024 * 1024,
+      usedShare: 0.9
+    };
+    const callsBeforeBurst = measureMock.mock.calls.length;
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "other-key", newValue: "1" }));
+      window.dispatchEvent(new StorageEvent("storage", { key: "other-key", newValue: "2" }));
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(120);
+      await Promise.resolve();
+    });
+    expect(measureMock.mock.calls.length - callsBeforeBurst).toBe(1);
+    expect(footerText()).not.toContain("本机项目记录较多");
+    expect(footerText()).toContain("本地图片与文件存储空间已接近上限");
+
+    // Unknown readings must not fabricate warnings or "0 MB" free claims.
+    vi.mocked(measureLocalTextStorage).mockImplementation(() => ({ status: "unknown" }));
+    originUsage = { status: "unknown" };
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "other-key", newValue: "3" }));
+      await vi.advanceTimersByTimeAsync(120);
+      await Promise.resolve();
+    });
+    expect(footerText()).not.toContain("本机项目记录较多");
+    expect(footerText()).not.toContain("本地图片与文件存储空间已接近上限");
+  });
+
+  it("exports backup directly from hero, pending cards, and search results, coalesces duplicate clicks, and refuses missing assets", async () => {
+    const hero = createBlankWorkspace("p-hero-exp");
+    hero.project.title = "最近项目";
+    hero.project.lastOpenedAt = "2026-10-10T10:00:00.000Z";
+    const offscreen = createBlankWorkspace("p-off-exp");
+    offscreen.project.title = "未加载项目";
+    offscreen.project.lastOpenedAt = "2026-10-09T10:00:00.000Z";
+    const brokenImg = buildSampleImageProject("p-img-exp", "缺图项目", "2026-10-08T10:00:00.000Z");
+    brokenImg.project.lastOpenedAt = "2026-10-08T10:00:00.000Z";
+
+    saveProjectWorkspace(window.localStorage, hero);
+    saveProjectWorkspace(window.localStorage, offscreen);
+    saveProjectWorkspace(window.localStorage, brokenImg);
+    const rawCatalog = JSON.stringify(
+      createCatalog([summarizeProject(hero), summarizeProject(offscreen), summarizeProject(brokenImg)], hero.project.id)
+    );
+    window.localStorage.setItem(CATALOG_STORAGE_KEY, rawCatalog);
+    const rawOffscreen = window.localStorage.getItem(getProjectWorkspaceStorageKey(offscreen.project.id));
+
+    await act(async () => {
+      root.render(createElement(ProjectHomeClient, { account: null, authRequired: false }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Offscreen card is still pending, yet direct export works without opening delete confirmation or loading preview.
+    expect(
+      container.querySelector('[data-project-id="p-off-exp"] .project-canvas-preview')?.getAttribute("data-preview-status")
+    ).toBe("pending");
+
+    const exportBtn = container.querySelector('button[aria-label="导出项目备份：未加载项目"]') as HTMLButtonElement;
+    const deleteBtn = container.querySelector('button[aria-label="删除项目：未加载项目"]') as HTMLButtonElement;
+    expect(exportBtn).not.toBeNull();
+
+    // Defer export bundle generation to verify duplicate clicks only start one export and disable concurrent delete.
+    const exportMock = vi.mocked(exportEditableProjectBackupBundle);
+    const actualBundle = await vi.importActual<typeof import("@/features/archive/projectBundleClient")>(
+      "@/features/archive/projectBundleClient"
+    );
+    let resolveExport!: (value: Awaited<ReturnType<typeof actualBundle.exportEditableProjectBackupBundle>>) => void;
+    exportMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveExport = resolve;
+        })
+    );
+
+    await act(async () => {
+      exportBtn.click();
+      exportBtn.click();
+    });
+    expect(exportMock).toHaveBeenCalledTimes(1);
+    expect(exportBtn.disabled).toBe(true);
+    expect(deleteBtn.disabled).toBe(true);
+    expect(container.textContent).toContain("正在导出备份…");
+
+    const realResult = await actualBundle.exportEditableProjectBackupBundle(offscreen, {
+      blobStore: indexedDbBlobStore,
+      chat: "full",
+      projectContinuity: "current"
+    });
+    await act(async () => {
+      resolveExport(realResult);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(downloadProjectBundleFile).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("最近已保存内容");
+    expect(window.localStorage.getItem(getProjectWorkspaceStorageKey(offscreen.project.id))).toBe(rawOffscreen);
+    expect(window.localStorage.getItem(CATALOG_STORAGE_KEY)).toBe(rawCatalog);
+
+    // Search results preserve direct export; missing source asset refuses export without downloading.
+    const searchInput = container.querySelector(".phome-search input") as HTMLInputElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(searchInput, "缺图项目");
+      searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+      searchInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await vi.runAllTimersAsync();
+    });
+
+    vi.mocked(downloadProjectBundleFile).mockClear();
+    const brokenExportBtn = container.querySelector('button[aria-label="导出项目备份：缺图项目"]') as HTMLButtonElement;
+    await act(async () => {
+      brokenExportBtn.click();
+      await vi.runAllTimersAsync();
+    });
+    expect(downloadProjectBundleFile).not.toHaveBeenCalled();
+    expect(container.textContent).not.toContain("最近已保存内容");
+    expect(container.querySelector(".phome-restore-message.warning, .phome-restore-message.error")).not.toBeNull();
   });
 });

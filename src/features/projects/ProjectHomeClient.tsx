@@ -36,8 +36,11 @@ import { acquireProjectWriteLease, withProjectCatalogLock } from "@/infrastructu
 import {
   estimateOriginStorage,
   formatStorageSize,
+  isLocalTextStorageUnderPressure,
   isOriginStorageUnderPressure,
+  measureLocalTextStorage,
   requestStorageDurability,
+  type LocalTextStorageUsage,
   type OriginStorageUsage,
   type StorageDurabilityStatus
 } from "@/infrastructure/persistence/storageDurability";
@@ -116,6 +119,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
   const [restoreMessage, setRestoreMessage] = useState<RestoreMessage | null>(null);
   const [storageDurability, setStorageDurability] = useState<StorageDurabilityStatus>("unknown");
   const [originStorageUsage, setOriginStorageUsage] = useState<OriginStorageUsage>({ status: "unknown" });
+  const [localTextStorageUsage, setLocalTextStorageUsage] = useState<LocalTextStorageUsage>({ status: "unknown" });
   const [projectAction, setProjectAction] = useState<ProjectAction | null>(null);
   const [actionBusyLabel, setActionBusyLabel] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<RestoreMessage | null>(null);
@@ -127,6 +131,35 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
   const mainScrollRef = useRef<HTMLElement | null>(null);
   const invalidatePreviewsRef = useRef<(projectIds?: readonly string[]) => void>(() => {});
   const invalidateAssetStorageKeysRef = useRef<(storageKeys: readonly string[]) => void>(() => {});
+  const storageRefreshTimerRef = useRef<number | null>(null);
+  const storageRefreshSeqRef = useRef(0);
+  const isMountedRef = useRef(true);
+
+  const clearScheduledStorageRefresh = useCallback(() => {
+    if (storageRefreshTimerRef.current !== null && typeof window !== "undefined") {
+      window.clearTimeout(storageRefreshTimerRef.current);
+      storageRefreshTimerRef.current = null;
+    }
+  }, []);
+
+  const refreshStorageUsage = useCallback(() => {
+    clearScheduledStorageRefresh();
+    const seq = ++storageRefreshSeqRef.current;
+    setLocalTextStorageUsage(measureLocalTextStorage());
+    void estimateOriginStorage().then((usage) => {
+      if (!isMountedRef.current || seq !== storageRefreshSeqRef.current) return;
+      setOriginStorageUsage(usage);
+    });
+  }, [clearScheduledStorageRefresh]);
+
+  const scheduleStorageRefresh = useCallback(() => {
+    if (typeof window === "undefined") return;
+    clearScheduledStorageRefresh();
+    storageRefreshTimerRef.current = window.setTimeout(() => {
+      storageRefreshTimerRef.current = null;
+      refreshStorageUsage();
+    }, 80);
+  }, [clearScheduledStorageRefresh, refreshStorageUsage]);
 
   const cancelPendingActions = useCallback(() => {
     activeActionRef.current?.abort();
@@ -137,6 +170,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
     let cancelled = false;
     const handlePageHide = () => {
       cancelled = true;
+      clearScheduledStorageRefresh();
       cancelPendingActions();
     };
     window.addEventListener("pagehide", handlePageHide);
@@ -147,6 +181,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
         const storage = window.localStorage;
         const result = await initializeBrowserProjectCatalog(storage, { isCancelled: () => cancelled });
         if (cancelled) return;
+        refreshStorageUsage();
         if (result.status === "failed") {
           setCatalogError(result.reason);
           return;
@@ -170,6 +205,9 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
             } else if (result.didMigrate) {
               invalidatePreviewsRef.current([CURRENT_CASE_STUDY_ID]);
             }
+            if (installed.updatedStorageKeys.length > 0) {
+              refreshStorageUsage();
+            }
           } finally {
             if (lease.status === "granted") await lease.release();
           }
@@ -180,7 +218,10 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
         await caseStudyStartup.current;
         caseStudyStartup.current = null;
       } catch {
-        if (!cancelled) setCatalogError("浏览器无法初始化本地项目列表。");
+        if (!cancelled) {
+          refreshStorageUsage();
+          setCatalogError("浏览器无法初始化本地项目列表。");
+        }
       }
     });
 
@@ -188,27 +229,44 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
       handlePageHide();
       window.removeEventListener("pagehide", handlePageHide);
     };
-  }, [cancelPendingActions]);
+  }, [cancelPendingActions, clearScheduledStorageRefresh, refreshStorageUsage]);
 
   // Projects live only in this browser, so the origin being evictable is a real
   // data-loss path rather than a technical detail. Ask for the grant here, on the
   // page the user reaches before any project work exists to lose.
   useEffect(() => {
+    isMountedRef.current = true;
     let isCancelled = false;
     void (async () => {
       const durability = await requestStorageDurability();
-      if (isCancelled) return;
+      if (isCancelled || !isMountedRef.current) return;
       setStorageDurability(durability);
-
-      const usage = await estimateOriginStorage();
-      if (isCancelled) return;
-      setOriginStorageUsage(usage);
     })();
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.storageArea && event.storageArea !== window.localStorage) return;
+      scheduleStorageRefresh();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") scheduleStorageRefresh();
+    };
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) scheduleStorageRefresh();
+    };
+
+    window.addEventListener("storage", handleStorage);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
 
     return () => {
       isCancelled = true;
+      isMountedRef.current = false;
+      clearScheduledStorageRefresh();
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
     };
-  }, []);
+  }, [clearScheduledStorageRefresh, refreshStorageUsage, scheduleStorageRefresh]);
 
   const projects = useMemo(() => {
     const source = catalog?.projects ?? [];
@@ -347,6 +405,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
           setCatalog(summary.catalog);
           setCatalogError(null);
           invalidateProjects([projectId]);
+          refreshStorageUsage();
           shouldOpen = true;
         }, signal);
       }, true);
@@ -431,6 +490,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
           setCatalog(result.catalog);
           setCatalogError(null);
           invalidateProjects([project.id]);
+          refreshStorageUsage();
           setProjectAction(null);
           return { plan: latest.status === "ok" ? latest.plan : null };
         }, signal);
@@ -440,6 +500,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
           (deleted.plan?.exclusiveStorageKeys ?? []).map(async (key) => indexedDbBlobStore.delete(key))
         );
         if (signal.aborted) return;
+        refreshStorageUsage();
         const failures = cleanup.filter((entry) => entry.status === "rejected").length;
         setActionMessage({
           tone: failures > 0 ? "warning" : "success",
@@ -455,6 +516,8 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
 
   const exportProjectBackup = (project: LocalProjectSummary) =>
     runProjectAction("正在导出备份…", async (signal) => {
+      if (project.id === CURRENT_CASE_STUDY_ID) await caseStudyStartup.current;
+      if (signal.aborted) return;
       const loaded = loadProjectWorkspace(window.localStorage, project.id, { mode: "readOnly" });
       if (loaded.status !== "ok") {
         setActionMessage({ tone: "error", text: `无法读取这个项目：${loaded.reason}` });
@@ -473,7 +536,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
       }
 
       downloadProjectBundleFile(result.file);
-      setActionMessage({ tone: "success", text: "备份已导出。" });
+      setActionMessage({ tone: "success", text: `已导出“${loaded.workspace.project.title}”的最近已保存内容备份。` });
     });
 
   const inspectBackup = async (file: File) => {
@@ -523,6 +586,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
       }
       setInspectedBackup(null);
       invalidateProjects([result.projectId]);
+      refreshStorageUsage();
       void openProject(result.projectId);
     } catch {
       if (!operation.cancelled) setRestoreMessage({ tone: "error", text: "恢复备份失败，请重新选择备份包后再试。" });
@@ -783,6 +847,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
                   </button>
                   <ProjectManageActions
                     project={recentProject}
+                    onExportBackup={exportProjectBackup}
                     onRename={startRename}
                     onDelete={startDelete}
                     disabled={Boolean(actionBusyLabel)}
@@ -812,6 +877,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
                         onRegisterElement={registerCardElement}
                         key={project.id}
                         onOpen={() => openProject(project.id)}
+                        onExportBackup={exportProjectBackup}
                         onRename={startRename}
                         onDelete={startDelete}
                         actionsDisabled={Boolean(actionBusyLabel)}
@@ -836,7 +902,11 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
             </>
           ) : null}
 
-          <LocalStorageFooter durability={storageDurability} usage={originStorageUsage} />
+          <LocalStorageFooter
+            durability={storageDurability}
+            originUsage={originStorageUsage}
+            localTextUsage={localTextStorageUsage}
+          />
         </div>
       </section>
     </main>
@@ -845,32 +915,41 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
 
 /**
  * The footer states where the user's work actually lives. It only escalates when
- * the browser has told us something concrete: an evictable origin, or a quota
- * that is nearly full. An unknown grant says nothing extra, because a warning we
- * cannot substantiate is worse than no warning.
+ * the browser has told us something concrete: an evictable origin, local text
+ * records crossing the conservative warning line, or an origin binary quota
+ * that is nearly full. An unknown reading says nothing extra, because a warning
+ * we cannot substantiate is worse than no warning.
  */
 export function LocalStorageFooter({
   durability,
-  usage
+  originUsage,
+  localTextUsage
 }: {
   durability: StorageDurabilityStatus;
-  usage: OriginStorageUsage;
+  originUsage: OriginStorageUsage;
+  localTextUsage: LocalTextStorageUsage;
 }) {
   const isAtRisk = durability === "bestEffort";
-  const isNearlyFull = isOriginStorageUnderPressure(usage);
+  const isOriginNearlyFull = isOriginStorageUnderPressure(originUsage);
+  const isLocalTextHigh = isLocalTextStorageUnderPressure(localTextUsage);
 
   return (
-    <footer className={`phome-foot${isAtRisk || isNearlyFull ? " is-at-risk" : ""}`}>
+    <footer className={`phome-foot${isAtRisk || isOriginNearlyFull || isLocalTextHigh ? " is-at-risk" : ""}`}>
       项目与素材保存在当前浏览器中，不会自动云同步；换设备继续工作时，请使用可恢复备份。
       {isAtRisk ? (
         <span className="phome-foot-risk">
           当前浏览器尚未允许长期保存：长时间不打开，或设备空间紧张时，本地项目可能被浏览器清空。请定期导出可恢复备份。
         </span>
       ) : null}
-      {isNearlyFull && usage.status === "ok" ? (
+      {isLocalTextHigh ? (
         <span className="phome-foot-risk">
-          浏览器可用空间已接近上限（已用 {formatStorageSize(usage.usageBytes)}，上限约{" "}
-          {formatStorageSize(usage.quotaBytes)}）。建议先导出备份，再删除不再需要的项目。
+          本机项目记录较多，建议导出备份；图片存储可用空间不代表项目记录仍可继续保存。
+        </span>
+      ) : null}
+      {isOriginNearlyFull && originUsage.status === "ok" ? (
+        <span className="phome-foot-risk">
+          本地图片与文件存储空间已接近上限（已用 {formatStorageSize(originUsage.usageBytes)}，上限约{" "}
+          {formatStorageSize(originUsage.quotaBytes)}）。建议先导出备份，再删除不再需要的项目。
         </span>
       ) : null}
     </footer>
@@ -957,6 +1036,7 @@ function ProjectCard({
   storageKeyUrls,
   onRegisterElement,
   onOpen,
+  onExportBackup,
   onRename,
   onDelete,
   actionsDisabled
@@ -967,6 +1047,7 @@ function ProjectCard({
   storageKeyUrls: Record<string, string>;
   onRegisterElement: (projectId: string, element: HTMLElement | null) => void;
   onOpen: () => void;
+  onExportBackup: (project: LocalProjectSummary) => void;
   onRename: (project: LocalProjectSummary) => void;
   onDelete: (project: LocalProjectSummary) => void;
   actionsDisabled: boolean;
@@ -996,28 +1077,48 @@ function ProjectCard({
           </div>
         </div>
       </button>
-      <ProjectManageActions project={project} onRename={onRename} onDelete={onDelete} disabled={actionsDisabled} />
+      <ProjectManageActions
+        project={project}
+        onExportBackup={onExportBackup}
+        onRename={onRename}
+        onDelete={onDelete}
+        disabled={actionsDisabled}
+      />
     </article>
   );
 }
 
 /**
- * Rename and delete sit outside the card's open button — nesting them would be
- * invalid markup and would make "open" and "delete" the same click target.
+ * Backup export, rename, and delete sit outside the card's open button —
+ * nesting them would be invalid markup and would make "open" and "delete" the
+ * same click target.
  */
 function ProjectManageActions({
   project,
+  onExportBackup,
   onRename,
   onDelete,
   disabled
 }: {
   project: LocalProjectSummary;
+  onExportBackup: (project: LocalProjectSummary) => void;
   onRename: (project: LocalProjectSummary) => void;
   onDelete: (project: LocalProjectSummary) => void;
   disabled: boolean;
 }) {
   return (
     <div className="phome-card-actions">
+      <button
+        className="phome-card-action"
+        type="button"
+        disabled={disabled}
+        aria-label={`导出项目备份：${project.title}`}
+        title="导出最近已保存内容"
+        onClick={() => onExportBackup(project)}
+      >
+        <Download size={13} />
+        导出备份
+      </button>
       <button
         className="phome-card-action"
         type="button"
