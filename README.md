@@ -12,15 +12,17 @@ Morpho is an AI-assisted concept-development workspace for product and industria
 
 当前仓库已经建立正式 Next.js + TypeScript 工程基础，并实现了一个可运行的桌面端工作台：
 
-- `/` 项目首页：新建、继续最近、搜索和打开本地项目；
+- `/` 项目首页：新建、继续最近、搜索、排序（按最近打开 / 最近更新 / 按名称）和打开本地项目；支持在项目卡片直接重命名、删除或只读导出最近已保存内容的可编辑备份，以及导入 `.zip` 备份恢复为新的独立项目副本；
+  - 首页预览按需加载：优先读取最近项目，网格卡片通过 `IntersectionObserver` 在接近视口时只读加载画布预览，在失效、筛选或卸载时释放不再使用的预览 URL，未加载或加载失败时不显示虚假 `0` 统计；
+  - 本地存储保护与压力提示：借助浏览器 Web Locks 实施跨标签页项目写锁与目录串行化（首页改名与删除在无 Web Locks 环境下拒绝执行而非无锁覆盖；删除前在锁内重检预览与资产归属，仅清理确认独占的 IndexedDB 资产，保留共享或不可读项目的资产）；首屏目录与可视预览渲染后再延迟扫描存储用量，独立提示 `localStorage` 项目记录压力（4 MiB UTF-16 保守预警线）与浏览器 origin 大对象空间压力（`navigator.storage.estimate()` 80% 预警）及持久性状态；
 - `/login` Supabase 邮箱密码登录与注册；
 - `/projects/[projectId]` 项目工作台；
 - 主导性的连续 tldraw 画布；
 - 浮动顶部控件、左侧窄工具轨、右下连续 AI 对话面板；
 - 选中对象后出现的底部详情栏；
 - Morpho 领域对象、画布实例、资产、项目 catalog、本地持久化和语义状态边界；
-- `schemaVersion: 17` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全迁移、IndexedDB 二进制资产、连续 AI 消息、Agent 过程、轻量 Operation / Proposal 状态、来源语义快照、正式关键结论类别、唯一当前有效设计定义、方向 create / revise / split / merge、方向内 VisualBranch、正式图片角色和可重建工作状态、连续会话压缩、项目记忆与阶段记录修订；旧 checkpoint/lane/imageVariant 只在兼容迁移边界读取并在当前数据中剥离；
-- Supabase 保存账号身份、测试资格、AI 每日额度，以及最小化的 A+ Server Turn / Request / External Action Journals；不保存项目、画布、文件、图片、聊天正文、项目记忆或整体本地 Turn Outcome。邮箱密码注册的测试用户自动成为 active tester，文本/生图额度为 `500 / 100`；
+- `schemaVersion: 18` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全向后迁移（v1–v17 工作区与备份可升级至 v18，不反造历史依据）、IndexedDB 二进制资产、连续 AI 消息、Agent 过程、轻量 Operation / Proposal 状态、来源语义快照、结构化 `DecisionEffect`、逐项证据基础（`EvidenceBasis`）与研究条目显式绑定、版本化 Proposal 依赖指纹、对象/来源/决策目标的 `incarnationId` 边界、正式关键结论类别、唯一当前有效设计定义、方向 create / revise / split / merge、方向内 VisualBranch、正式图片角色和可重建工作状态、连续会话压缩、项目记忆与阶段记录修订；旧 checkpoint/lane/imageVariant 只在兼容迁移边界读取并在当前数据中剥离；
+- Supabase 保存账号身份、测试资格、AI 每日额度，以及最小化的 A+ Server Turn / Request / External Action Journals；长期项目目录、画布、全部资产库、聊天完整历史、项目记忆与整体本地 Turn Outcome 仍保存在浏览器本地，不进行云端项目同步。同时，为支持同一次付费 AI 执行的状态观察与断线/重载后同结果恢复，当前代码在服务端 `service_role` 专用表（`external_effect*` / `external_result*`）中对本次执行的冻结 Provider 输入（可含本轮选中文本/图片输入）及文本/图片/压缩结果设置 **24 小时逻辑保留期**（输入自初始 effect 创建起算，结果自准备起算；重试或读取/ACK 不顺延）：逻辑到期即拒绝交付，物理清理依赖已启用 `pg_cron` 时的每 15 分钟任务或外部受信调度调用 `cleanup_external_result_payloads`（辅以按用户触发的惰性清理）；**不宣称生产环境已部署该合同、定时清理任务正在运行，或所有上游服务商与数据库备份均在 24 小时内物理删除**。邮箱密码注册的测试用户自动成为 active tester，文本/生图额度为 `500 / 100`；
 - Workspace 正式使用唯一的 A+ Agent Runtime：客户端 Turn Lifecycle/Coordinator 汇总本地工具、确认与持久化结果，服务端 Turn Journal 只权威记录外部执行状态；不存在 Runtime Selector 或 B fallback；
 - 通过 AiJWS OpenAI-compatible 路径的服务端文本 AI route，支持普通文本、显式选中图片的视觉理解输入，以及受控 web search citation 事件；当前示例模型为 `gpt-5.6-terra`；
 - 服务端 GrsAI 图像生成 route，图像任务按意图自动分流模型（方向批量预览用 `nano-banana-2-lite`，视觉发展/迭代/定向修改/场景/细节及未知意图用 `gpt-image-2`）；`MORPHO_GRS_DEFAULT_MODEL` 仅为服务端默认与兼容回退，不代表所有图像任务固定使用该模型；成功结果会保存为新的本地资产和新的图像对象；当前链路支持参考图和图生图，也支持基于提示词的定向修改，但没有 mask/inpainting 参数，不承诺像素级局部锁定；
@@ -68,7 +70,7 @@ Phase C Cleanup 的验收基线是 `3dcbbe989dc0606d363750e4f201c5c83f6dd1ab`，
 - Vitest
 - ESLint
 
-Morpho 是 local-first：项目、画布、文件、图片和可恢复备份保存在当前浏览器的 localStorage / IndexedDB，而非 Supabase。账号登录不等于项目云端同步；跨设备继续使用时必须使用项目备份/恢复边界。当前仍不包含云端项目同步、云端文件存储、多人实时协作或最终 Figma/PPT/CAD 排版。
+Morpho 是 local-first：项目目录（catalog）、工作区（Workspace）、文件、图片和可恢复备份保存在当前浏览器的 localStorage / IndexedDB，而非作为云端项目同步到 Supabase。账号登录不等于项目云端同步；跨设备继续使用时必须使用可编辑项目备份/恢复边界。AI 执行虽会将本轮所需输入传给服务端/Provider 并有上述 24 小时同执行恢复暂存合同，但它不等同于云端项目同步或长期云端资产存储。当前仍不包含云端项目同步、云端文件存储、多人实时协作、对象级/孤儿资产自动 GC 或最终 Figma/PPT/CAD 排版。
 
 ## 部署
 

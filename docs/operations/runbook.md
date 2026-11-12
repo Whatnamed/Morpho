@@ -301,7 +301,7 @@ Expected results:
 - `typecheck`: `tsc --noEmit` completes.
 - `test`: Vitest runs domain, persistence, import, query, AiJWS/OpenAI-compatible, and GrsAI tests.
 - `build`: `next build` completes and prerenders static pages/routes where applicable.
-- `case-study:upgrade`: upgrades the generated current-case workspace to schema 16; running it twice must leave the workspace hash unchanged.
+- `case-study:upgrade`: upgrades the generated current-case workspace to schema 18; running it twice must leave the workspace hash unchanged.
 
 GitHub CI runs the same core quality gate in `.github/workflows/quality.yml` on pushes to `main` and on pull requests:
 

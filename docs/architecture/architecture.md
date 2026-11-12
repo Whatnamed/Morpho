@@ -517,7 +517,7 @@ M6 additions:
 
 ## Schema v17 AI Continuity, Memory, And Key Conclusions
 
-Schema v17 is the current runtime contract and supersedes lane-local checkpoint selection:
+Schema v17 introduced the AI continuity, memory, and key-conclusion runtime contracts below (now carried forward in current schema v18), superseding lane-local checkpoint selection:
 
 - current Agent preparation, append, search, and provider context are project-wide; no lane key or
   checkpoint result participates in current history selection;
@@ -731,6 +731,11 @@ M9-A persistence hardening:
 - `persistProjectWorkspaceAndSummary(...)` reports workspace-write and catalog-write failures separately. Catalog writes are skipped when workspace writes fail; catalog failures keep the already-written workspace and surface a catalog-stage error.
 - Image preview object URLs are reconciled incrementally by `workspaceAssetUrlCache` using `assetId + storageKey`, avoiding full IndexedDB rereads and full URL revocation when unrelated workspace state changes.
 
+Storage pressure warnings and homepage on-demand behavior:
+
+- `storageDurability.ts` and `storageFootprint.ts` request origin persistence and separate `localStorage` UTF-16 text pressure (`LOCAL_TEXT_STORAGE_WARNING_BYTES = 4 MiB` conservative warning threshold; failed length reads report `unknown` rather than `0`) from `navigator.storage.estimate()` origin binary quota (`ORIGIN_STORAGE_PRESSURE_SHARE = 0.8`). On `/`, initial storage scanning is deferred until after catalog and visible preview rendering, and refreshes after mutations, coalesced cross-tab `storage` events, and page visibility/bfcache returns.
+- `useProjectHomePreviews.ts` renders catalog metadata first without synchronous full-workspace parsing, prioritizes the recent hero card, and uses `IntersectionObserver` to load grid previews via `mode: "readOnly"` sequentially across macrotasks. Preview assets are keyed by `storageKey` to prevent cross-project `assetId` URL collisions, unused Blob URLs are revoked on filter/delete/unmount, and pending/error states never report synthetic `0` object/image counts. Hero and grid project cards also expose direct read-only editable backup export (`exportEditableProjectBackupBundle`) alongside rename and delete.
+
 ## M7 Archive, Bundle, And Restore Layers
 
 Morpho now implements the M7 contract in two layers.
@@ -752,7 +757,7 @@ Bundle and restore layer:
 - human-readable archive bundle output includes Markdown reading files plus every currently readable local asset binary;
 - editable backup bundle output includes only the files required for restore and is blocked when required binaries are missing or mismatched;
 - restore writes binaries under new project-specific keys, then publishes the new workspace and updates the latest catalog. On failure after a workspace write attempt, compensation verifies that the restored workspace is absent before removing its new blobs;
-- editable-backup inspection and restore planning share `validateCurrentMorphoWorkspace(...)`: current v17
+- editable-backup inspection and restore planning share `validateCurrentMorphoWorkspace(...)`: current v17/v18
   snapshots first canonicalize only the four retired Concept Direction proposal-lineage aliases, then are
   deep-validated before tolerant normalization; every other malformed current field still fails closed. Historical snapshots use the existing migration
   chain and then the same current validator, and a restore-stage revalidation runs before any Blob/localStorage
