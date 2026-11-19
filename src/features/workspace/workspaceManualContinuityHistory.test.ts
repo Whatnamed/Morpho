@@ -8,7 +8,7 @@ import { buildProjectContinuityContext } from "@/domain/morpho/projectContinuity
 import { getCurrentProjectMemoryRevision, getCurrentStageRecordRevision } from "@/domain/morpho/projectMemory";
 import { validateCurrentMorphoWorkspace } from "@/domain/morpho/currentWorkspaceValidation";
 import type { ContinuityRecordEntry, MorphoWorkspace } from "@/domain/morpho/types";
-import { captureManualHistory, createManualHistory, pushManualHistory, redoManualHistory, undoManualHistory, type ManualHistoryResult } from "./workspaceUndo";
+import { captureManualHistory, createManualHistory, pushManualHistory, redoManualHistory, undoManualHistory, type ManualHistoryResult } from "./workspaceManualHistory";
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime("2026-10-03T02:00:00Z"); });
 afterEach(() => vi.useRealTimers());

@@ -1212,39 +1212,6 @@ export type AiContextTask =
   | "comparison"
   | "deliveryPreparation";
 
-export type AiDefaultReferenceStatus =
-  | {
-      status: "available";
-      objectId: MorphoObjectId;
-    }
-  | {
-      status: "hidden";
-      objectId: MorphoObjectId;
-      message: string;
-    }
-  | {
-      status: "missing";
-      message: string;
-    }
-  | {
-      status: "notRelevant";
-    };
-
-export type AssembleAiContextInput = {
-  draft: string;
-  selectedObjectIds: MorphoObjectId[];
-  explicitObjectIds: MorphoObjectId[];
-  task: AiContextTask;
-  visualTargetDirectionId?: MorphoObjectId;
-  visualBranchId?: VisualBranchId;
-};
-
-export type AssembledAiContext = {
-  draft: string;
-  objectIds: MorphoObjectId[];
-  defaultReferenceStatus: AiDefaultReferenceStatus;
-};
-
 export type WorkspaceMigrationResult =
   | {
       status: "ok";

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import { rebuildAgentProviderConversation } from "./agentTurnProductPreparationAPlus";
 import type { APlusAgentProviderRequest } from "@/shared/agentTurnJournalProtocol";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import { normalizeProviderInputSnapshot, createProviderInputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 
 describe("P2B input materialization", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createMorphoAgentContextPolicy } from "@/domain/morpho/agentContextPolicy";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import { resolveCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
 import {
   OpenAiCompatibleProviderError,

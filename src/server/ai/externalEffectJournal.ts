@@ -85,7 +85,7 @@ export function sameProviderNamespace(left: ProviderNamespace, right: ProviderNa
 }
 
 export type EffectExecution = Readonly<{
-  beforeSubmit: (body: unknown, namespace: ProviderNamespace, correction?: "cacheCompatibility" | "imageCompatibility") => Promise<void>;
+  beforeSubmit: (body: unknown, namespace: ProviderNamespace, correction?: "cacheCompatibility") => Promise<void>;
   observe: (observation: ExternalObservation) => Promise<void>;
   cancel: () => Promise<void>;
 }>;

@@ -1,11 +1,11 @@
-import type { ProviderCitation } from "@/server/ai/types";
+import type { ProviderCitation } from "@/shared/providerResponses";
 import type { WebSearchSource } from "@/server/ai/webSearch";
 import {
   getAgentToolEffect,
   type MorphoAgentToolArguments
 } from "./morphoAgent";
 import { buildToolResultOutput } from "./morphoAgent";
-import type { ResponseFunctionToolOutput } from "@/server/ai/openaiCompatibleProvider";
+import type { ResponseFunctionToolOutput } from "@/shared/providerResponses";
 import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";
 import { normalizeSafeExternalNavigationUrl } from "@/shared/externalNavigationPolicy";
 

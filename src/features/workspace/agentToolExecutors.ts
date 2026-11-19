@@ -226,12 +226,6 @@ function executeReadProjectMemory(
     parsed: Extract<MorphoAgentToolArguments, { name: "read_project_memory" }>;
   }
 ) {
-  const coverage = validateRequiredAgentReadCall(
-    input.runtimeState.requiredReadState,
-    "read_project_memory",
-    input.parsed.args
-  );
-  void coverage;
   const current = reconcileProjectMemory(input.readWorkspace());
   const scope = createProjectionTaskScope(current, { taskKind: input.context.kind, directObjectIds: input.context.objectIds,
     directRevisionIds: input.context.directionRevisions.map((revision) => revision.id), directBranchIds: input.context.visualBranches.map((branch) => branch.id),

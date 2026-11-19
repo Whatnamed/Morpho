@@ -11,7 +11,7 @@ import { validateCurrentMorphoWorkspace } from "@/domain/morpho/currentWorkspace
 import { createEditableProjectBackupManifest, validateEditableProjectBackupManifest } from "@/domain/morpho/projectArchive";
 import { migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { captureManualHistory, absorbCanvasMeasurements, createManualHistory, pushManualHistory, undoManualHistory, redoManualHistory, type ManualHistory, type ManualHistoryResult } from "./workspaceUndo";
+import { captureManualHistory, absorbCanvasMeasurements, createManualHistory, pushManualHistory, undoManualHistory, redoManualHistory, type ManualHistory, type ManualHistoryResult } from "./workspaceManualHistory";
 
 function history(before: MorphoWorkspace, after: MorphoWorkspace, label = "test"): ManualHistory {
   return pushManualHistory(createManualHistory(), captureManualHistory(label, before, after));

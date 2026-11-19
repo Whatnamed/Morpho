@@ -11,7 +11,7 @@ import type {
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
-import type { ProviderCitation } from "@/server/ai/types";
+import type { ProviderCitation } from "@/shared/providerResponses";
 import type { ConversationTokenLimits } from "@/domain/morpho/conversationCompaction";
 import type {
   APlusAgentContinuationItem,

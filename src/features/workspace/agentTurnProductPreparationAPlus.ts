@@ -46,7 +46,7 @@ import {
   buildRequiredAgentMemoryUpdateReminder,
   resolveRequiredAgentMemoryUpdates
 } from "./agentMemoryUpdateGuard";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import {
   createRequiredAgentReadState,
   resolveAgentTaskStrategy,

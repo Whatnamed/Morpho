@@ -16,7 +16,7 @@ import {
 } from "./projectBundles";
 import type { AssetRecord, MorphoWorkspace } from "./types";
 import { createBlankWorkspace, createInitialWorkspace, setConceptDirectionStatus } from "./workspace";
-import { captureManualHistory, createManualHistory, pushManualHistory, redoManualHistory, undoManualHistory } from "@/features/workspace/workspaceUndo";
+import { captureManualHistory, createManualHistory, pushManualHistory, redoManualHistory, undoManualHistory } from "@/features/workspace/workspaceManualHistory";
 
 const NOW = "2026-07-02T12:00:00.000Z";
 

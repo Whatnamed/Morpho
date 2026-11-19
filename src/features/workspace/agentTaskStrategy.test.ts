@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AiTaskMode, AiWorkIntent, MorphoObject } from "@/domain/morpho/types";
 import { createInitialWorkspace } from "@/domain/morpho/workspace";
-import { buildAgentPolicyBlocks, MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import { buildAgentPolicyBlocks, MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import {
   advanceRequiredAgentReadState,
   buildRequiredAgentReadReminder,

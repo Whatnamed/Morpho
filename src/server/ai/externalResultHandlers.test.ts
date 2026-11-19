@@ -5,7 +5,7 @@ import { createExternalResultFake } from "@/test/externalResultFake";
 import { createAgentTurnRequestPostHandler } from "@/app/api/ai/agent/turns/[turnId]/requests/handler";
 import { createAgentTurnImageActionPostHandler } from "@/app/api/ai/agent/turns/[turnId]/actions/image/handler";
 import { createAgentTurnCompactionActionPostHandler } from "@/app/api/ai/agent/turns/[turnId]/actions/compaction/handler";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol";
 import type { AgentTurnExternalActionSnapshot } from "@/shared/agentTurnExternalActionProtocol";
 const turnId = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { hashSourceMessageIds } from "@/shared/agentProductHash";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import { hashAPlusExternalActionBody } from "./agentExternalActionClientAPlus";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import { captureSourceSnapshots } from "@/domain/morpho/sourceResolution";

@@ -39,13 +39,8 @@ import { applyAgentLabModel, isAgentLabTool, type AgentLabProfile } from "./agen
 import type { OpenAiCompatibleConfig } from "./openaiCompatibleConfig";
 import { withServerPromptCacheHint } from "./providerPromptCacheHint";
 
-import type {
-  OpenAiCompatibleResponseRequest,
-  AgentOutputItem,
-  ProviderFunctionCall,
-  ResponseFunctionToolOutput,
-  ResponseMessageInput
-} from "./openaiCompatibleProvider";
+import type { OpenAiCompatibleResponseRequest, AgentOutputItem, ProviderFunctionCall } from "./openaiCompatibleProvider";
+import type { ResponseFunctionToolOutput, ResponseMessageInput } from "@/shared/providerResponses";
 
 const MAX_INPUT_ITEMS = 1_024;
 const MAX_CONTENT_PARTS = 64;

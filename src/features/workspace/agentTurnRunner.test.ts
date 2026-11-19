@@ -3,7 +3,7 @@ import * as imageAttachments from "./aiAttachments";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeWorkspaceVisualGenerationPlan } from "./workspaceVisualGenerationExecution";
 import { resolveGenerationSettings } from "./imageGenerationSettings";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import { getTurnAllowedTools } from "@/shared/turnTaskContract";
 import { buildAPlusAgentProviderContract, parseAPlusAgentProviderRequest } from "@/server/ai/agentTurnProviderRequest";
 import type { ImageObject } from "@/domain/morpho/types";

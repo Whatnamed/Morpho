@@ -40,8 +40,6 @@ import type {
   AiMessage,
   AiSuggestionInput,
   AgentTrace,
-  AssembleAiContextInput,
-  AssembledAiContext,
   AssetId,
   AssetRecord,
   CanvasInstance,
@@ -85,7 +83,6 @@ import type {
   WorkspaceMigrationResult
 } from "./types";
 
-const DEFAULT_REFERENCE_HIDDEN_MESSAGE = "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。";
 import { captureEvidenceBasis, qualifyEvidence } from "./evidenceAuthority";
 
 const CURRENT_SCHEMA_VERSION = 18;
@@ -538,99 +535,6 @@ export function markFileObjectParseFailed(
     objects: {
       ...workspace.objects,
       [input.fileObjectId]: updatedFile
-    }
-  };
-}
-
-export function assembleAiContext(workspace: MorphoWorkspace, input: AssembleAiContextInput): AssembledAiContext {
-  const objectIds = new Set<MorphoObjectId>();
-
-  for (const objectId of [...input.selectedObjectIds, ...input.explicitObjectIds]) {
-    if (workspace.objects[objectId]?.visibility === "active") {
-      objectIds.add(objectId);
-    }
-  }
-
-  if (input.task === "designDefinition") {
-    addWorkingStateObjects(workspace, objectIds, [
-      workspace.workingState.currentDesignDefinitionId,
-      ...workspace.workingState.activeKeyConclusionIds,
-      ...workspace.workingState.recentResearchObjectIds
-    ]);
-  }
-
-  if (input.task === "conceptDirection" || input.task === "comparison") {
-    addWorkingStateObjects(workspace, objectIds, [
-      workspace.workingState.currentDesignDefinitionId,
-      ...workspace.workingState.activeKeyConclusionIds
-    ]);
-  }
-
-  if (input.task === "deliveryPreparation") {
-    addWorkingStateObjects(workspace, objectIds, [
-      workspace.workingState.currentDesignDefinitionId,
-      workspace.workingState.primaryDirectionId
-    ]);
-  }
-
-  const defaultReference = findDefaultReference(workspace);
-
-  if (input.task === "visualDevelopment") {
-    addWorkingStateObjects(workspace, objectIds, [
-      workspace.workingState.currentDesignDefinitionId,
-      input.visualTargetDirectionId
-    ]);
-
-    if (!defaultReference) {
-      return {
-        draft: input.draft,
-        objectIds: [...objectIds],
-        defaultReferenceStatus: {
-          status: "missing",
-          message: "当前没有后续默认参考；本次只使用当前选择和输入。"
-        }
-      };
-    }
-
-    if (defaultReference.visibility === "hidden") {
-      return {
-        draft: input.draft,
-        objectIds: [...objectIds],
-        defaultReferenceStatus: {
-          status: "hidden",
-          objectId: defaultReference.id,
-          message: DEFAULT_REFERENCE_HIDDEN_MESSAGE
-        }
-      };
-    }
-
-    if (!input.visualTargetDirectionId || defaultReference.directionId !== input.visualTargetDirectionId) {
-      return {
-        draft: input.draft,
-        objectIds: [...objectIds],
-        defaultReferenceStatus: {
-          status: "missing",
-          message: "当前默认参考不属于本次明确目标方向；本次只使用当前选择和输入。"
-        }
-      };
-    }
-
-    objectIds.add(defaultReference.id);
-    return {
-      draft: input.draft,
-      objectIds: [...objectIds],
-      defaultReferenceStatus: {
-        status: "available",
-        objectId: defaultReference.id
-      }
-    };
-  }
-
-  return {
-    draft: input.draft,
-    objectIds: [...objectIds],
-    defaultReferenceStatus: {
-      status: "notRelevant"
     }
   };
 }
@@ -3136,16 +3040,6 @@ function formatFileSize(size: number): string {
   return `${Math.round(size / 1024 / 102.4) / 10} MB`;
 }
 
-function findDefaultReference(workspace: MorphoWorkspace): ImageObject | null {
-  for (const object of Object.values(workspace.objects)) {
-    if (object.type === "image" && object.isDefaultReference) {
-      return object;
-    }
-  }
-
-  return null;
-}
-
 function getDeleteConfirmationReasons(workspace: MorphoWorkspace, object: MorphoObject): string[] {
   const reasons: string[] = [];
 
@@ -3167,18 +3061,6 @@ function getDeleteConfirmationReasons(workspace: MorphoWorkspace, object: Morpho
   }
 
   return reasons;
-}
-
-function addWorkingStateObjects(
-  workspace: MorphoWorkspace,
-  target: Set<MorphoObjectId>,
-  objectIds: Array<MorphoObjectId | undefined>
-): void {
-  for (const objectId of objectIds) {
-    if (objectId && workspace.objects[objectId]?.visibility === "active") {
-      target.add(objectId);
-    }
-  }
 }
 
 function snapshotObject(object: MorphoObject): ObjectSnapshot {

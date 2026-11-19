@@ -1,7 +1,7 @@
 import type { CanvasPoint, CanvasSize, MorphoObjectId, MorphoWorkspace, ResearchObject } from "@/domain/morpho/types";
 import { getResearchItemParts, normalizeResearchItem } from "@/domain/operations/researchItems";
 import { buildKeyConclusionDraftFromResearchSource, createKeyConclusion, restoreObject } from "@/domain/morpho/workspace";
-import type { ProviderCitation } from "@/server/ai/types";
+import type { ProviderCitation } from "@/shared/providerResponses";
 import type { CreateResearchAnalysisArgs } from "./morphoAgent";
 
 export type ResearchExtractionKind = "finding" | "opportunity" | "constraint" | "openQuestion";

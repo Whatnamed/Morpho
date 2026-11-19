@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { createResearchOperation } from "../../domain/operations/operations";
-import { parseResearchAnalysisProposalPayload } from "../../domain/operations/researchProposal";
 import { createInitialWorkspace } from "../../domain/morpho/workspace";
 
 import { buildTaskContext } from "./taskContext";
@@ -43,19 +42,6 @@ describe("research success semantic patch", () => {
       "研究结果如下。",
       "```json",
       JSON.stringify({
-        morphoResearchProposal: {
-          title: "夜航路径研究",
-          summary: "围绕夜间识别和家庭使用约束整理机会。",
-          findings: ["夜间识别需要比复杂造型更优先。"],
-          opportunities: ["用温和灯带提示路径。"],
-          constraints: ["避免医疗监测设备语义。"],
-          openQuestions: [],
-          evidence: []
-        }
-      }),
-      "```",
-      "```json",
-      JSON.stringify({
         morphoProjectContinuityPatch: {
           items: [
             {
@@ -71,23 +57,13 @@ describe("research success semantic patch", () => {
       }),
       "```"
     ].join("\n");
-    const parsedProposal = parseResearchAnalysisProposalPayload(assistantText);
-    if (parsedProposal.status !== "ok") {
-      throw new Error(parsedProposal.reason);
-    }
-
     const result = applyResearchProposalWithSemanticPatch({
       workspace: created.workspace,
       proposal: {
         proposalId: "proposal-research-semantic-success",
         operationId: created.operation.id,
-        title: parsedProposal.proposal.title,
-        summary: parsedProposal.proposal.summary,
-        findings: parsedProposal.proposal.findings,
-        opportunities: parsedProposal.proposal.opportunities,
-        constraints: parsedProposal.proposal.constraints,
-        openQuestions: parsedProposal.proposal.openQuestions,
-        evidence: parsedProposal.proposal.evidence,
+        title: "夜航路径研究", summary: "夜间识别与家庭使用约束",
+        findings: ["夜间识别优先"], opportunities: [], constraints: [], openQuestions: [], evidence: [],
         sourceObjectIds: context.objectIds,
         citations: []
       },

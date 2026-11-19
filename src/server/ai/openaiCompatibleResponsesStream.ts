@@ -1,10 +1,5 @@
-import type {
-  AgentOutputItem,
-  OpenAiCompatibleResponseResult,
-  ProviderCitation,
-  ProviderFunctionCall,
-  ProviderTokenUsage
-} from "./openaiCompatibleProvider";
+import type { AgentOutputItem, OpenAiCompatibleResponseResult, ProviderFunctionCall, ProviderTokenUsage } from "./openaiCompatibleProvider";
+import type { ProviderCitation } from "@/shared/providerResponses";
 import type { AgentStreamActivityKind } from "@/shared/agentStreamProtocol";
 import { normalizeProviderTokenUsage } from "./providerTokenUsage";
 import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";

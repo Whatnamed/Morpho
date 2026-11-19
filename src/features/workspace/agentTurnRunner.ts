@@ -39,7 +39,7 @@ import { reduceAgentTurnLifecycle, type AgentTurnLifecycleState } from "./agentT
 import { finalizeAgentTurn } from "./agentTurnMessages";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
 import { createAgentTrace } from "./agentMessageTrace";
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import {
   prepareAgentTurnProductAPlus,
   rebuildAgentProviderConversation,

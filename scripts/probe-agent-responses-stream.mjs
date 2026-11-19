@@ -321,7 +321,7 @@ function buildFullAgentProbeRequest(agentTools) {
         content: [{ type: "input_text", text: "Read the synthetic local project context." }]
       }
     ],
-    tools: agentTools.buildMorphoAgentInitialTools()
+    tools: agentTools.buildMorphoAgentTools(true)
   };
 }
 

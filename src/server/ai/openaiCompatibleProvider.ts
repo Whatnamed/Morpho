@@ -1,3 +1,4 @@
+import type { ProviderCitation, ResponseMessageInput, ResponseFunctionToolOutput, ResponseTool } from "@/shared/providerResponses";
 import type { OpenAiCompatibleConfig } from "./openaiCompatibleConfig";
 import {
   OpenAiCompatibleStreamError,
@@ -33,47 +34,6 @@ type OpenAiCompatibleProviderConfig = Pick<
   "apiKey" | "baseUrl" | "model" | "reasoningEffort" | "webSearchEnabled" | "promptCache"
 >;
 
-export type ResponseTextContentPart = {
-  type: "input_text";
-  text: string;
-};
-
-export type ResponseOutputTextContentPart = {
-  type: "output_text";
-  text: string;
-};
-
-export type ResponseImageContentPart = {
-  type: "input_image";
-  image_url: string;
-};
-
-export type ResponseMessageInput = {
-  role: "system" | "user" | "assistant";
-  content: Array<ResponseTextContentPart | ResponseOutputTextContentPart | ResponseImageContentPart>;
-};
-
-export type ResponseFunctionTool = {
-  type: "function";
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  strict?: boolean;
-};
-
-export type ResponseWebSearchTool = {
-  type: "web_search_preview";
-  search_context_size?: "low" | "medium" | "high";
-};
-
-export type ResponseTool = ResponseFunctionTool | ResponseWebSearchTool;
-
-export type ResponseFunctionToolOutput = {
-  type: "function_call_output";
-  call_id: string;
-  output: string;
-};
-
 export type OpenAiCompatibleResponseRequest = {
   input: Array<ResponseMessageInput | ResponseFunctionToolOutput | AgentOutputItem>;
   tools?: ResponseTool[];
@@ -81,13 +41,6 @@ export type OpenAiCompatibleResponseRequest = {
   promptCacheKey?: string;
   promptCacheRetention?: "24h";
   diagnostics?: AgentProviderDiagnostics;
-};
-
-export type ProviderCitation = {
-  title: string;
-  url?: string;
-  domain?: string;
-  snippet?: string;
 };
 
 export type ProviderFunctionCall = {
@@ -150,12 +103,11 @@ export async function executeOpenAiCompatibleResponse(
   config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   signal?: AbortSignal,
-  effect?: EffectExecution,
-  correction?: "imageCompatibility"
+  effect?: EffectExecution
 ): Promise<OpenAiCompatibleResponseResult> {
   const budget = createProviderRequestBudget(signal);
   try {
-    return await executeOpenAiCompatibleResponseWithBudget(config, request, budget, effect, correction);
+    return await executeOpenAiCompatibleResponseWithBudget(config, request, budget, effect);
   } catch (error) {
     if (signal?.aborted) await effect?.cancel();
     await effect?.observe({ kind: signal?.aborted ? "localAbort" : "unknown" });
@@ -169,13 +121,12 @@ async function executeOpenAiCompatibleResponseWithBudget(
   config: OpenAiCompatibleProviderConfig,
   request: OpenAiCompatibleResponseRequest,
   budget: ProviderRequestBudget,
-  effect?: EffectExecution,
-  correction?: "imageCompatibility"
+  effect?: EffectExecution
 ): Promise<OpenAiCompatibleResponseResult> {
   const namespace = providerNamespace("openai-compatible", config);
   const requestBody = JSON.stringify(buildProviderRequestBody(config, request));
   const headers = { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" };
-  if (effect) await effect.beforeSubmit(requestBody, namespace, correction);
+  if (effect) await effect.beforeSubmit(requestBody, namespace);
   const response = await fetchProviderResponse(`${namespace.baseUrl}/responses`, {
     method: "POST",
     headers,
@@ -220,12 +171,11 @@ export async function streamOpenAiCompatibleResponse(
   request: OpenAiCompatibleResponseRequest,
   handlers: OpenAiCompatibleStreamHandlers,
   signal?: AbortSignal,
-  effect?: EffectExecution,
-  correction?: "imageCompatibility"
+  effect?: EffectExecution
 ): Promise<OpenAiCompatibleResponseResult> {
   const budget = createProviderRequestBudget(signal);
   try {
-    return await streamOpenAiCompatibleResponseWithBudget(config, request, handlers, budget, effect, correction);
+    return await streamOpenAiCompatibleResponseWithBudget(config, request, handlers, budget, effect);
   } catch (error) {
     if (signal?.aborted) await effect?.cancel();
     await effect?.observe({ kind: signal?.aborted ? "localAbort" : "unknown" });
@@ -241,7 +191,7 @@ async function streamOpenAiCompatibleResponseWithBudget(
   handlers: OpenAiCompatibleStreamHandlers,
   budget: ProviderRequestBudget,
   effect?: EffectExecution,
-  correction?: "cacheCompatibility" | "imageCompatibility"
+  correction?: "cacheCompatibility"
 ): Promise<OpenAiCompatibleResponseResult> {
   const namespace = providerNamespace("openai-compatible", config);
   const requestBody = serializeOpenAiCompatibleStreamBody(config, request);

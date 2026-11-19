@@ -5,8 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentMessagePart, AgentTrace } from "@/domain/morpho/types";
-import { applyAgentStreamEventsToTrace } from "../agentMessageTrace";
-import { createAgentStreamEventBatcher } from "../agentStreamClient";
 import { AgentProcessDisclosure } from "./AgentProcessDisclosure";
 
 const roots = new Set<Root>();
@@ -179,31 +177,6 @@ describe("AgentProcessDisclosure DOM behavior", () => {
     const mounted = await mountDisclosure(streamingTrace([]));
     expect(mounted.container.textContent).toContain("思考中…");
     expect(mounted.container.querySelector(".agent-process-collapse")).toBeNull();
-  });
-
-  it("renders complete text after 100 deltas are batched into one DOM update", async () => {
-    vi.useFakeTimers();
-    let trace = streamingTrace([reasoning("reasoning-1", "", "streaming")]);
-    let commits = 0;
-    const batcher = createAgentStreamEventBatcher({
-      onFlush: (events) => {
-        commits += 1;
-        trace = {
-          ...trace,
-          parts: applyAgentStreamEventsToTrace(trace, events, "2026-07-13T00:00:01.000Z").parts
-        };
-      }
-    });
-    for (let index = 0; index < 100; index += 1) {
-      batcher.push({ type: "reasoning-delta", partId: "reasoning-1", delta: String(index % 10) });
-    }
-    await advance(48);
-    const mounted = await mountDisclosure(trace);
-
-    expect(commits).toBe(1);
-    expect(mounted.container.textContent).toContain(
-      Array.from({ length: 100 }, (_, index) => String(index % 10)).join("")
-    );
   });
 
   it("cleans timers and observers on unmount without a state-update warning", async () => {

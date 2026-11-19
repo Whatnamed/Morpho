@@ -7,7 +7,7 @@ import type {
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
-import type { ProviderCitation } from "@/server/ai/types";
+import type { ProviderCitation } from "@/shared/providerResponses";
 
 export type FailedAgentTurnDraft = Readonly<{
   draft: string;

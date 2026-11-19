@@ -2,7 +2,6 @@ export { buildMorphoAgentStableSystemPrompt } from "@/shared/agentPromptRegistry
 import { parseAgentReadTool } from "@/shared/agentReadTools";
 import type { VisualIntentItem } from "@/domain/operations/types";
 import {
-  MorphoAgentTurnMode,
   CreateResearchAnalysisArgs,
   DesignDefinitionDraftArgs,
   CreateDesignDefinitionProposalArgs,
@@ -17,22 +16,13 @@ import {
   MorphoAgentToolArguments,
   MorphoAgentToolName,
   isMorphoAgentToolName,
-  buildMorphoAgentTools,
 } from "@/shared/agentToolContract";
 export * from "@/shared/agentToolContract";
 import type {
-  AgentTaskStrategyKind,
-  ConversationSummaryRevision,
   ImageRole,
   MorphoObject,
-  MorphoWorkspace
 } from "@/domain/morpho/types";
-import type {
-  ProviderCitation,
-  ResponseFunctionToolOutput,
-  ResponseMessageInput,
-  ResponseTool,
-} from "@/server/ai/openaiCompatibleProvider";
+import type { ProviderCitation, ResponseFunctionToolOutput, ResponseMessageInput } from "@/shared/providerResponses";
 import type {
   AgentStreamFunctionCall,
   AgentStreamOutputItem,
@@ -41,22 +31,6 @@ import type {
 import { assertAgentFunctionCallCount } from "@/shared/agentFunctionCallLimits";
 
 import type { ProviderTaskContext, TaskContextResult } from "./taskContext";
-import {
-  buildMorphoAgentStableSystemPrompt,
-  buildAgentStrategyPolicyBlocks,
-  MORPHO_AGENT_PROMPT_CONTRACT_VERSION
-} from "./agentPromptRegistry";
-import { buildAgentDefaultMemoryContext, type AgentDefaultMemoryContext } from "@/domain/morpho/projectMemory";
-
-export type AgentConversationContext = {
-  summaryRevision?: ConversationSummaryRevision;
-  messages: Array<{ id?: string; role: "user" | "assistant"; body: string; createdAt?: string }>;
-  rawMessageCount: number;
-  coveredMessageCount: number;
-  estimatedInputTokens: number;
-  pressure: "normal" | "prepare" | "compact";
-};
-
 export type AgentFunctionCall = AgentStreamFunctionCall;
 
 export type AgentOutputItem = AgentStreamOutputItem;
@@ -116,20 +90,6 @@ export type ReadSelectedContextResult = {
   directionTitles: string[];
 };
 
-export function buildMorphoAgentSystemPrompt(input: {
-  mode: MorphoAgentTurnMode;
-  strategy: AgentTaskStrategyKind;
-  workspace: MorphoWorkspace;
-  selectedObjects: readonly MorphoObject[];
-  context: TaskContextResult;
-  providerTaskContext: ProviderTaskContext;
-  conversationContext?: AgentConversationContext;
-  defaultMemoryContext?: AgentDefaultMemoryContext;
-}): string {
-  void input;
-  return buildMorphoAgentStableSystemPrompt();
-}
-
 export function buildMorphoAgentUserInput(input: {
   draft: string;
   context: TaskContextResult;
@@ -170,78 +130,6 @@ export function getComparisonToolExecutionBlockReason(input: {
     return "Compare 已阻止：需要至少两个当前显式选择且可用的对象。";
   }
   return undefined;
-}
-
-export function buildAgentDefaultMemoryPromptBlock(memory: AgentDefaultMemoryContext): string {
-  const documents = memory.documents.map((document) => {
-    const status = document.empty ? "当前为空" : document.reviewRequired ? "当前内容需复核" : "当前有效";
-    const revision = document.revisionId ? `，revision ${document.revisionId}` : "";
-    const sections = document.sections
-      .map((section) => `${section.title}：${section.items.join("；")}`)
-      .join(" | ");
-    const sources = document.sourceRefs.map((source) => source.title ?? source.id).join("、");
-    return `- ${document.title}（${status}${revision}）${sections ? `：${sections}` : ""}${sources ? `；来源：${sources}` : ""}`;
-  });
-  const stages = memory.stageRecords.map((record) => {
-    const status = record.empty ? "当前为空" : record.reviewRequired ? "当前内容需复核" : "当前有效";
-    const sections = Object.entries(record.sections)
-      .flatMap(([key, items]) => (items ?? []).map((item) => `${key}：${item}`))
-      .join("；");
-    const sources = record.sourceRefs.map((source) => source.title ?? source.id).join("、");
-    return `- ${record.stage}（${status}${record.revisionId ? `，revision ${record.revisionId}` : ""}）${sections ? `：${sections}` : ""}${sources ? `；来源：${sources}` : ""}`;
-  });
-  const reference = memory.defaultReference
-    ? memory.defaultReference.status === "available"
-      ? `当前默认参考：${memory.defaultReference.title ?? memory.defaultReference.objectId}（${memory.defaultReference.objectId}）`
-      : memory.defaultReference.status === "missing"
-        ? "当前默认参考：未设置"
-        : `当前默认参考：不可用${memory.defaultReference.objectId ? `（${memory.defaultReference.objectId}）` : ""}`
-    : "";
-
-  return [
-    "默认项目记忆（仅注入各类记忆与当前阶段记录的紧凑当前内容；不是完整历史）：",
-    documents.length > 0 ? documents.join("\n") : "- 当前任务没有需要默认注入的项目记忆文档。",
-    stages.length > 0 ? `当前阶段记录：\n${stages.join("\n")}` : "当前任务没有需要默认注入的阶段记录。",
-    reference,
-    "若用户询问历史版本、来源细节、被替代决定或原始聊天，必须再调用相应真实读取工具；不能把这段紧凑内容当作完整历史。"
-  ].filter(Boolean).join("\n");
-}
-
-export function buildAgentConversationPromptBlock(
-  context: AgentConversationContext | undefined
-): string {
-  if (!context) {
-    return "";
-  }
-
-  const lines = [
-    "Continuous project conversation context:",
-    "优先级：当前用户输入 > 真实项目状态与 Memory Kernel > 未压缩原始聊天 > conversation summary。"
-  ];
-  if (context.summaryRevision) {
-    const summary = context.summaryRevision.summary;
-    lines.push(
-      "conversation summary 只覆盖已标记的连续旧消息范围；它不是项目事实源，与实时项目状态冲突时必须服从实时状态。",
-      `threadGoal: ${summary.threadGoal}`,
-      `establishedContext: ${summary.establishedContext.join(" / ") || "none"}`,
-      `decisionsAndReasons: ${summary.decisionsAndReasons.join(" / ") || "none"}`,
-      `activeWork: ${summary.activeWork.join(" / ") || "none"}`,
-      `unresolvedQuestions: ${summary.unresolvedQuestions.join(" / ") || "none"}`,
-      `referencedObjects: ${summary.referencedObjects.join(" / ") || "none"}`
-    );
-    if (summary.nextTurnAnchor) {
-      lines.push(`nextTurnAnchor: ${summary.nextTurnAnchor}`);
-    }
-  } else {
-    lines.push(
-      "当前没有 conversation summary；正式请求中的所有可用原始消息按项目连续会话携带。"
-    );
-  }
-  return lines.join("\n");
-}
-
-export function buildMorphoAgentInitialTools(): ResponseTool[] {
-  return buildMorphoAgentTools(true);
 }
 
 /**

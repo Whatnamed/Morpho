@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "./agentPromptRegistry";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import type {
   AgentTurnJournalSnapshot,
   AgentTurnRequestStreamEvent

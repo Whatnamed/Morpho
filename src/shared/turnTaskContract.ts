@@ -1,7 +1,7 @@
 import type { AgentTaskStrategyKind, AiTaskMode, AiWorkIntent, ProjectMemoryKey, StageRecordKey } from "@/domain/morpho/types";
 import { isAgentTaskStrategyKind } from "./agentStrategyItem";
 import { isMorphoAgentToolName, type MorphoAgentToolName, type RequestConfirmationArgs } from "./agentToolContract";
-import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
+import type { ResponseMessageInput } from "@/shared/providerResponses";
 
 export type ExecutionModeSource = "userSelected" | "autoRecommended";
 export type RequiredAgentReadToolName = "read_project_memory" | "read_stage_record" | "search_project_conversation" | "read_workspace_source";

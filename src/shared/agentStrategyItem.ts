@@ -1,5 +1,5 @@
 import type { AgentTaskStrategyKind } from "@/domain/morpho/types";
-import type { ResponseMessageInput } from "@/server/ai/openaiCompatibleProvider";
+import type { ResponseMessageInput } from "@/shared/providerResponses";
 
 export type AgentClientStrategyMarker = {
   type: "morpho_strategy";

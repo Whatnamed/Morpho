@@ -6,7 +6,7 @@ import type {
   ProjectMemoryKey,
   StageRecordKey
 } from "@/domain/morpho/types";
-import type { ProviderCitation } from "@/server/ai/types";
+import type { ProviderCitation } from "@/shared/providerResponses";
 import type { AgentServerDirective } from "@/shared/agentStreamProtocol";
 import type { AgentContextBudgetState } from "@/shared/providerInputBudget";
 import type { RequiredAgentReadState } from "./agentTaskStrategy";

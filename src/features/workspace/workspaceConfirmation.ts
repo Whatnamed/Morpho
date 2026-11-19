@@ -10,7 +10,7 @@ import type {
   RequestConfirmationArgs
 } from "./morphoAgent";
 import type { VisualGenerationPlan } from "@/domain/operations/types";
-import type { ProviderCitation } from "@/server/ai/types";
+import type { ProviderCitation } from "@/shared/providerResponses";
 import {
   isComparisonPendingConfirmation,
   type PendingComparisonConfirmation

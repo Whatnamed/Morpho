@@ -1,7 +1,7 @@
 // Neutral Agent tool DTOs, schemas and effects. Client and Server share this registry.
 import type { ConceptDirectionProposal, VisualIntentItem } from "@/domain/operations/types";
 import { agentReadToolNames, agentReadTools, type AgentReadToolCall } from "./agentReadTools";
-import type { ResponseFunctionTool, ResponseTool } from "@/server/ai/openaiCompatibleProvider";
+import type { ResponseFunctionTool, ResponseTool } from "@/shared/providerResponses";
 
 export type MorphoAgentTurnMode = "auto" | "confirm";
 

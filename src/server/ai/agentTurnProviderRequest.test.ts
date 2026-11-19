@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
-import type { ResponseMessageInput } from "./openaiCompatibleProvider";
+import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
+import type { ResponseMessageInput } from "@/shared/providerResponses";
 
 import {
   buildAPlusAgentProviderContract,

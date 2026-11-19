@@ -1,6 +1,6 @@
 import type { MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import type { VisualGenerationPlan } from "@/domain/operations/types";
-import type { ProviderCitation } from "@/server/ai/types";
+import type { ProviderCitation } from "@/shared/providerResponses";
 import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import type {
   MorphoAgentToolArguments,

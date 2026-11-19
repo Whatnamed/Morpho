@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  assembleAiContext,
   buildKeyConclusionDraftFromResearchSource,
   createKeyConclusion,
   createAiDraftFromSuggestion,
@@ -533,14 +532,6 @@ describe("Morpho workspace domain boundaries", () => {
     expect(hidden.workingState.currentDesignDefinitionId).toBe("definition-current");
     expect(hidden.workingState.currentDesignDefinitionAvailability).toBe("hidden");
 
-    const context = assembleAiContext(hidden, {
-      draft: "基于当前定义生成方向。",
-      selectedObjectIds: [],
-      explicitObjectIds: [],
-      task: "conceptDirection"
-    });
-
-    expect(context.objectIds).not.toContain("definition-current");
   });
 
   it("hides objects without deleting objects, relations, or creating decision records", () => {
@@ -566,67 +557,6 @@ describe("Morpho workspace domain boundaries", () => {
     expect(getRenderableCanvasInstances(hidden).some((instance) => instance.objectId === "image-soft-rail-v2")).toBe(
       false
     );
-  });
-
-  it("keeps a hidden default reference as state but excludes it from visual AI context", () => {
-    const workspace = hideObject(createInitialWorkspace(), "image-soft-rail-v2");
-
-    expect(workspace.objects["image-soft-rail-v2"]?.type).toBe("image");
-    expect(workspace.objects["image-soft-rail-v2"]?.visibility).toBe("hidden");
-
-    const context = assembleAiContext(workspace, {
-      draft: "继续发展主方向的视觉细节。",
-      selectedObjectIds: [],
-      explicitObjectIds: [],
-      task: "visualDevelopment"
-    });
-
-    expect(context.objectIds).not.toContain("image-soft-rail-v2");
-    expect(context.defaultReferenceStatus).toEqual({
-      status: "hidden",
-      objectId: "image-soft-rail-v2",
-      message: "当前后续默认参考已隐藏，请先恢复或替换后再用于相关生成。"
-    });
-  });
-
-  it("does not inject the primary direction into visual context without an explicit visual target", () => {
-    const workspace = createInitialWorkspace();
-
-    const context = assembleAiContext(workspace, {
-      draft: "做一次无方向视觉探索。",
-      selectedObjectIds: [],
-      explicitObjectIds: [],
-      task: "visualDevelopment"
-    });
-
-    expect(context.objectIds).not.toContain("direction-soft-rail");
-    expect(context.objectIds).not.toContain("image-soft-rail-v2");
-  });
-
-  it("adds the default reference to visual context only when it belongs to the explicit target direction", () => {
-    const workspace = createInitialWorkspace();
-
-    const matchingContext = assembleAiContext(workspace, {
-      draft: "继续发展方向 A。",
-      selectedObjectIds: [],
-      explicitObjectIds: [],
-      task: "visualDevelopment",
-      visualTargetDirectionId: "direction-soft-rail"
-    });
-
-    expect(matchingContext.objectIds).toContain("direction-soft-rail");
-    expect(matchingContext.objectIds).toContain("image-soft-rail-v2");
-
-    const mismatchedContext = assembleAiContext(workspace, {
-      draft: "继续发展方向 B。",
-      selectedObjectIds: [],
-      explicitObjectIds: [],
-      task: "visualDevelopment",
-      visualTargetDirectionId: "direction-support-island"
-    });
-
-    expect(mismatchedContext.objectIds).toContain("direction-support-island");
-    expect(mismatchedContext.objectIds).not.toContain("image-soft-rail-v2");
   });
 
   it("requires confirmation before deleting an object that still has active references", () => {
@@ -953,20 +883,6 @@ describe("Morpho workspace domain boundaries", () => {
       directionId: "direction-soft-rail",
       visualBranchId: undefined
     });
-  });
-
-  it("does not include the default reference in non-visual AI context", () => {
-    const workspace = createInitialWorkspace();
-
-    const context = assembleAiContext(workspace, {
-      draft: "帮我整理当前项目的交付缺口。",
-      selectedObjectIds: [],
-      explicitObjectIds: [],
-      task: "deliveryPreparation"
-    });
-
-    expect(context.objectIds).not.toContain("image-soft-rail-v2");
-    expect(context.defaultReferenceStatus).toEqual({ status: "notRelevant" });
   });
 
   it("imports text, URL, image, and file inputs as explicit typed objects with asset references", () => {

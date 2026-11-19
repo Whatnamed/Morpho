@@ -5,7 +5,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { ensureStageRegions } from "@/domain/morpho/stageRegions";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
-import { absorbCanvasMeasurements, captureManualHistory, createManualHistory, pushManualHistory, redoManualHistory, undoManualHistory } from "./workspaceUndo";
+import { absorbCanvasMeasurements, captureManualHistory, createManualHistory, pushManualHistory, redoManualHistory, undoManualHistory } from "./workspaceManualHistory";
 
 export type UseWorkspaceObjectHistoryControllerInput = {
   projectId: string;
