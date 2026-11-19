@@ -8,7 +8,7 @@ import {
   hashAgentTurnExternalActionContract,
   settleAgentTurnExternalAction,
   type AcquireAgentTurnExternalActionResult,
-  type SettleAgentTurnExternalActionResult
+  settleExternalActionWithRetry
 } from "@/server/ai/agentTurnExternalActionJournal";
 import {
   invalidRequestResponse,
@@ -174,7 +174,7 @@ export function createAgentTurnCompactionActionPostHandler(
           sourceDigest: hashAgentTurnExternalActionContract(body.messages),
           expectedPreviousRevisionId: body.expectedPreviousRevisionId ?? null
         } }), { ...identity, actionHash, requestContentSha256 }) : undefined;
-      const settled = await settleWithRetry(dependencies, {
+      const settled = await settleExternalActionWithRetry(dependencies, {
         ...identity,
         actionHash,
         status: "externallyCompleted"
@@ -186,7 +186,7 @@ export function createAgentTurnCompactionActionPostHandler(
       const cancelled = request.signal.aborted || (error instanceof Error && error.name === "AbortError");
       const unknown = getPublicTextProviderFailureCode(error) === EXTERNAL_EXECUTION_STATE_UNKNOWN.code;
       const failureCode = error instanceof ExternalResultError ? error.code : unknown ? EXTERNAL_EXECUTION_STATE_UNKNOWN.code : "compaction_failed";
-      const settled = await settleWithRetry(dependencies, {
+      const settled = await settleExternalActionWithRetry(dependencies, {
         ...identity,
         actionHash,
         status: cancelled ? "externallyCancelled" : "externallyFailed",
@@ -291,28 +291,4 @@ function compactionReplayResponse(
     },
     { status: acquired.snapshot.status === "running" ? 202 : 409 }
   );
-}
-
-async function settleWithRetry(
-  dependencies: AgentTurnCompactionActionDependencies,
-  input: Parameters<typeof settleAgentTurnExternalAction>[0]
-): Promise<SettleAgentTurnExternalActionResult> {
-  const delays = [25, 75] as const;
-  for (let attempt = 0; ; attempt += 1) {
-    let result: SettleAgentTurnExternalActionResult;
-    try {
-      result = await dependencies.settle(input);
-    } catch {
-      result = {
-        status: "denied", httpStatus: 503, code: "external_action_unavailable",
-        error: "External Action 结算暂时不可用。", recoverable: false
-      };
-    }
-    if (result.status === "ok" || result.httpStatus !== 503 || attempt >= delays.length) return result;
-    await (dependencies.waitForSettlementRetry ?? wait)(delays[attempt]!);
-  }
-}
-
-function wait(delayMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }

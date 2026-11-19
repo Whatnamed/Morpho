@@ -418,3 +418,30 @@ function isFailureCode(value: string): boolean {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+export async function settleExternalActionWithRetry(
+  dependencies: { settle: typeof settleAgentTurnExternalAction; waitForSettlementRetry?: (delayMs: number) => Promise<void> },
+  input: Parameters<typeof settleAgentTurnExternalAction>[0]
+): Promise<SettleAgentTurnExternalActionResult> {
+  const delays = [25, 75] as const;
+  for (let attempt = 0; ; attempt += 1) {
+    let result: SettleAgentTurnExternalActionResult;
+    try {
+      result = await dependencies.settle(input);
+    } catch {
+      result = {
+        status: "denied",
+        httpStatus: 503,
+        code: "external_action_unavailable",
+        error: "External Action 结算暂时不可用。",
+        recoverable: false
+      };
+    }
+    if (result.status === "ok" || result.httpStatus !== 503 || attempt >= delays.length) return result;
+    await (dependencies.waitForSettlementRetry ?? wait)(delays[attempt]!);
+  }
+}
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}

@@ -10,7 +10,7 @@ import {
   hashAgentTurnExternalActionContract,
   settleAgentTurnExternalAction,
   type AcquireAgentTurnExternalActionResult,
-  type SettleAgentTurnExternalActionResult
+  settleExternalActionWithRetry
 } from "@/server/ai/agentTurnExternalActionJournal";
 import {
   invalidRequestResponse,
@@ -190,7 +190,7 @@ export function createAgentTurnImageActionPostHandler(
         effect: dependencies.createEffect?.(effectIdentity)
       });
       if (result.status === "cancelled") {
-        const settled = await settleWithRetry(dependencies, {
+        const settled = await settleExternalActionWithRetry(dependencies, {
           ...identity,
           actionHash,
           status: "externallyCancelled"
@@ -209,7 +209,7 @@ export function createAgentTurnImageActionPostHandler(
       if (result.status === "failed") {
         const publicError = result.failureCode === EXTERNAL_EXECUTION_STATE_UNKNOWN.code
           ? EXTERNAL_EXECUTION_STATE_UNKNOWN : IMAGE_PROVIDER_FAILED;
-        const settled = await settleWithRetry(dependencies, {
+        const settled = await settleExternalActionWithRetry(dependencies, {
           ...identity,
           actionHash,
           status: "externallyFailed",
@@ -228,7 +228,7 @@ export function createAgentTurnImageActionPostHandler(
       }
       const delivery = dependencies.results ? await saveExternalResult(dependencies.results,
         effectIdentity, result.blob, { ...identity, actionHash }) : undefined;
-      const settled = await settleWithRetry(dependencies, {
+      const settled = await settleExternalActionWithRetry(dependencies, {
         ...identity,
         actionHash,
         status: "externallyCompleted"
@@ -249,7 +249,7 @@ export function createAgentTurnImageActionPostHandler(
     } catch (error) {
       if (error instanceof ExternalResultError) return imageResultDeliveryErrorResponse(error.code);
       const cancelled = request.signal.aborted || (error instanceof Error && error.name === "AbortError");
-      const settled = await settleWithRetry(dependencies, {
+      const settled = await settleExternalActionWithRetry(dependencies, {
         ...identity,
         actionHash,
         status: cancelled ? "externallyCancelled" : "externallyFailed",
@@ -300,31 +300,4 @@ function validateImagePayloadBoundary(value: Record<string, unknown>): string | 
 
 function hashImageDataUrl(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-async function settleWithRetry(
-  dependencies: AgentTurnImageActionDependencies,
-  input: Parameters<typeof settleAgentTurnExternalAction>[0]
-): Promise<SettleAgentTurnExternalActionResult> {
-  const delays = [25, 75] as const;
-  for (let attempt = 0; ; attempt += 1) {
-    let result: SettleAgentTurnExternalActionResult;
-    try {
-      result = await dependencies.settle(input);
-    } catch {
-      result = {
-        status: "denied",
-        httpStatus: 503,
-        code: "external_action_unavailable",
-        error: "External Action 结算暂时不可用。",
-        recoverable: false
-      };
-    }
-    if (result.status === "ok" || result.httpStatus !== 503 || attempt >= delays.length) return result;
-    await (dependencies.waitForSettlementRetry ?? wait)(delays[attempt]!);
-  }
-}
-
-function wait(delayMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }

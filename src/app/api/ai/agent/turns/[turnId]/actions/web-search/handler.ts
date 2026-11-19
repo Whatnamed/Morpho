@@ -5,7 +5,7 @@ import {
   hashAgentTurnExternalActionContract,
   settleAgentTurnExternalAction,
   type AcquireAgentTurnExternalActionResult,
-  type SettleAgentTurnExternalActionResult
+  settleExternalActionWithRetry
 } from "@/server/ai/agentTurnExternalActionJournal";
 import { loadOpenAiCompatibleConfig } from "@/server/ai/openaiCompatibleConfig";
 import { searchWebEvidence } from "@/server/ai/webSearch";
@@ -128,7 +128,7 @@ export function createAgentTurnWebSearchActionPostHandler(
     try {
       const result = await dependencies.search({ queries, maxSources, signal: request.signal });
       const receipt = buildSearchReceipt(result);
-      const settled = await settleWithRetry(dependencies, {
+      const settled = await settleExternalActionWithRetry(dependencies, {
         ...identity,
         actionHash,
         status: "externallyCompleted",
@@ -138,7 +138,7 @@ export function createAgentTurnWebSearchActionPostHandler(
       return NextResponse.json({ ...receipt, replayed: false, action: settled.snapshot });
     } catch (error) {
       const cancelled = request.signal.aborted || (error instanceof Error && error.name === "AbortError");
-      const settled = await settleWithRetry(dependencies, {
+      const settled = await settleExternalActionWithRetry(dependencies, {
         ...identity,
         actionHash,
         status: cancelled ? "externallyCancelled" : "externallyFailed",
@@ -203,31 +203,4 @@ function isSearchReceipt(value: unknown): value is SearchResult {
     value.sources.every((source) => isRecord(source) &&
       typeof source.title === "string" && typeof source.url === "string") &&
     typeof value.failedSourceCount === "number" && typeof value.timedOutSourceCount === "number";
-}
-
-async function settleWithRetry(
-  dependencies: AgentTurnWebSearchActionDependencies,
-  input: Parameters<typeof settleAgentTurnExternalAction>[0]
-): Promise<SettleAgentTurnExternalActionResult> {
-  const delays = [25, 75] as const;
-  for (let attempt = 0; ; attempt += 1) {
-    let result: SettleAgentTurnExternalActionResult;
-    try {
-      result = await dependencies.settle(input);
-    } catch {
-      result = {
-        status: "denied",
-        httpStatus: 503,
-        code: "external_action_unavailable",
-        error: "External Action 结算暂时不可用。",
-        recoverable: false
-      };
-    }
-    if (result.status === "ok" || result.httpStatus !== 503 || attempt >= delays.length) return result;
-    await (dependencies.waitForSettlementRetry ?? wait)(delays[attempt]!);
-  }
-}
-
-function wait(delayMs: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
