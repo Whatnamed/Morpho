@@ -13,6 +13,7 @@ import {
   unknownKeys
 } from "@/server/ai/agentTurnRouteSupport";
 import { requireAiRouteUser, type AiRouteUserAccessResult } from "@/server/auth/aiAccess";
+import { isAgentLabProjectId, resolveAgentLabRequest } from "@/server/ai/agentLabProfile";
 
 const MAX_TURN_CREATION_BODY_BYTES = 16 * 1024;
 
@@ -30,6 +31,8 @@ export function createAgentTurnPostHandler(
   dependencies: CreateAgentTurnRouteDependencies = defaultDependencies
 ) {
   return async function POST(request: Request): Promise<Response> {
+    const lab = await resolveAgentLabRequest(request);
+    if (lab instanceof Response) return lab;
     const auth = await dependencies.authenticate();
     if (auth.status === "denied") {
       return NextResponse.json(
@@ -52,6 +55,7 @@ export function createAgentTurnPostHandler(
     }
     if (
       !isBoundedIdentifier(parsed.value.localProjectId) ||
+      (lab && !isAgentLabProjectId(parsed.value.localProjectId)) ||
       !isBoundedIdentifier(parsed.value.creationIdempotencyKey)
     ) {
       return invalidRequestResponse("localProjectId 或 creationIdempotencyKey 格式无效。");

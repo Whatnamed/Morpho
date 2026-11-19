@@ -22,17 +22,24 @@ import {
 import {
   APlusAgentProviderRequestError,
   buildAPlusExternalToolActionClaims,
-  buildAPlusAgentProviderContract,
   hashAPlusAgentExternalRequest,
   hashAPlusAgentRequestContent,
   normalizeAPlusProviderToolCalls,
-  parseAPlusAgentProviderRequest
+  parseAPlusAgentProviderRequest,
+  prepareAPlusAgentProviderSubmission
 } from "@/server/ai/agentTurnProviderRequest";
 import {
   loadOpenAiCompatibleConfig,
   type OpenAiCompatibleConfigResult
 } from "@/server/ai/openaiCompatibleConfig";
-import { withServerPromptCacheHint } from "@/server/ai/providerPromptCacheHint";
+import {
+  AGENT_LAB_REQUEST_EVENT,
+  agentLabProfileId,
+  captureAgentLabProviderBody,
+  isAgentLabProjectId,
+  resolveAgentLabRequest
+} from "@/server/ai/agentLabProfile";
+import type { DesignMethodPackId } from "@/shared/designMethodPack";
 import {
   streamOpenAiCompatibleResponse,
   type OpenAiCompatibleStreamHandlers
@@ -78,6 +85,8 @@ export function createAgentTurnRequestPostHandler(
   dependencies: AgentTurnRequestRouteDependencies = defaultDependencies
 ) {
   return async function POST(request: Request, context: RouteContext): Promise<Response> {
+    const labProfile = await resolveAgentLabRequest(request);
+    if (labProfile instanceof Response) return labProfile;
     const { turnId } = await context.params;
     if (!isUuid(turnId)) {
       return invalidRequestResponse("serverTurnId 格式无效。");
@@ -109,6 +118,7 @@ export function createAgentTurnRequestPostHandler(
     }
     if (
       !isBoundedIdentifier(parsedBody.value.localProjectId) ||
+      (labProfile && !isAgentLabProjectId(parsedBody.value.localProjectId)) ||
       !isBoundedIdentifier(parsedBody.value.requestId) ||
       !Number.isSafeInteger(parsedBody.value.stepSequence) ||
       (parsedBody.value.stepSequence as number) < 1 ||
@@ -160,8 +170,8 @@ export function createAgentTurnRequestPostHandler(
       return journalDeniedResponse(privilegedSettlement);
     }
 
-    const config = dependencies.loadConfig();
-    if (config.status === "failed") {
+    const loadedConfig = dependencies.loadConfig();
+    if (loadedConfig.status === "failed") {
       return NextResponse.json(
         {
           error: TEXT_PROVIDER_UNAVAILABLE.message,
@@ -171,13 +181,14 @@ export function createAgentTurnRequestPostHandler(
         { status: 503 }
       );
     }
-
-    let contract;
+    let submission;
     try {
-      contract = buildAPlusAgentProviderContract({
+      submission = prepareAPlusAgentProviderSubmission({
         localProjectId: parsedBody.value.localProjectId,
+        userId: auth.userId,
         request: providerRequest.value,
-        webSearchEnabled: config.config.webSearchEnabled
+        config: loadedConfig.config,
+        labProfile
       });
     } catch (error) {
       if (error instanceof APlusAgentProviderRequestError) {
@@ -188,19 +199,10 @@ export function createAgentTurnRequestPostHandler(
       }
       throw error;
     }
-    const externalProviderRequest = withServerPromptCacheHint({
-      config: config.config,
-      request: contract.request,
-      namespace: "agent",
-      userId: auth.userId,
-      localProjectId: parsedBody.value.localProjectId,
-      promptContractVersion: providerRequest.value.promptContractVersion,
-      toolProfile: contract.effectiveToolProfile,
-      stableSystemPrefix: contract.stableSystemPrompt
-    });
+    const { config, request: externalProviderRequest, methodPackIds } = submission;
     const requestHash = hashAPlusAgentExternalRequest({
-      model: config.config.model,
-      reasoningEffort: config.config.reasoningEffort,
+      model: config.model,
+      reasoningEffort: config.reasoningEffort,
       providerRequest: externalProviderRequest
     });
     const identity = {
@@ -223,8 +225,9 @@ export function createAgentTurnRequestPostHandler(
       identity,
       requestContentSha256,
       providerRequest: externalProviderRequest,
-      config: config.config,
-      dependencies
+      config,
+      dependencies,
+      lab: labProfile ? { profileId: agentLabProfileId(labProfile), methodPackIds } : undefined
     });
   };
 }
@@ -242,6 +245,7 @@ function createProviderStreamResponse(input: {
   providerRequest: Parameters<typeof streamOpenAiCompatibleResponse>[1];
   config: Parameters<typeof streamOpenAiCompatibleResponse>[0];
   dependencies: AgentTurnRequestRouteDependencies;
+  lab?: { profileId: string; methodPackIds: readonly DesignMethodPackId[] };
 }): Response {
   const abortController = new AbortController();
   let closed = false;
@@ -268,18 +272,23 @@ function createProviderStreamResponse(input: {
 
       void (async () => {
         let activitySequence = 0;
+        const activity = (event: unknown) => enqueue({
+          type: "streamActivity",
+          requestId: input.identity.requestId,
+          stepSequence: input.identity.stepSequence,
+          sequence: ++activitySequence,
+          event
+        });
+        const lab = input.lab;
         const handlers: OpenAiCompatibleStreamHandlers = {
           onEvent: (event) => {
-            if (event.type === "unknown") return;
-            activitySequence += 1;
-            enqueue({
-              type: "streamActivity",
-              requestId: input.identity.requestId,
-              stepSequence: input.identity.stepSequence,
-              sequence: activitySequence,
-              event
-            });
-          }
+            if (event.type !== "unknown") activity(event);
+          },
+          ...(lab ? { onRequest: (body: string) => activity({
+            type: AGENT_LAB_REQUEST_EVENT,
+            ...lab,
+            body: captureAgentLabProviderBody(body)
+          }) } : {})
         };
         try {
           const result = await input.dependencies.streamProvider(
@@ -295,6 +304,10 @@ function createProviderStreamResponse(input: {
             })
           );
           const toolCalls = normalizeAPlusProviderToolCalls(result.functionCalls);
+          if (lab && toolCalls.some((call) => !input.providerRequest.tools?.some((tool) =>
+            tool.type === "function" && tool.name === call.name))) {
+            throw new ExternalResultError("agent_lab_unexposed_tool");
+          }
           if (result.outputText.length > 240_000) throw new ExternalResultError("result_payload_too_large");
           const toolCallIds = toolCalls.map((call) => call.callId);
           const output = {

@@ -4,6 +4,8 @@ import type {
   PendingConfirmationRequestResult
 } from "./workspaceConfirmation";
 import type { ExecuteAgentVisualGenerationPlan } from "./agentToolExecutors";
+import type { BlobStore } from "@/infrastructure/assets/localAssetWorkflow";
+import type { collectAiProviderImageAttachments } from "./aiAttachments";
 import type { WorkspaceCommitTransform } from "./workspaceCommitBoundary";
 import type { WorkspacePersistenceState } from "./workspacePersistence";
 
@@ -55,6 +57,10 @@ export type AgentTurnHost = {
   readWorkspace: () => MorphoWorkspace;
   /** Production hosts provide an explicit durable flush; lightweight test hosts may omit it. */
   persistWorkspace?: () => WorkspacePersistenceState;
+  sourceAssets?: {
+    documents: Pick<BlobStore, "get">;
+    collectImages: typeof collectAiProviderImageAttachments;
+  };
   ui: AgentTurnUiPort;
   abortSlot: MutableSlot<AbortController | null>;
   streamFlushSlot: MutableSlot<(() => void) | null>;

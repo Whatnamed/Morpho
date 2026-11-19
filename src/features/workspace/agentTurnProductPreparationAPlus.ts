@@ -277,7 +277,7 @@ export async function prepareAgentTurnProductAPlus(
           taskMode: executionTaskMode,
           selectedObjects: input.selectedObjects
         })
-          ? collectAiProviderImageAttachments(
+          ? (host.sourceAssets?.collectImages ?? collectAiProviderImageAttachments)(
               workspace,
               resolveAiProviderImageObjectIds({
                 contextImageObjectIds: context.imageObjectIds,
@@ -289,7 +289,7 @@ export async function prepareAgentTurnProductAPlus(
         collectDocumentExtractsForAi(
           workspace,
           context.documentObjectIds,
-          indexedDbBlobStore,
+          host.sourceAssets?.documents ?? indexedDbBlobStore,
           controller.signal
         )
       ]);

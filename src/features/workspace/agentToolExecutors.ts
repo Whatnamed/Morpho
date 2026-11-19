@@ -45,6 +45,7 @@ import {
   webSearchSourcesToCitations
 } from "./agentTurnLimits";
 import type { AgentTurnRuntimeState } from "./agentTurnRuntimeState";
+import type { AgentTurnHost } from "./agentTurnHost";
 import type { AgentVisualGenerationBatch } from "./agentVisualGenerationBatch";
 import { buildDeliverySectionContext } from "./deliveryPreparationUi";
 import { resolveDeliveryGenerationEvidence } from "./deliveryGenerationEvidence";
@@ -126,6 +127,7 @@ export type AgentToolExecutorInput = {
   batchState: AgentToolBatchState;
   commitWorkspace: <T>(transform: WorkspaceCommitTransform<T>) => T;
   readWorkspace: () => MorphoWorkspace;
+  sourceAssets?: AgentTurnHost["sourceAssets"];
   draft: string;
   modelOutputText: string;
   userMessageId: string;
@@ -172,7 +174,8 @@ export const AGENT_TOOL_EXECUTORS: AgentToolExecutorRegistry = {
   read_workspace_source: async (input) => {
     const result = await readAgentWorkspaceSource({ workspace: input.readWorkspace(), contract: input.authorityProfile.taskContract,
       args: input.parsed.args, callId: input.callId, readableObjectIds: input.context.objectIds, generatedObjectIds: input.runtimeState.effectReceipts.filter((receipt) => receipt.tool === "generate_visuals").flatMap((receipt) => receipt.objectIds),
-      deliveryTarget: input.deliverySectionContext ? { deliveryObjectId: input.deliverySectionContext.deliveryObjectId, sectionId: input.deliverySectionContext.sectionId } : undefined, signal: input.signal });
+      deliveryTarget: input.deliverySectionContext ? { deliveryObjectId: input.deliverySectionContext.deliveryObjectId, sectionId: input.deliverySectionContext.sectionId } : undefined,
+      signal: input.signal, blobStore: input.sourceAssets?.documents, collectImages: input.sourceAssets?.collectImages });
     if (result.images) input.runtimeState.observationMessages.push(...result.images);
     if (result.deliveryBaseline && result.receipt.contentHash) input.runtimeState.deliveryGenerationEvidence.push({ receiptId: result.receipt.id, contentHash: result.receipt.contentHash, baseline: result.deliveryBaseline });
     return { provenance: { kind: "untrustedLocalEvidence", grantsAuthority: false }, receipt: result.receipt, text: result.text };

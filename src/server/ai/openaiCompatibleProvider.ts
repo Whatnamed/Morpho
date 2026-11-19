@@ -111,6 +111,7 @@ export type OpenAiCompatibleResponseResult = {
 };
 
 export type OpenAiCompatibleStreamHandlers = {
+  onRequest?: (serializedBody: string) => void;
   onTextDelta?: (text: string) => void;
   onCitations?: (citations: ProviderCitation[]) => void;
   onEvent?: (event: OpenAiCompatibleAgentStreamEvent) => void;
@@ -243,9 +244,10 @@ async function streamOpenAiCompatibleResponseWithBudget(
   correction?: "cacheCompatibility" | "imageCompatibility"
 ): Promise<OpenAiCompatibleResponseResult> {
   const namespace = providerNamespace("openai-compatible", config);
-  const requestBody = JSON.stringify({ ...buildProviderRequestBody(config, request), stream: true });
+  const requestBody = serializeOpenAiCompatibleStreamBody(config, request);
   const headers = { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" };
   if (effect) await effect.beforeSubmit(requestBody, namespace, correction);
+  handlers.onRequest?.(requestBody);
   const response = await fetchProviderResponse(`${namespace.baseUrl}/responses`, {
     method: "POST",
     headers,
@@ -404,6 +406,13 @@ async function discardProviderResponse(
     if (error instanceof ProviderResponseBoundaryError || isAbortError(error)) throw error;
     // The incompatible response is discarded without resubmission.
   }
+}
+
+export function serializeOpenAiCompatibleStreamBody(
+  config: OpenAiCompatibleProviderConfig,
+  request: OpenAiCompatibleResponseRequest
+): string {
+  return JSON.stringify({ ...buildProviderRequestBody(config, request), stream: true });
 }
 
 function buildProviderRequestBody(

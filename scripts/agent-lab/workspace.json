@@ -1,0 +1,524 @@
+{
+  "schemaVersion": 18,
+  "project": {
+    "id": "agent-lab-source-fixture",
+    "title": "夜间路径 · 本地调试资料",
+    "subtitle": "从一句话、图片、文件或链接开始。",
+    "createdAt": "2026-11-19T00:00:00.000Z",
+    "updatedAt": "2026-11-19T00:00:00.000Z",
+    "lastOpenedAt": "2026-11-19T00:00:00.000Z"
+  },
+  "objects": {
+    "text-import": {
+      "id": "text-import",
+      "incarnationId": "3e0b4b00-44aa-4c13-a16f-b98f1fa6fb35",
+      "type": "text",
+      "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+      "summary": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。",
+      "body": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。",
+      "createdBy": "user",
+      "visibility": "active"
+    }
+  },
+  "assets": {},
+  "relations": [],
+  "deliveryReferences": {},
+  "deliverySectionDrafts": {},
+  "decisionRecords": [],
+  "operations": {},
+  "artifactProposals": {},
+  "citationSnapshots": {},
+  "designDefinitionRevisions": {},
+  "directionRevisions": {},
+  "directionLineage": [],
+  "visualBranches": {},
+  "workingState": {
+    "currentDesignDefinitionAvailability": "missing",
+    "alternativeDirectionIds": [],
+    "eliminatedDirectionIds": [],
+    "activeKeyConclusionIds": [],
+    "directionReferenceIds": {},
+    "recentResearchObjectIds": [],
+    "openQuestionIds": [],
+    "derivedFromRevision": "ws-df054c6e",
+    "lastReconciledAt": "2026-11-19T00:00:00.000Z"
+  },
+  "projectContinuity": {
+    "schemaVersion": 2,
+    "currentFocus": {
+      "area": "startAndInput",
+      "updatedAt": "2026-11-19T00:00:00.000Z",
+      "sourceKind": "userAction",
+      "sourceObjectIds": [
+        "text-import"
+      ],
+      "note": "已加入 1 项项目输入。"
+    },
+    "recordEntries": [
+      {
+        "id": "continuity-inputImported-text-import-3ipl163fji6d",
+        "dedupeKey": "inputImported:text-import",
+        "origin": "deterministicEvent",
+        "manualState": "active",
+        "createdAt": "2026-11-19T00:00:00.000Z",
+        "updatedAt": "2026-11-19T00:00:00.000Z",
+        "validity": "current",
+        "stage": "startAndInput",
+        "category": "output",
+        "summary": "已加入 1 项项目输入。",
+        "sourceRefs": [
+          {
+            "kind": "object",
+            "id": "text-import",
+            "snapshot": {
+              "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+              "objectType": "text",
+              "visibility": "active",
+              "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+            },
+            "sourceAvailability": "active"
+          }
+        ]
+      }
+    ],
+    "updatedAt": "2026-11-19T00:00:00.000Z"
+  },
+  "projectMemory": {
+    "schemaVersion": 1,
+    "documents": {
+      "projectOverview": {
+        "key": "projectOverview",
+        "title": "项目概览",
+        "currentRevisionId": "memory-projectOverview-ybqpar",
+        "updatedAt": "2026-11-19T00:00:00.000Z"
+      },
+      "designBrief": {
+        "key": "designBrief",
+        "title": "设计定义"
+      },
+      "userPreferences": {
+        "key": "userPreferences",
+        "title": "偏好与避免项"
+      },
+      "decisionLog": {
+        "key": "decisionLog",
+        "title": "决策记录"
+      },
+      "rejectedDirections": {
+        "key": "rejectedDirections",
+        "title": "已淘汰方向"
+      },
+      "openQuestions": {
+        "key": "openQuestions",
+        "title": "待确认问题"
+      },
+      "outputPlan": {
+        "key": "outputPlan",
+        "title": "交付计划"
+      }
+    },
+    "revisions": {
+      "memory-projectOverview-1ie7mxx": {
+        "id": "memory-projectOverview-1ie7mxx",
+        "documentKey": "projectOverview",
+        "sections": [
+          {
+            "key": "projectStart",
+            "title": "项目起点与目标",
+            "items": [
+              "从一句话、图片、文件或链接开始。"
+            ],
+            "itemMetadata": [
+              {
+                "origin": "deterministicEvent",
+                "scope": "project",
+                "sourceRefs": [],
+                "validity": "current",
+                "canEnterMemory": true,
+                "canEnterDefaultContext": true,
+                "canEnterReviewList": false,
+                "reason": "eligible"
+              }
+            ]
+          },
+          {
+            "key": "currentFocus",
+            "title": "当前工作重点",
+            "items": [
+              "开始与输入为迁移后的初始工作重点。"
+            ],
+            "itemMetadata": [
+              {
+                "origin": "deterministicEvent",
+                "scope": "project",
+                "sourceRefs": [],
+                "validity": "current",
+                "canEnterMemory": true,
+                "canEnterDefaultContext": true,
+                "canEnterReviewList": false,
+                "reason": "eligible"
+              }
+            ]
+          }
+        ],
+        "sourceRefs": [],
+        "basis": "deterministic",
+        "createdAt": "2026-11-19T00:00:00.000Z",
+        "reviewRequired": false
+      },
+      "memory-projectOverview-ybqpar": {
+        "id": "memory-projectOverview-ybqpar",
+        "documentKey": "projectOverview",
+        "previousRevisionId": "memory-projectOverview-1ie7mxx",
+        "sections": [
+          {
+            "key": "projectStart",
+            "title": "项目起点与目标",
+            "items": [
+              "从一句话、图片、文件或链接开始。"
+            ],
+            "itemMetadata": [
+              {
+                "origin": "deterministicEvent",
+                "scope": "project",
+                "sourceRefs": [],
+                "validity": "current",
+                "canEnterMemory": true,
+                "canEnterDefaultContext": true,
+                "canEnterReviewList": false,
+                "reason": "eligible"
+              }
+            ]
+          },
+          {
+            "key": "currentFocus",
+            "title": "当前工作重点",
+            "items": [
+              "已加入 1 项项目输入。"
+            ],
+            "itemMetadata": [
+              {
+                "origin": "deterministicEvent",
+                "scope": "project",
+                "sourceRefs": [
+                  {
+                    "kind": "object",
+                    "id": "text-import",
+                    "snapshot": {
+                      "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+                      "objectType": "text",
+                      "visibility": "active",
+                      "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+                    },
+                    "sourceAvailability": "active"
+                  }
+                ],
+                "validity": "current",
+                "canEnterMemory": true,
+                "canEnterDefaultContext": true,
+                "canEnterReviewList": false,
+                "reason": "eligible"
+              }
+            ]
+          },
+          {
+            "key": "recentChange",
+            "title": "最近重要变化",
+            "items": [
+              "已加入 1 项项目输入。"
+            ],
+            "itemMetadata": [
+              {
+                "sourceEntryId": "continuity-inputImported-text-import-3ipl163fji6d",
+                "origin": "deterministicEvent",
+                "scope": "project",
+                "sourceRefs": [
+                  {
+                    "kind": "object",
+                    "id": "text-import",
+                    "snapshot": {
+                      "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+                      "objectType": "text",
+                      "visibility": "active",
+                      "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+                    },
+                    "sourceAvailability": "active"
+                  }
+                ],
+                "validity": "current",
+                "canEnterMemory": true,
+                "canEnterDefaultContext": true,
+                "canEnterReviewList": false,
+                "reason": "eligible"
+              }
+            ]
+          }
+        ],
+        "sourceRefs": [
+          {
+            "kind": "object",
+            "id": "text-import",
+            "snapshot": {
+              "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+              "objectType": "text",
+              "visibility": "active",
+              "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "basis": "deterministic",
+        "createdAt": "2026-11-19T00:00:00.000Z",
+        "reviewRequired": false
+      }
+    },
+    "stageRecords": {
+      "startAndInput": {
+        "stage": "startAndInput",
+        "currentRevisionId": "stage-startAndInput-sr4da0",
+        "updatedAt": "2026-11-19T00:00:00.000Z"
+      }
+    },
+    "stageRevisions": {
+      "stage-startAndInput-8bxove": {
+        "id": "stage-startAndInput-8bxove",
+        "stage": "startAndInput",
+        "sections": {
+          "goalAndStatus": [
+            "开始与输入为迁移后的初始工作重点。"
+          ]
+        },
+        "itemMetadata": {
+          "goalAndStatus": [
+            {
+              "origin": "deterministicEvent",
+              "scope": "project",
+              "sourceRefs": [],
+              "validity": "current",
+              "canEnterMemory": true,
+              "canEnterDefaultContext": true,
+              "canEnterReviewList": false,
+              "reason": "eligible"
+            }
+          ]
+        },
+        "sourceRefs": [],
+        "createdAt": "2026-11-19T00:00:00.000Z",
+        "reviewRequired": false
+      },
+      "stage-startAndInput-1rvqxz8": {
+        "id": "stage-startAndInput-1rvqxz8",
+        "stage": "startAndInput",
+        "previousRevisionId": "stage-startAndInput-8bxove",
+        "sections": {
+          "goalAndStatus": [
+            "开始与输入为迁移后的初始工作重点。"
+          ],
+          "outputs": [
+            "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装..."
+          ]
+        },
+        "itemMetadata": {
+          "goalAndStatus": [
+            {
+              "origin": "deterministicEvent",
+              "scope": "project",
+              "sourceRefs": [],
+              "validity": "current",
+              "canEnterMemory": true,
+              "canEnterDefaultContext": true,
+              "canEnterReviewList": false,
+              "reason": "eligible"
+            }
+          ],
+          "outputs": [
+            {
+              "origin": "deterministicEvent",
+              "scope": "project",
+              "sourceRefs": [
+                {
+                  "kind": "object",
+                  "id": "text-import",
+                  "snapshot": {
+                    "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+                    "objectType": "text",
+                    "visibility": "active",
+                    "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+                  },
+                  "sourceAvailability": "active"
+                }
+              ],
+              "validity": "current",
+              "canEnterMemory": true,
+              "canEnterDefaultContext": true,
+              "canEnterReviewList": false,
+              "reason": "eligible"
+            }
+          ]
+        },
+        "sourceRefs": [
+          {
+            "kind": "object",
+            "id": "text-import",
+            "snapshot": {
+              "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+              "objectType": "text",
+              "visibility": "active",
+              "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "createdAt": "2026-11-19T00:00:00.000Z",
+        "reviewRequired": false
+      },
+      "stage-startAndInput-sr4da0": {
+        "id": "stage-startAndInput-sr4da0",
+        "stage": "startAndInput",
+        "previousRevisionId": "stage-startAndInput-1rvqxz8",
+        "sections": {
+          "outputs": [
+            "已加入 1 项项目输入。",
+            "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装..."
+          ],
+          "goalAndStatus": [
+            "已加入 1 项项目输入。"
+          ]
+        },
+        "itemMetadata": {
+          "outputs": [
+            {
+              "sourceEntryId": "continuity-inputImported-text-import-3ipl163fji6d",
+              "origin": "deterministicEvent",
+              "scope": "project",
+              "sourceRefs": [
+                {
+                  "kind": "object",
+                  "id": "text-import",
+                  "snapshot": {
+                    "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+                    "objectType": "text",
+                    "visibility": "active",
+                    "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+                  },
+                  "sourceAvailability": "active"
+                }
+              ],
+              "validity": "current",
+              "canEnterMemory": true,
+              "canEnterDefaultContext": true,
+              "canEnterReviewList": false,
+              "reason": "eligible"
+            },
+            {
+              "origin": "deterministicEvent",
+              "scope": "project",
+              "sourceRefs": [
+                {
+                  "kind": "object",
+                  "id": "text-import",
+                  "snapshot": {
+                    "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+                    "objectType": "text",
+                    "visibility": "active",
+                    "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+                  },
+                  "sourceAvailability": "active"
+                }
+              ],
+              "validity": "current",
+              "canEnterMemory": true,
+              "canEnterDefaultContext": true,
+              "canEnterReviewList": false,
+              "reason": "eligible"
+            }
+          ],
+          "goalAndStatus": [
+            {
+              "sourceEntryId": "continuity-inputImported-text-import-3ipl163fji6d",
+              "origin": "deterministicEvent",
+              "scope": "project",
+              "sourceRefs": [
+                {
+                  "kind": "object",
+                  "id": "text-import",
+                  "snapshot": {
+                    "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+                    "objectType": "text",
+                    "visibility": "active",
+                    "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+                  },
+                  "sourceAvailability": "active"
+                }
+              ],
+              "validity": "current",
+              "canEnterMemory": true,
+              "canEnterDefaultContext": true,
+              "canEnterReviewList": false,
+              "reason": "eligible"
+            }
+          ]
+        },
+        "sourceRefs": [
+          {
+            "kind": "object",
+            "id": "text-import",
+            "snapshot": {
+              "title": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装...",
+              "objectType": "text",
+              "visibility": "active",
+              "summarySnippet": "测试资料：租住或老房的夜间路径辅助方案应控制施工量。安装不得依赖重新布线。"
+            },
+            "sourceAvailability": "active"
+          }
+        ],
+        "createdAt": "2026-11-19T00:00:00.000Z",
+        "reviewRequired": false
+      }
+    },
+    "updatedAt": "2026-11-19T00:00:00.000Z"
+  },
+  "canvas": {
+    "view": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    },
+    "instances": [
+      {
+        "id": "canvas-text-import",
+        "objectId": "text-import",
+        "position": {
+          "x": 0,
+          "y": 0
+        },
+        "size": {
+          "w": 250,
+          "h": 140
+        }
+      }
+    ]
+  },
+  "ai": {
+    "messages": [],
+    "conversationCompaction": {
+      "coveredMessageCount": 0
+    },
+    "conversationSummaryRevisions": {},
+    "providerContextFrames": [],
+    "comparisonAnalyses": {}
+  },
+  "ui": {
+    "activeDrawer": null,
+    "aiOpen": true,
+    "lastSelectionIds": [
+      "text-import"
+    ],
+    "canvasView": {
+      "x": 0,
+      "y": 0,
+      "zoom": 1
+    },
+    "workIntent": "discussion"
+  }
+}

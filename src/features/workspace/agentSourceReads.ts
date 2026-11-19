@@ -22,7 +22,9 @@ export function sourceReceipt(workspace: MorphoWorkspace, objectId: string, kind
 export async function readAgentWorkspaceSource(input: {
   workspace: MorphoWorkspace; contract?: TurnTaskContract; args: ReadWorkspaceSourceArgs; callId: string;
   generatedObjectIds: readonly string[]; readableObjectIds?: readonly string[]; deliveryTarget?: { deliveryObjectId: string; sectionId: string };
-  signal: AbortSignal; blobStore?: BlobStore;
+  signal: AbortSignal;
+  blobStore?: Pick<BlobStore, "get">;
+  collectImages?: typeof collectAiProviderImageAttachments;
 }): Promise<{ receipt: AgentReadReceipt; text?: string; images?: APlusAgentProviderMessage[]; deliveryBaseline?: import("@/domain/morpho/types").DeliveryGenerationBaseline }> {
   const { workspace, args } = input;
   const receipt = sourceReceipt(workspace, args.objectId, args.kind, input.callId);
@@ -36,7 +38,7 @@ export async function readAgentWorkspaceSource(input: {
   if (args.revisionId && object.type !== "conceptDirection" && object.type !== "designDefinition") return { receipt: { ...receipt, status: "missing", revisionId: args.revisionId } };
   if (args.kind === "image") {
     if (object.type !== "image") return { receipt: { ...receipt, status: "unavailable" } };
-    const packed = await collectAiProviderImageAttachments(workspace, [object.id], input.signal);
+    const packed = await (input.collectImages ?? collectAiProviderImageAttachments)(workspace, [object.id], input.signal);
     const entry = packed.entries.find((item) => item.objectId === object.id && item.status === "ready");
     if (!entry) return { receipt: { ...receipt, status: "unavailable", representation: "metadata" } };
     return { receipt: { ...receipt, status: "full", contentHash: hashProviderImageDataUrl(packed.attachments[0]!.dataUrl), assetId: object.assetId, representation: entry.representation === "single" ? "pixels" : "contactSheet" },

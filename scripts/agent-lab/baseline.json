@@ -1,0 +1,4 @@
+{
+  "name": "baseline",
+  "tools": ["read_workspace_source", "read_selected_context"]
+}

@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "agent:lab": "node ./scripts/agent-lab.mjs",
     "build": "node ./scripts/build-production.mjs",
     "build:evidence": "node ./scripts/build-production.mjs --strict",
     "cf:build": "node ./scripts/build-cloudflare.mjs",

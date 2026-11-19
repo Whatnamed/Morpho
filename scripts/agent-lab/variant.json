@@ -1,0 +1,13 @@
+{
+  "name": "one-source",
+  "systemPrompt": "根据本轮选中的项目资料回答。先用 read_workspace_source 读取目标，再用一句话概括资料里的明确要求。",
+  "methods": [
+    {
+      "id": "researchSynthesis",
+      "title": "本地调试示例",
+      "lines": ["保留一条能在选中资料里定位的事实。"]
+    }
+  ],
+  "tools": ["read_workspace_source"],
+  "reasoningEffort": "low"
+}

@@ -7,6 +7,17 @@ import { openEndedScript, textAnswerScript, turnErrorScript } from "./support/ag
 
 const draftInput = ".ai-panel textarea";
 
+test("生产构建拒绝 Agent Lab 配置选择", async ({ request }) => {
+  for (const endpoint of ["/api/ai/agent/turns", "/api/ai/agent/turns/019fa9c0-7b9d-7a20-8f31-2c676296c9d1/requests"]) {
+    const response = await request.post(endpoint, {
+      headers: { "x-morpho-agent-lab": "a".repeat(64) },
+      data: { localProjectId: `agent-lab-${"a".repeat(24)}` }
+    });
+    expect(response.status()).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({ code: "agent_lab_unavailable" });
+  }
+});
+
 test.describe("AI 回合", () => {
   test("点击建议只填入输入框，不会自动发送", async ({ page }) => {
     const seed = await seedProject(page);

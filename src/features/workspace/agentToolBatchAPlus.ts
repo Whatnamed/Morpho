@@ -660,6 +660,7 @@ function buildExecutorInput(input: Readonly<{
     batchState: input.batchState,
     commitWorkspace: host.commitWorkspace,
     readWorkspace: host.readWorkspace,
+    sourceAssets: host.sourceAssets,
     draft: turnInput.draft,
     modelOutputText: input.input.providerOutputText,
     userMessageId: prepared.userMessageId,

@@ -1190,6 +1190,39 @@ deleting migration history, editing an applied file, or pasting old SQL manually
 
 ## Agent Runtime Validation
 
+### Agent Lab
+
+从仓库根目录运行。本地默认执行随仓库提供的固定响应，复用 A+ Runner、工具权限与执行器、服务端请求组装及 Responses SSE 解析。预览和固定响应读取 Next dev 环境中的模型、推理和缓存设置，使用合成凭证和本地响应。
+
+```powershell
+npm.cmd ci
+npm.cmd run agent:lab
+npm.cmd run agent:lab -- scripted --profile scripts/agent-lab/variant.json
+npm.cmd run agent:lab -- preview --profile scripts/agent-lab/variant.json
+```
+
+- **配置**。复制 [baseline.json](../../scripts/agent-lab/baseline.json) 或 [variant.json](../../scripts/agent-lab/variant.json) 并改 `name`。`systemPrompt` 替换稳定 System 正文，`methods` 按顺序选择现有 Method Pack ID，可覆盖 `title` 和 `lines`。`methods: []` 关闭方法包。省略 System 或 Methods 时使用现有默认和活动选择规则。`tools` 与 Task Contract 取交集，`[]` 关闭全部工具，省略时使用合同中可在 Lab 执行的工具。`model` 和 `reasoningEffort` 可覆盖文本 Provider 配置，后者支持 `low`、`medium`、`high` 和省略推理参数的 `null`。活动策略由 Task Contract 推导。
+- **任务和资料**。用 `--task` 选择 [selected-source.json](../../scripts/agent-lab/selected-source.json) 格式的任务。填写 `draft`、现行 schema 的 `workspace` JSON 路径和 `selectedObjectIds`。文档提取和已准备好的 PNG、JPEG、WebP、GIF 可用 `assetFiles` 关联资源 ID 与本地文件。路径相对于任务文件。Lab 使用现有资料范围、文档截取和 Provider 图片预算。过大或缺失的像素会在范围覆盖中显示为摘要或省略。CLI 接收已准备好的单图，画布压缩和联系表仍由浏览器工作台处理。每次从源 fixture 建立隔离副本。
+- **结果**。命令打印 `temp/agent-lab/<run>/run.json` 路径。比较两次记录的 `initialWorkspaceSha256`、`fixtureAssets` 与 `profileId`。预览看 `preview.body`，运行看各步 `steps[].events` 的 `lab-provider-request`，其中包含实际序列化的 System、Strategy、Method、Context、工具和模型参数。图片记录 MIME、字节数与 SHA-256。图片对象覆盖见 `providerInputs` 和续传的 `morpho_input_coverage`。用 Call ID 对照 Provider 工具参数、`toolResults` 和下一次请求的 `function_call_output`。终态、流事件、可用的 reasoning summary 和 usage、客户端计时及错误同样在该文件。固定响应中的 usage 是测试数据，`null` 表示费用或 usage 未取得。`workspace.after.json` 是落盘结果。使用合成或明确选定的测试资料，记录含实际正文。
+- **增加或修改读取工具**。在 [agentReadTools.ts](../../src/shared/agentReadTools.ts) 改 Zod 定义，同一份定义生成 Provider schema、参数类型并验证入参。新增时将工具加入 [agentToolContract.ts](../../src/shared/agentToolContract.ts) 的适用请求构建、[agentToolExecutors.ts](../../src/features/workspace/agentToolExecutors.ts) 的执行注册，并在 [turnTaskContract.ts](../../src/shared/turnTaskContract.ts) 声明实际授权范围。执行器继续校验最新 Workspace、对象、revision 和授权。复制固定响应测试用例覆盖合法参数、非法参数、范围外对象和从 profile 移除工具的结果。
+
+真实文本 Provider 需要已配置 Journal 和结果存储的测试 Supabase、可用测试账号及文本 Provider 配置，并消耗正式鉴权路径的额度。授权付费测试后，在一个 PowerShell 启动 loopback dev server。
+
+```powershell
+$env:MORPHO_AGENT_LAB_PROFILE = (Resolve-Path 'scripts/agent-lab/variant.json').Path
+$env:MORPHO_ALLOW_PAID_SMOKE_TESTS = 'true'
+npm.cmd run dev -- --hostname 127.0.0.1 --port 3000
+```
+
+另开 PowerShell，以 Playwright 打开本地登录页。用测试账号登录后关闭录制窗口，保存仅供本地使用的会话文件。
+
+```powershell
+npm.cmd exec playwright codegen -- --save-storage=temp/agent-lab-auth.json http://127.0.0.1:3000/login
+npm.cmd run agent:lab -- live --profile scripts/agent-lab/variant.json --server http://127.0.0.1:3000 --storage-state temp/agent-lab-auth.json
+```
+
+服务端按 profile 指纹逐请求核对配置。配置变化需要开始新的运行。实时模式使用常规 A+ 请求准入、Provider 执行日志、结果结算和 ACK。Lab 可记录等待确认的状态，付费图像与联网工具保持关闭。测试账号会话和调试结果保存在 Git 忽略的 `temp/` 内。
+
 ### F06 authority-boundary checks
 
 The Authority Profile is created once at send time and is reused during recovery. When reviewing a

@@ -163,7 +163,7 @@ describe("Design Method Packs", () => {
 
   it("renders a server-owned canonical message that only contains registered text", () => {
     const ids: DesignMethodPackId[] = ["designCritique"];
-    const message = canonicalDesignMethodMessage(ids);
+    const message = canonicalDesignMethodMessage(ids.map((id) => ({ id })));
     expect(message.role).toBe("system");
     const part = message.content[0];
     expect(part.type).toBe("input_text");

@@ -29,11 +29,15 @@ import {
   canonicalDesignMethodMessage,
   isDesignMethodPackId,
   MAX_METHOD_PACKS_PER_TURN,
-  type DesignMethodPackId
+  type DesignMethodPackId,
+  type DesignMethodSelection
 } from "@/shared/designMethodPack";
 import { estimateProviderInputTokens } from "@/shared/providerInputBudget";
 import { canonicalTurnTaskMessage, getTurnAllowedTools, getTurnConfirmationActions, isTurnTaskContract, type TurnTaskContract } from "@/shared/turnTaskContract";
 import { resolveDesignMethodPackIds } from "@/shared/designMethodPack";
+import { applyAgentLabModel, isAgentLabTool, type AgentLabProfile } from "./agentLabProfile";
+import type { OpenAiCompatibleConfig } from "./openaiCompatibleConfig";
+import { withServerPromptCacheHint } from "./providerPromptCacheHint";
 
 import type {
   OpenAiCompatibleResponseRequest,
@@ -74,6 +78,7 @@ export type APlusAgentProviderContract = Readonly<{
   runtimeItem: AgentCanonicalRuntimeItem;
   effectiveToolProfile: AgentToolProfile;
   stableSystemPrompt: string;
+  methodPackIds: readonly DesignMethodPackId[];
 }>;
 
 export type APlusExternalToolActionClaim = Readonly<{
@@ -185,10 +190,15 @@ export function buildAPlusAgentProviderContract(input: {
   localProjectId: string;
   request: ValidatedAPlusAgentProviderRequest;
   webSearchEnabled: boolean;
+  labProfile?: AgentLabProfile;
 }): APlusAgentProviderContract {
   const contract = input.request.taskContract;
-  const allowedNames = contract ? getTurnAllowedTools(contract) : ["read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation"];
-  if (contract && allowedNames.includes("search_web_evidence") && !input.webSearchEnabled) {
+  const taskTools = contract ? getTurnAllowedTools(contract) : ["read_selected_context", "read_project_memory", "read_stage_record", "search_project_conversation"] as const;
+  const profile = input.labProfile;
+  const allowedNames = profile
+    ? taskTools.filter((name) => isAgentLabTool(name) && (profile.tools === undefined || profile.tools.includes(name)))
+    : taskTools;
+  if (contract && allowedNames.some((name) => name === "search_web_evidence") && !input.webSearchEnabled) {
     throw new APlusAgentProviderRequestError("本轮已授权联网，但服务端尚未启用该能力。");
   }
   const tools = buildMorphoAgentTools(true, contract?.readContractVersion === 1).filter((tool) => tool.type === "function" && allowedNames.some((name) => name === tool.name)).map((tool) => {
@@ -209,11 +219,12 @@ export function buildAPlusAgentProviderContract(input: {
     promptContractVersion: input.request.promptContractVersion,
     previous: input.request.previousRuntimeItem
   });
-  const stableSystemPrompt = buildMorphoAgentStableSystemPrompt();
+  const stableSystemPrompt = profile?.systemPrompt ?? buildMorphoAgentStableSystemPrompt();
   const strategies: readonly AgentTaskStrategyKind[] = contract
     ? [...new Set(contract.activities.map((activity) => activity.kind === "critique" ? "discussion" as const : activity.kind))]
     : input.request.strategy ? [input.request.strategy] : [];
   const methodPacks = contract ? resolveDesignMethodPackIds({ taskContract: contract, draft: contract.userGoal }) : input.request.methodPacks;
+  const methods: readonly DesignMethodSelection[] = profile?.methods ?? (methodPacks ?? []).map((id) => ({ id }));
   const request: OpenAiCompatibleResponseRequest = {
     input: [
       {
@@ -225,8 +236,8 @@ export function buildAPlusAgentProviderContract(input: {
       ...strategies.map((strategy) => canonicalAgentStrategyMessage({
         type: "morpho_strategy", strategy, anchorMessageId: input.request.strategyAnchorMessageId ?? "turn"
       })),
-      ...(methodPacks?.length
-        ? [canonicalDesignMethodMessage(methodPacks)]
+      ...(methods.length
+        ? [canonicalDesignMethodMessage(methods)]
         : []),
       ...input.request.input.map(copyProviderMessage),
       ...input.request.continuationItems.map(copyContinuationItem)
@@ -244,7 +255,29 @@ export function buildAPlusAgentProviderContract(input: {
   if (budget.inputTokens > MORPHO_AGENT_CONTEXT_POLICY.windowTokens) {
     throw new APlusAgentProviderRequestError("Provider Input 超出 Morpho 允许的 Context Window。", 413);
   }
-  return { request, runtimeItem, effectiveToolProfile, stableSystemPrompt };
+  return { request, runtimeItem, effectiveToolProfile, stableSystemPrompt, methodPackIds: methods.map(({ id }) => id) };
+}
+
+export function prepareAPlusAgentProviderSubmission(input: {
+  localProjectId: string;
+  userId: string;
+  request: ValidatedAPlusAgentProviderRequest;
+  config: OpenAiCompatibleConfig;
+  labProfile?: AgentLabProfile;
+}) {
+  const config = input.labProfile ? applyAgentLabModel(input.config, input.labProfile) : input.config;
+  const contract = buildAPlusAgentProviderContract({ ...input, webSearchEnabled: config.webSearchEnabled });
+  const request = withServerPromptCacheHint({
+    config,
+    request: contract.request,
+    namespace: "agent",
+    userId: input.userId,
+    localProjectId: input.localProjectId,
+    promptContractVersion: input.request.promptContractVersion,
+    toolProfile: contract.effectiveToolProfile,
+    stableSystemPrefix: contract.stableSystemPrompt
+  });
+  return { config, request, methodPackIds: contract.methodPackIds };
 }
 
 function parseContinuationItems(value: unknown):

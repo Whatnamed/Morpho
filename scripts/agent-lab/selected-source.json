@@ -1,0 +1,21 @@
+{
+  "draft": "请读取选中的资料，概括它对夜间居家路径的一条明确要求。",
+  "workspace": "workspace.json",
+  "selectedObjectIds": ["text-import"],
+  "responses": [
+    {
+      "reasoningSummary": "先读取明确选中的项目资料。",
+      "calls": [
+        {
+          "name": "read_workspace_source",
+          "args": { "kind": "object", "objectId": "text-import" }
+        }
+      ],
+      "usage": { "input_tokens": 160, "output_tokens": 18, "total_tokens": 178 }
+    },
+    {
+      "text": "夜间居家路径的辅助方案应控制施工量，适应租住和老房环境。",
+      "usage": { "input_tokens": 250, "output_tokens": 20, "total_tokens": 270 }
+    }
+  ]
+}

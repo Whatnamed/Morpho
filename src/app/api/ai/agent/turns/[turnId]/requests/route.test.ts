@@ -3,20 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 import { createMorphoAgentContextPolicy } from "@/domain/morpho/agentContextPolicy";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/features/workspace/agentPromptRegistry";
 import { resolveCanonicalAgentRuntimeItem } from "@/shared/agentRuntimeItem";
-import type {
-  AcquireAgentTurnRequestResult,
-  ReadAgentTurnJournalResult,
-  SettleAgentTurnRequestResult
-} from "@/server/ai/agentTurnJournal";
 import {
   OpenAiCompatibleProviderError,
   streamOpenAiCompatibleResponse,
   type OpenAiCompatibleResponseResult
 } from "@/server/ai/openaiCompatibleProvider";
-import type {
-  AgentTurnJournalSnapshot,
-  ServerExternalExecutionStatus
-} from "@/shared/agentTurnJournalProtocol";
+import { FakeAgentTurnJournal, denial } from "@/test/agentTurnJournalFake";
 import { requestAgentTurnExternalCancellation } from "@/server/ai/agentTurnExternalCancellation";
 import { createAgentTurnGetHandler } from "../handler";
 import {
@@ -28,7 +20,7 @@ const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";
 
 describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   it("returns 401 without acquiring, counting, or invoking Provider", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const checkPrivilegedSettlement = vi.fn(() => ({ status: "ok" as const }));
     const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
       async () => providerResult()
@@ -46,7 +38,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("returns 503 for missing Provider config before acquisition", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
       async () => providerResult()
     );
@@ -60,7 +52,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("returns 503 for missing privileged settlement config before acquisition or Provider", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
       async () => providerResult()
     );
@@ -86,7 +78,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   it.each(["userId", "status", "providerCallCount", "requestHash"])(
     "rejects client authority field %s before acquisition",
     async (field) => {
-      const store = new FakeJournal();
+      const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
       const provider = vi.fn(async () => providerResult());
       const handler = makeHandler(store, provider);
       const response = await call(handler, { ...validBody(), [field]: "forged" });
@@ -97,7 +89,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   );
 
   it("rejects local fields hidden inside a canonical Runtime Item", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => providerResult());
     const previousRuntimeItem = resolveCanonicalAgentRuntimeItem({
       projectId: "project-a",
@@ -121,7 +113,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("rejects Continuation Items on the initial Provider step", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => providerResult());
     const response = await call(makeHandler(store, provider), {
       ...validBody(),
@@ -138,7 +130,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("requires exact Continuation Items after the initial Provider step", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => providerResult());
     const response = await call(makeHandler(store, provider), {
       ...validBody(),
@@ -153,7 +145,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("hides a cross-user execution attempt as 404", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => providerResult());
     const handler = makeHandler(store, provider, {
       authenticate: async () => ({ status: "allowed", userId: "user-b" }),
@@ -165,7 +157,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("hides a same-user execution under the wrong localProjectId as 404", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => providerResult());
     const response = await call(makeHandler(store, provider), {
       ...validBody(),
@@ -176,7 +168,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("computes a stable SHA-256 on the server and calls Provider once", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
       async () => providerResult()
     );
@@ -196,7 +188,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("adds an opaque server cache hint before hashing and Provider execution", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn<AgentTurnRequestRouteDependencies["streamProvider"]>(
       async () => providerResult()
     );
@@ -219,7 +211,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("does not execute or count an exact Request replay", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => providerResult());
     const handler = makeHandler(store, provider);
     const first = await call(handler, validBody());
@@ -241,7 +233,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
     ["terminal_turn", 409],
     ["quota_exceeded", 429]
   ])("does not call Provider for %s", async (code, status) => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     store.nextDenial = code;
     const provider = vi.fn(async () => providerResult());
     const response = await call(makeHandler(store, provider), validBody());
@@ -252,7 +244,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("settles a no-Tool Provider answer as externallyCompleted", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const response = await call(makeHandler(store, vi.fn(async () => providerResult())), validBody());
     const events = parseSse(await response.text());
     expect(events).toContainEqual(expect.objectContaining({
@@ -271,7 +263,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("retries transient Journal settlement failures within a fixed bound", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const waitForSettlementRetry = vi.fn(async (_delayMs: number) => undefined);
     let attempt = 0;
     const settleRequest: AgentTurnRequestRouteDependencies["settleRequest"] = vi.fn(async (input) => {
@@ -298,7 +290,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("settles a Provider Tool Call as awaitingNextRequest without executing local Tools", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => providerResult({
       outputText: "",
       functionCalls: [{
@@ -324,7 +316,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("streams validated Tool payload and atomically records only bounded paid-action claims", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => providerResult({
       outputText: "",
       functionCalls: [{
@@ -360,7 +352,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("does not rerun Provider or duplicate claims when privileged settlement fails", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => providerResult({
       outputText: "",
       functionCalls: [{
@@ -390,7 +382,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("treats SSE consumer cancellation as display detach rather than external cancellation", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const deferred = createDeferred<OpenAiCompatibleResponseResult>();
     let providerSignal: AbortSignal | undefined;
     const provider: AgentTurnRequestRouteDependencies["streamProvider"] = vi.fn(
@@ -411,7 +403,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("settles an explicit registered cancellation as externallyCancelled", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     let providerSignal: AbortSignal | undefined;
     const provider: AgentTurnRequestRouteDependencies["streamProvider"] = vi.fn(
       async (_config, _request, _handlers, signal) => {
@@ -444,7 +436,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("exposes and records only a stable public envelope when Provider execution fails", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const secretDiagnostic = "internal-host.local api_key=secret raw upstream body /private/path";
     const provider = vi.fn(async () => {
       throw new Error(secretDiagnostic);
@@ -475,7 +467,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
     ["provider_deadline_exceeded", "external_execution_state_unknown"],
     ["provider_response_too_large", "external_execution_state_unknown"]
   ] as const)("settles internal Provider boundary %s as externallyFailed", async (code, failureCode) => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const provider = vi.fn(async () => {
       throw new OpenAiCompatibleProviderError(502, "bounded diagnostic", code);
     });
@@ -491,7 +483,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
 
   it.each(["network", "partialStream"])("persists unknown %s and exact replay never resubmits", async (failure) => {
     const originalFetch = global.fetch;
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const fetchMock = vi.fn(async () => {
       if (failure === "network") throw new TypeError("accepted but response lost");
       const frames = [
@@ -517,7 +509,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("allows only one of two concurrent identical requests to execute", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const deferred = createDeferred<OpenAiCompatibleResponseResult>();
     const provider = vi.fn(() => deferred.promise);
     const handler = makeHandler(store, provider);
@@ -532,7 +524,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("rejects a concurrent conflicting request without a second execution", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const deferred = createDeferred<OpenAiCompatibleResponseResult>();
     const provider = vi.fn(() => deferred.promise);
     const handler = makeHandler(store, provider);
@@ -549,7 +541,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("rejects the same Request ID with a different server-computed Hash", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const deferred = createDeferred<OpenAiCompatibleResponseResult>();
     const provider = vi.fn(() => deferred.promise);
     const handler = makeHandler(store, provider);
@@ -566,7 +558,7 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 
   it("updates Journal from server execution even when the client never reads the final SSE", async () => {
-    const store = new FakeJournal();
+    const store = new FakeAgentTurnJournal(TURN_ID, "project-a");
     const deferred = createDeferred<OpenAiCompatibleResponseResult>();
     const provider = vi.fn(() => deferred.promise);
     const post = makeHandler(store, provider);
@@ -595,94 +587,8 @@ describe("POST /api/ai/agent/turns/[turnId]/requests", () => {
   });
 });
 
-class FakeJournal {
-  snapshot: AgentTurnJournalSnapshot = snapshot();
-  private request:
-    | { requestId: string; stepSequence: number; requestHash: string }
-    | undefined;
-  nextDenial: string | undefined;
-
-  readonly acquire = vi.fn(async (input: {
-    serverTurnId: string;
-    localProjectId: string;
-    requestId: string;
-    stepSequence: number;
-    requestHash: string;
-  }): Promise<AcquireAgentTurnRequestResult> => {
-    if (this.nextDenial) {
-      const code = this.nextDenial;
-      this.nextDenial = undefined;
-      return denial(code, code === "quota_exceeded" ? 429 : 409);
-    }
-    if (input.serverTurnId !== TURN_ID || input.localProjectId !== "project-a") {
-      return denial("not_found", 404);
-    }
-    if (this.request) {
-      if (
-        this.request.requestId === input.requestId &&
-        this.request.stepSequence === input.stepSequence &&
-        this.request.requestHash === input.requestHash
-      ) {
-        return {
-          status: "ok",
-          executionGranted: false,
-          replayed: true,
-          snapshot: this.snapshot
-        };
-      }
-      return denial(
-        this.request.requestId === input.requestId ? "request_id_conflict" : "sequence_conflict",
-        409
-      );
-    }
-    this.request = {
-      requestId: input.requestId,
-      stepSequence: input.stepSequence,
-      requestHash: input.requestHash
-    };
-    this.snapshot = snapshot({
-      status: "providerRunning",
-      latestRequestId: input.requestId,
-      latestStepSequence: input.stepSequence,
-      counters: { provider: 1, webSearch: 0, image: 0 }
-    });
-    return { status: "ok", executionGranted: true, replayed: false, snapshot: this.snapshot };
-  });
-
-  readonly settle = vi.fn(async (input: {
-    actorUserId: string;
-    serverTurnId: string;
-    localProjectId: string;
-    requestId: string;
-    stepSequence: number;
-    status: Exclude<ServerExternalExecutionStatus, "created" | "providerRunning">;
-    failureCode?: string;
-    toolClaims?: readonly unknown[];
-  }): Promise<SettleAgentTurnRequestResult> => {
-    const terminal = input.status.startsWith("externally");
-    this.snapshot = snapshot({
-      status: input.status,
-      latestRequestId: input.requestId,
-      latestStepSequence: input.stepSequence,
-      counters: { provider: 1, webSearch: 0, image: 0 },
-      terminalAt: terminal ? "2026-07-29T01:02:00.000Z" : null,
-      ...(input.failureCode ? { failureCode: input.failureCode } : {})
-    });
-    return { status: "ok", replayed: false, snapshot: this.snapshot };
-  });
-
-  readonly read = vi.fn(async (input: {
-    serverTurnId: string;
-    localProjectId: string;
-  }): Promise<ReadAgentTurnJournalResult> => {
-    return input.serverTurnId === TURN_ID && input.localProjectId === "project-a"
-      ? { status: "ok", snapshot: this.snapshot }
-      : denial("not_found", 404);
-  });
-}
-
 function makeHandler(
-  store: FakeJournal,
+  store: FakeAgentTurnJournal,
   provider: AgentTurnRequestRouteDependencies["streamProvider"],
   overrides: Partial<AgentTurnRequestRouteDependencies> = {}
 ) {
@@ -794,28 +700,6 @@ function callRaw(
     }),
     { params: Promise.resolve({ turnId: TURN_ID }) }
   );
-}
-
-function snapshot(overrides: Partial<AgentTurnJournalSnapshot> = {}): AgentTurnJournalSnapshot {
-  return {
-    serverTurnId: TURN_ID,
-    localProjectId: "project-a",
-    status: "created",
-    latestRequestId: null,
-    latestStepSequence: 0,
-    counters: { provider: 0, webSearch: 0, image: 0 },
-    createdAt: "2026-07-29T01:00:00.000Z",
-    updatedAt: "2026-07-29T01:00:00.000Z",
-    terminalAt: null,
-    ...overrides
-  };
-}
-
-function denial(
-  code: string,
-  httpStatus: 404 | 409 | 429
-): Extract<AcquireAgentTurnRequestResult, { status: "denied" }> {
-  return { status: "denied", httpStatus, code, error: code, recoverable: false };
 }
 
 function parseSse(value: string): Array<Record<string, unknown>> {

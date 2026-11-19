@@ -31,7 +31,7 @@ const MAX_TOTAL_DOCUMENT_CHARS = 24_000;
 export async function collectDocumentExtractsForAi(
   workspace: MorphoWorkspace,
   objectIds: MorphoObjectId[],
-  blobStore: BlobStore,
+  blobStore: Pick<BlobStore, "get">,
   signal?: AbortSignal
 ): Promise<CollectDocumentExtractsResult> {
   const extracts: AiDocumentExtract[] = [];
