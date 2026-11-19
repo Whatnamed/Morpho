@@ -198,6 +198,39 @@ test("新建正文失败留在首页，列表失败后用同一个项目重试",
   expect((await workspaceKeys()).sort()).toEqual([seed.textOnly.workspaceKey, pending[0]].sort());
 });
 
+test("刷新找回未写入目录的项目，空间不足时仍可导出备份", async ({ page }) => {
+  const seed = await seedTextOnlyProject(page);
+  await page.goto("/");
+  await expect(page.locator(".phome-hero h2")).toBeVisible();
+  // Keep the text-only project as an unindexed body and list the other project as recent.
+  await page.evaluate(({ catalogKey, catalogValue, workspaceKey, workspaceValue }) => {
+    localStorage.setItem(workspaceKey, workspaceValue);
+    localStorage.setItem(catalogKey, catalogValue);
+    sessionStorage.setItem("block-catalog-repair", "true");
+  }, seed);
+  await page.addInitScript((catalogKey) => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (this === localStorage && key === catalogKey && sessionStorage.getItem("block-catalog-repair")) {
+        throw new DOMException("test quota", "QuotaExceededError");
+      }
+      setItem.call(this, key, value);
+    };
+  }, seed.catalogKey);
+
+  await page.reload();
+  await expect(page.getByText("列表尚未保存", { exact: false })).toBeVisible();
+  const title = JSON.parse(seed.textOnly.workspaceValue).project.title;
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "导出项目备份：" + title, exact: true }).click();
+  expect((await download).suggestedFilename()).toMatch(/\.zip$/);
+  await page.evaluate(() => sessionStorage.removeItem("block-catalog-repair"));
+  await page.reload();
+  await expect(page.getByRole("button", { name: "重命名项目：" + title, exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(key => JSON.parse(localStorage.getItem(key)!).projects.length, seed.catalogKey)).toBe(2);
+  expect(await page.evaluate(key => localStorage.getItem(key), seed.textOnly.workspaceKey)).toBe(seed.textOnly.workspaceValue);
+});
+
 test("首页可直接导出备份并恢复为新项目，缺图项目拒绝导出", async ({ page }) => {
   const seed = await seedTextOnlyProject(page);
   await page.goto("/");

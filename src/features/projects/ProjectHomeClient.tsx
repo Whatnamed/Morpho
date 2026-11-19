@@ -206,6 +206,7 @@ export function ProjectHomeClient({ account, accessError, authRequired }: Projec
           return;
         }
         setCatalog(result.catalog);
+        if (result.repairWarning) setActionMessage({ tone: "warning", text: result.repairWarning });
         // Defer storage scan until after initial catalog & visible preview rendering.
         scheduleStorageRefresh(120, true);
         if (!result.catalog.projects.some((project) => project.id === CURRENT_CASE_STUDY_ID)) return;
