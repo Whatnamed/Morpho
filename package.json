@@ -6,29 +6,17 @@
   "type": "module",
   "scripts": {
     "agent:lab": "node ./scripts/agent-lab.mjs",
-    "build": "node ./scripts/build-production.mjs",
-    "build:evidence": "node ./scripts/build-production.mjs --strict",
-    "cf:build": "node ./scripts/build-cloudflare.mjs",
-    "cf:preview": "npm run cf:build && opennextjs-cloudflare preview",
-    "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
-    "cf:typegen": "wrangler types worker-configuration.d.ts --include-runtime false",
+    "build": "next build",
     "case-study:import": "node ./scripts/import-case-study-backup.mjs",
     "case-study:upgrade": "node ./scripts/upgrade-current-case-study.mjs",
     "dev": "next dev",
     "lint": "eslint .",
-    "measure:perf": "node ./scripts/measure-performance.mjs",
-    "measure:perf:browser": "playwright test --project=perf --workers=1 --retries=0",
-    "measure:storage": "node ./scripts/measure-storage-footprint.mjs",
-    "start": "node ./scripts/start-production.mjs",
-    "start:evidence": "node ./scripts/start-production.mjs --strict",
+    "start": "next start",
     "test": "vitest run",
     "test:e2e": "playwright test --project=chromium",
-    "test:p7": "playwright test --project=p7 --workers=1 --retries=0",
     "test:e2e:build": "npm run build && npm run test:e2e",
     "test:prompt-cache": "node scripts/test-prompt-cache-compatibility.mjs",
-    "typecheck": "tsc --noEmit",
-    "measure:perf5:browser": "node ./scripts/measure-perf5-browser.mjs",
-    "measure:perf5:browser:worktree": "node ./scripts/measure-perf5-browser.mjs --allow-dirty-exact"
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -47,7 +35,6 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "1.20.2",
     "@playwright/test": "^1.62.0",
     "@types/node": "^26.0.0",
     "@types/react": "^19.2.17",
@@ -56,7 +43,6 @@
     "eslint-config-next": "16.3.0",
     "happy-dom": "^20.10.6",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9",
-    "wrangler": "4.121.0"
+    "vitest": "^4.1.9"
   }
 }

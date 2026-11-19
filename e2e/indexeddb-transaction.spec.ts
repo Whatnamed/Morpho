@@ -5,7 +5,7 @@ import { readStoredWorkspace, seedProject, shapeSelector } from "./fixtures/seed
 
 test.describe("IndexedDB transaction completion and abort correctness", () => {
   test.beforeEach(async ({ page }) => {
-    // Inject test-only fault injection harness before any app script runs (like perfProbe.ts).
+    // Inject test-only fault injection harness before any app script runs.
     // Not one line of this ships in the product bundle.
     await page.addInitScript(() => {
       const originalPut = IDBObjectStore.prototype.put;

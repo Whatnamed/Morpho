@@ -5,13 +5,14 @@ export default defineConfig([
   ...nextVitals,
   globalIgnores([
     ".next/**",
-    ".open-next/**",
-    ".wrangler/**",
+    "temp/**",
+    "output/**",
+    "e2e/.artifacts/**",
+    "e2e/.seed/**",
     "out/**",
     "dist/**",
     "coverage/**",
     "next-env.d.ts",
-    "worker-configuration.d.ts",
     // Design-system reference export (docs/design/README.md) — not app code.
     "docs/design/design-system/**"
   ])

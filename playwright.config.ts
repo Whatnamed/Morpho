@@ -37,44 +37,10 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      // The performance baselines are measurement, not acceptance. They never run in
-      // CI: a perf number from a shared, virtualized runner would be worse than no
-      // number because it would look official.
-      testIgnore: /performance-baseline\.spec\.ts|performance-phase5\.spec\.ts|performance-zip-crossover\.spec\.ts|p7-integrated\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         // Wide enough that the selection toolbar has somewhere to go without
         // colliding with the AI panel, which is what a design workstation looks like.
-        viewport: { width: 1440, height: 900 }
-      }
-    },
-    {
-      name: "p7",
-      testMatch: /p7-integrated\.spec\.ts/,
-      timeout: 240_000,
-      retries: 0,
-      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 }, actionTimeout: 15_000 }
-    },
-    {
-      // Run via `npm run measure:perf:browser`, which pins --workers=1 (a measurement
-      // must not share the CPU with a parallel worker) and --retries=0 (a retried
-      // measurement is a different measurement).
-      name: "perf",
-      testMatch: /performance-baseline\.spec\.ts/,
-      timeout: 300_000,
-      use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 1440, height: 900 }
-      }
-    },
-    {
-      // Phase 5 real-interaction latency atlas + zip crossover. Run via
-      // `npm run measure:perf5:browser`, also pinned to --workers=1 --retries=0.
-      name: "perf5",
-      testMatch: /performance-phase5\.spec\.ts|performance-zip-crossover\.spec\.ts/,
-      timeout: 600_000,
-      use: {
-        ...devices["Desktop Chrome"],
         viewport: { width: 1440, height: 900 }
       }
     }
@@ -92,9 +58,7 @@ export default defineConfig({
       // real key must never be required for the app to boot.
       MORPHO_AI_API_KEY: "",
       MORPHO_GRS_API_KEY: "",
-      MORPHO_ALLOW_PAID_SMOKE_TESTS: "false",
-      MORPHO_E2E_BUILD_PROVENANCE: "true",
-      MORPHO_REQUIRE_CLEAN_BUILD: process.env.MORPHO_REQUIRE_CLEAN_BUILD ?? "false"
+      MORPHO_ALLOW_PAID_SMOKE_TESTS: "false"
     }
   }
 });

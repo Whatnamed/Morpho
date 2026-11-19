@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import l2Manifest from "../../../e2e/eval/p7b-l2-manifest.json";
 import { createTestWorkspace } from "@/domain/morpho/workspace";
 import { resolveTurnTaskContract } from "./turnTaskResolver";
 import { buildTurnTaskContexts } from "./taskContext";
@@ -26,8 +25,8 @@ function setup(draft: string, overrides: Partial<AgentToolAuthorityInput> = {}, 
 }
 
 describe("Turn Task / scope / authority", () => {
-  it("grants the frozen L2-1 Research candidate instruction without expanding paid authority", () => {
-    const draft = l2Manifest.slices[0]!.prompt!;
+  it("grants a research card instruction without expanding paid authority", () => {
+    const draft = "请基于选中资料创建一张研究分析卡：两份材料对折叠接缝是否更易清洁意见冲突。保留冲突和来源，把它转成影响结构、排水与清洁路径的设计取舍及可执行验证。台面尺寸未测、承重未验证，不要编造数值或将候选自动保留为关键结论。";
     const { contract } = setup(draft, { executionTaskMode: "chatAnalysis", executionTaskModeSource: "autoRecommended", executionWorkIntent: "discussion", allowStructuredComparison: false });
     const research = contract.activities.find(activity => activity.kind === "research");
     expect(research?.effectGrants.map(grant => grant.tool)).toContain("create_research_analysis");
