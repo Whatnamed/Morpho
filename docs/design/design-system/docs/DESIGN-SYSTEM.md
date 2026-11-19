@@ -29,14 +29,14 @@ modelled here.
 
 | Source | Role |
 |---|---|
-| `Whatnamed/Morpho` — `src/app/globals.css` (9,647 lines) | **Visual source of truth.** All tokens, object materials, chrome and panel geometry are read from here. |
+| `Whatnamed/Morpho` — `src/design-system/tokens/` and `src/app/globals.css` | **Visual source of truth.** All tokens, object materials, chrome and panel geometry are read from here. |
 | `src/features/workspace/**` | Component structure, copy, icon usage, interaction rules. |
 | `src/domain/morpho/stageRegions.ts` | The six stage-region colour presets. |
-| `design/Morpho_Light_Design_System_v1_CN_EN.md` | The original visual language. Still the best statement of *why*; superseded on specifics. |
+| `docs/design/archive/Morpho_Light_Design_System_v1_CN_EN.md` | The original visual language. Still the best statement of *why*; superseded on specifics. |
 | `design/Morpho_UI_原型设计说明_v1.md` | Product/interaction intent and the 夜航 / Nightrail sample project. |
 | `design/references/morpho_workspace_anchor_v2.html`, `design/explorations/m3-…` | Earlier prototypes; historical only. |
 
-See `github.md` for the repo association and the file-by-file screen map.
+See the [component map](SOURCE-MAP.md) for the corresponding application files.
 
 ### Where the code moved past the docs
 
@@ -253,46 +253,15 @@ Every family below exists in the shipped app. Each has a sibling `.d.ts` and
 
 Delivery preparation / output panels, the document reader, the research picker,
 the proposal detail dialog, the project bundle panel, login, and the project
-home. They exist in `globals.css` and `src/features`; ask before designing
-against them.
+home. Their current implementation is in `globals.css` and `src/features`.
 
 ---
 
-## UI kit
+## Repository references
 
-`ui_kits/morpho-workspace/` — a click-through recreation of the workspace at
-1440 × 1024: stage regions and camera navigation, selection with the floating
-toolbar, the tabbed detail popover, the AI conversation with agent process,
-citations, a saveable proposal, image generation with failure and recovery, the
-default-reference confirm, four drawers, ⌘K search, and the blank-project
-starter. See its `README.md`.
+- [Design tokens](../../../../src/design-system/tokens.css)
+- [Component map](SOURCE-MAP.md)
+- [Reference components](../components)
+- [Workspace interaction prototype](../../references/morpho_workspace_anchor_v2.html)
 
----
-
-## Index
-
-| Path | What it is |
-|---|---|
-| `styles.css` | Global entry — `@import` list only. Consumers link this. |
-| `tokens/colors.css` | Shipped `:root` colours + glass, plate, stage-region and material accents |
-| `tokens/typography.css` | Font stack, sizes, weights, tracking, line heights |
-| `tokens/spacing.css` | Rhythm + fixed workspace geometry |
-| `tokens/shape.css` | Radii and blur recipes |
-| `tokens/elevation.css` | Object / panel / popover / image / selection shadows |
-| `tokens/motion.css` | Durations, easing, press and lift |
-| `tokens/fonts.css` | Geist via Google Fonts (see caveats) |
-| `components/canvas · chrome · controls · ai` | Components + `@dsCard` thumbnails |
-| `ui_kits/morpho-workspace/` | Workspace recreation |
-| `guidelines/*.html` | 19 foundation specimen cards (Colors, Type, Spacing, Brand) |
-| `github.md` | Repo association, sync record, screen map |
-| `thumbnail.html` · `SKILL.md` | Homepage tile · agent-skill entry point |
-
----
-
-## Caveats
-
-- **No font binaries.** The app names Geist first but ships no files; this system loads it from Google Fonts. Drop real files into `assets/fonts/` and swap the `@import` in `tokens/fonts.css`.
-- **No logo asset**, by design of the source. The wordmark is set type.
-- **No photographic imagery.** `ProductVisual` carries the app's own concept renders; real project imagery would still improve every mock.
-- **Project home is not modelled** — it is mid-rework upstream.
-- **Dark mode is out of scope** and must not be implied.
+Geist is self-hosted by Next at build time. The design preview uses its own font import.
