@@ -81,7 +81,7 @@ async function initializeCatalog(storage: Storage, options: InitializationOption
     if (!readOnly) {
       const written = writeCatalog(storage, catalog);
       if (written.status === "failed") {
-        if (snapshot.status === "ok") {
+        if (indexed.size > 0) {
           return { status: "ok", catalog, didMigrate: false,
             repairWarning: "已从本地正文找回项目。列表尚未保存，可以先导出备份。存储恢复后重新打开首页即可更新列表。" };
         }

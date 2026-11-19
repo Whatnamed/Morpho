@@ -151,6 +151,13 @@ describe("local project catalog persistence", () => {
     const installed = storage.getItem(caseKey);
     expect(installed).not.toBeNull();
 
+    expect(await initializeBrowserProjectCatalog(storage)).toMatchObject({
+      status: "ok", didMigrate: false, repairWarning: expect.any(String),
+      catalog: { projects: [expect.objectContaining({ id: "project-nightrail" })] }
+    });
+    expect(storage.getItem(CATALOG_STORAGE_KEY)).toBeNull();
+    expect(storage.getItem(caseKey)).toBe(installed);
+
     blockCatalog.mockRestore();
     expect(await initializeBrowserProjectCatalog(storage)).toMatchObject({
       status: "ok", catalog: { recentProjectId: "project-nightrail" }

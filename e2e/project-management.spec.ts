@@ -220,12 +220,19 @@ test("刷新找回未写入目录的项目，空间不足时仍可导出备份",
 
   await page.reload();
   await expect(page.getByText("列表尚未保存", { exact: false })).toBeVisible();
+  await page.evaluate(key => localStorage.removeItem(key), seed.catalogKey);
+  await page.reload();
+  await expect(page.getByText("列表尚未保存", { exact: false })).toBeVisible();
+  expect(await page.evaluate(key => localStorage.getItem(key), seed.catalogKey)).toBeNull();
   const title = JSON.parse(seed.textOnly.workspaceValue).project.title;
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出项目备份：" + title, exact: true }).click();
   expect((await download).suggestedFilename()).toMatch(/\.zip$/);
+  await page.getByRole("heading", { name: seed.seedProjectTitle, exact: true }).click();
+  await expect(page).toHaveURL("/projects/" + seed.seedProjectId);
+  await expect(page.locator(".project-name strong")).toHaveText(seed.seedProjectTitle);
   await page.evaluate(() => sessionStorage.removeItem("block-catalog-repair"));
-  await page.reload();
+  await page.goto("/");
   await expect(page.getByRole("button", { name: "重命名项目：" + title, exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(key => JSON.parse(localStorage.getItem(key)!).projects.length, seed.catalogKey)).toBe(2);
   expect(await page.evaluate(key => localStorage.getItem(key), seed.textOnly.workspaceKey)).toBe(seed.textOnly.workspaceValue);
