@@ -7,7 +7,7 @@
 - **非权威规范**：本目录下的所有文件均为探索性调研、分析评估或特定历史基线的审计证据，**不直接定义当前产品规则或当前架构实现**。
 - **产品规则来源**：产品行为与设计语义以 [`docs/product/`](../product/README_本次更新说明.md) 为准。
 - **架构实现来源**：已落地工程架构与决策以 [`docs/architecture/`](../architecture/README.md) 为准。
-- **修复计划来源**：长期代码与体系修复规划以 [`docs/operations/remediation-program-map.md`](../operations/remediation-program-map.md) 为准。
+- **修复计划来源**：长期代码与体系修复规划以 [`docs/operations/remediation-program-map.md`](https://github.com/Whatnamed/Morpho/blob/d55062e7fcdc5dfe0f12b08e43523bee7223dac6/docs/operations/remediation-program-map.md) 为准。
 
 ---
 
@@ -28,7 +28,7 @@
 
 | 文档 | 说明 | 状态与用途 |
 |---|---|---|
-| [`real-world-project-eval-acceptance-architecture.md`](./real-world-project-eval-acceptance-architecture.md) | 真实项目评测与验收架构设计（L0–L4 分层 Eval、项目轨迹、故障归因、真实 Provider 与 designer acceptance） | 历史评测设计输入；当前已执行范围与阶段处置见 [P7 Aggregate Disposition](../operations/p7-aggregate-disposition.md)，不把提案或 Agent 初评分作为整体 acceptance |
+| [`real-world-project-eval-acceptance-architecture.md`](./real-world-project-eval-acceptance-architecture.md) | 真实项目评测与验收架构设计（L0–L4 分层 Eval、项目轨迹、故障归因、真实 Provider 与 designer acceptance） | 历史评测设计输入；当前已执行范围与阶段处置见 [P7 Aggregate Disposition](https://github.com/Whatnamed/Morpho/blob/d55062e7fcdc5dfe0f12b08e43523bee7223dac6/docs/operations/p7-aggregate-disposition.md)，不把提案或 Agent 初评分作为整体 acceptance |
 | [`design-intelligence-capability-orchestration-review.md`](./design-intelligence-capability-orchestration-review.md) | 设计智能能力编排、策略路由与模型协同审查 | 能力层演化参考 |
 
 ---
@@ -37,4 +37,4 @@
 
 详见子目录独立索引：[`remediation-audits/README.md`](./remediation-audits/README.md)。
 
-收录 2026 年 9 月开展的一揽子跨领域与专项审计证据（7 份专项审计报告、Cross-Domain 报告、EXT 外部副作用审查、TECH-A 基础技术审查、TECH-B 审查）。全部报告均绑定其产生时的代码基线（如 `2e801ed` / `8c17c9f`），作为 [`docs/operations/remediation-program-map.md`](../operations/remediation-program-map.md) 的只读回溯证据。
+收录 2026 年 9 月开展的一揽子跨领域与专项审计证据（7 份专项审计报告、Cross-Domain 报告、EXT 外部副作用审查、TECH-A 基础技术审查、TECH-B 审查）。全部报告均绑定其产生时的代码基线（如 `2e801ed` / `8c17c9f`），作为 [`docs/operations/remediation-program-map.md`](https://github.com/Whatnamed/Morpho/blob/d55062e7fcdc5dfe0f12b08e43523bee7223dac6/docs/operations/remediation-program-map.md) 的只读回溯证据。

@@ -34,6 +34,6 @@ public/case-study/current/assets/
 
 全新浏览器首次打开时只创建当前案例项目。页面首次加载会从 `public/case-study/current/assets/` 读取资源、校验大小和 hash，并写入现有 IndexedDB BlobStore；已正确安装的资源会跳过，缺失或损坏资源会补写。
 
-已部署浏览器只有一个未修改的旧 `夜航 / Nightrail` 时，会被一次性替换为当前案例。检测使用旧项目 ID、完整初始对象/资产集合、初始聊天/operation/continuity 状态和忽略纯视图状态的 fingerprint。若旧夜航已被用户修改，系统会保留它并补入当前案例；存在其他项目时同样不会覆盖、删除或清空任何真实数据。
+已有项目（包括早期 Nightrail 和已安装的同名案例）按用户项目保留。更新仓库模板只影响新安装。目录漏记已写入的项目时，重新进入首页会补回卡片。
 
 若图片或文件缺失，先检查浏览器控制台是否有 `Morpho current case study assets could not be installed.`，再确认 `public/case-study/current/assets/` 与 `currentCaseAssets.generated.json` 都来自同一次导入。

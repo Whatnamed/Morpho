@@ -1,172 +1,26 @@
 # Morpho
 
-Morpho 是一个面向产品与工业设计概念发展的 AI 辅助工作台。
+Morpho 是面向产品与工业设计的 AI 工作台。设计师可以把资料、研究、方向和图像放在同一画布上，借助 Agent 读取资料、比较方案并准备交付。
 
-它把资料、研究、关键结论、设计定义、概念方向、图像发展、项目上下文和交付准备放在同一个连续画布项目空间中，而不是拆成一组互不相干的页面、流程节点或文档。
+仓库中可以运行的是 v3.2 Web 工作台。下一代以桌面端 Design Agent 为主，Web 版本是否继续提供、桌面技术栈及专业设计策略仍待确定。[下一阶段产品与工程方向](docs/product/next-generation-direction.md)
 
-## English Summary
+## 本地运行
 
-Morpho is an AI-assisted concept-development workspace for product and industrial designers. It brings research materials, design definition, concept directions, image development, project context, and delivery preparation into one continuous canvas-based project space.
+使用 Node.js 24（与 CI 一致）和 npm。在仓库根目录复制 `.env.example` 为 `.env.local`。只体验本地画布时设置 `MORPHO_AUTH_REQUIRED=false`。
 
-## 当前状态
-
-当前仓库已经建立正式 Next.js + TypeScript 工程基础，并实现了一个可运行的桌面端工作台：
-
-- `/` 项目首页：新建、继续最近、搜索、排序（按最近打开 / 最近更新 / 按名称）和打开本地项目；支持在项目卡片直接重命名、删除或只读导出最近已保存内容的可编辑备份，以及导入 `.zip` 备份恢复为新的独立项目副本；
-  - 首页预览按需加载：优先读取最近项目，网格卡片通过 `IntersectionObserver` 在接近视口时只读加载画布预览，在失效、筛选或卸载时释放不再使用的预览 URL，未加载或加载失败时不显示虚假 `0` 统计；
-  - 本地存储保护与压力提示：借助浏览器 Web Locks 实施跨标签页项目写锁与目录串行化（首页改名与删除在无 Web Locks 环境下拒绝执行而非无锁覆盖；删除前在锁内重检预览与资产归属，仅清理确认独占的 IndexedDB 资产，保留共享或不可读项目的资产）；首屏目录与可视预览渲染后再延迟扫描存储用量，独立提示 `localStorage` 项目记录压力（4 MiB UTF-16 保守预警线）与浏览器 origin 大对象空间压力（`navigator.storage.estimate()` 80% 预警）及持久性状态；
-- `/login` Supabase 邮箱密码登录与注册；
-- `/projects/[projectId]` 项目工作台；
-- 主导性的连续 tldraw 画布；
-- 浮动顶部控件、左侧窄工具轨、右下连续 AI 对话面板；
-- 选中对象后出现的底部详情栏；
-- Morpho 领域对象、画布实例、资产、项目 catalog、本地持久化和语义状态边界；
-- `schemaVersion: 18` 的 local-first 数据底座，包括隐藏、删除、淘汰、后续默认参考、交付稳定引用、安全向后迁移（v1–v17 工作区与备份可升级至 v18，不反造历史依据）、IndexedDB 二进制资产、连续 AI 消息、Agent 过程、轻量 Operation / Proposal 状态、来源语义快照、结构化 `DecisionEffect`、逐项证据基础（`EvidenceBasis`）与研究条目显式绑定、版本化 Proposal 依赖指纹、对象/来源/决策目标的 `incarnationId` 边界、正式关键结论类别、唯一当前有效设计定义、方向 create / revise / split / merge、方向内 VisualBranch、正式图片角色和可重建工作状态、连续会话压缩、项目记忆与阶段记录修订；旧 checkpoint/lane/imageVariant 只在兼容迁移边界读取并在当前数据中剥离；
-- Supabase 保存账号身份、测试资格、AI 每日额度，以及最小化的 A+ Server Turn / Request / External Action Journals；长期项目目录、画布、全部资产库、聊天完整历史、项目记忆与整体本地 Turn Outcome 仍保存在浏览器本地，不进行云端项目同步。同时，为支持同一次付费 AI 执行的状态观察与断线/重载后同结果恢复，当前代码在服务端 `service_role` 专用表（`external_effect*` / `external_result*`）中对本次执行的冻结 Provider 输入（可含本轮选中文本/图片输入）及文本/图片/压缩结果设置 **24 小时逻辑保留期**（输入自初始 effect 创建起算，结果自准备起算；重试或读取/ACK 不顺延）：逻辑到期即拒绝交付，物理清理依赖已启用 `pg_cron` 时的每 15 分钟任务或外部受信调度调用 `cleanup_external_result_payloads`（辅以按用户触发的惰性清理）；**不宣称生产环境已部署该合同、定时清理任务正在运行，或所有上游服务商与数据库备份均在 24 小时内物理删除**。邮箱密码注册的测试用户自动成为 active tester，文本/生图额度为 `500 / 100`；
-- Workspace 正式使用唯一的 A+ Agent Runtime：客户端 Turn Lifecycle/Coordinator 汇总本地工具、确认与持久化结果，服务端 Turn Journal 只权威记录外部执行状态；不存在 Runtime Selector 或 B fallback；
-- 通过 AiJWS OpenAI-compatible 路径的服务端文本 AI route，支持普通文本、显式选中图片的视觉理解输入，以及受控 web search citation 事件；当前示例模型为 `gpt-5.6-terra`；
-- 服务端 GrsAI 图像生成 route，图像任务按意图自动分流模型（方向批量预览用 `nano-banana-2-lite`，视觉发展/迭代/定向修改/场景/细节及未知意图用 `gpt-image-2`）；`MORPHO_GRS_DEFAULT_MODEL` 仅为服务端默认与兼容回退，不代表所有图像任务固定使用该模型；成功结果会保存为新的本地资产和新的图像对象；当前链路支持参考图和图生图，也支持基于提示词的定向修改，但没有 mask/inpainting 参数，不承诺像素级局部锁定；
-- 当前正式环境已部署到 Vercel；Cloudflare/OpenNext 文件保留为备用能力，不是当前正式环境。
-
-### 发布与项目进度状态
-
-截至 2026-08-07，A+ Runtime迁移项目已正式收口：Phase A、Phase B、Phase C Observation
-和 Phase C Cleanup 全部完成；A+ 是唯一 Production Runtime，Runtime B 数据库合同已移除。
-Phase C Cleanup 的验收基线是 `3dcbbe989dc0606d363750e4f201c5c83f6dd1ab`，不等同于当前
-`main` 或当前 Production Deployment。详细的迁移证据、观察边界和历史执行记录见
-[`docs/architecture/agent-runtime-a-plus-migration.md`](docs/architecture/agent-runtime-a-plus-migration.md)
-与 [`docs/operations/runbook.md`](docs/operations/runbook.md)。
-
-当前 AiJWS 文本 AI 在 `对话与分析` 或 `研究任务` 中会读取显式选中的 active 图片资产：少量图片逐张发送，较多图片自动整理为总览图以覆盖全部选中资料；隐藏图片、未选旧图和整张画布不会默认发送。`MORPHO_AI_WEB_SEARCH_ENABLED=true` 时，chat/research 可使用 provider 的 web-search 能力；`imageGeneration` 永不提供联网工具。来源列表只展示 provider 返回的 citation，不从模型正文猜测。GrsAI 图像生成按静态模型 catalog 和服务端 profile 组装请求；`nano-banana-*` 与 `gpt-image-2` 请求字段分开处理，不混用 `imageSize`。
-
-当前受控 AI Operation Runtime 覆盖研究、图像生成、设计定义草案和概念方向草案。Operation 只保存轻量状态、输入快照、语义来源快照、Proposal、citation snapshot 和 IndexedDB artifact 引用；不会保存原始 provider payload、大附件或网页正文。保存或应用草案前必须由用户确认。
-
-## Morpho 用来做什么
-
-- 从一句话、图片、文件、链接、草图或已有设计材料开始项目；
-- 在连续画布上组织资料、研究与候选分析；
-- 保留关键结论，并形成当前有效设计定义；
-- 发展概念方向和图像，而不是被线性阶段强制闯关；
-- 对任意图像继续发展、定向修改、比较、衍生或作为参考；
-- 准备交付内容，但不替代 Figma、Keynote、PPT、CAD 或专业排版工具；
-- 保留项目关系、版本、决策、交付引用和可复用上下文。
-
-## Morpho 不是
-
-- 通用项目管理 Dashboard；
-- 节点工作流编辑器；
-- Figma、PPT、CAD、工程、BOM 或 PLM 替代品；
-- 模型控制台；
-- 强制线性的六步流程。
-
-## 技术栈
-
-- Next.js App Router
-- React
-- TypeScript
-- tldraw
-- Supabase Auth
-- Vercel
-- Vitest
-- ESLint
-
-Morpho 是 local-first：项目目录（catalog）、工作区（Workspace）、文件和图片保存在当前浏览器的 localStorage / IndexedDB，而非作为云端项目同步到 Supabase；可恢复备份需要用户主动导出并下载 ZIP，系统不会自动生成或持久保存备份副本。账号登录不等于项目云端同步；跨设备继续使用时必须使用可编辑项目备份/恢复边界。AI 执行虽会将本轮所需输入传给服务端/Provider 并有上述 24 小时同执行恢复暂存合同，但它不等同于云端项目同步或长期云端资产存储。当前仍不包含云端项目同步、云端文件存储、多人实时协作、对象级/孤儿资产自动 GC 或最终 Figma/PPT/CAD 排版。
-
-## 部署
-
-当前正式环境部署在 Vercel，标准验证与部署构建为 `npm.cmd run build`。Cloudflare/OpenNext 保留为备用能力；相关文件和 `cf:*` scripts 不能当作当前正式部署路径，也不应为此删除。
-
-## 本地开发
-
-使用仓库内 `.npmrc` 指定的 registry。
-
-```bash
-npm.cmd install
-npm.cmd run dev -- --hostname 127.0.0.1 --port 3000
+```sh
+npm ci
+npm run dev
 ```
 
-本地访问：
+打开 [localhost:3000](http://localhost:3000)。首次打开会载入内置案例。AI 请求使用服务端配置的 Supabase 和 Provider。开发 Agent 时，`npm run agent:lab` 可离线执行一次固定响应的工具调用。
 
-```text
-http://127.0.0.1:3000
-http://127.0.0.1:3000/projects/project-morpho-case-study
-```
+## 从哪里开始
 
-如需本地认证或真实 AI 调用，复制 `.env.example` 为 `.env.local` 并填写对应值。`.env.example` 是环境变量名称、默认值和注释的唯一基线；不要从旧 README、历史 MiMo 配置或其他文档复制变量。
-
-不要把真实 Key 放进客户端代码、`NEXT_PUBLIC_*`、localStorage、日志或 Git 提交。
-
-`MORPHO_AI_*` 是当前文本 AI 的 OpenAI-compatible / AiJWS 路径，示例模型为 `gpt-5.6-terra`。图像模型由工作台意图路由决定：`directionPreview` / 方向批量预览使用 `nano-banana-2-lite`；`visualDevelopment`、继续发展、定向修改、场景、细节及未知意图使用 `gpt-image-2`。`.env` 中的 `MORPHO_GRS_DEFAULT_MODEL`（示例为 `gpt-image-2`）是服务端缺省/兼容回退，不是“所有图像任务都用这个模型”。`MORPHO_GRS_IMAGE_MODEL` 仅保留为 `MORPHO_GRS_DEFAULT_MODEL` 的兼容回退。`MORPHO_AUTH_REQUIRED=false` 只用于本地显式关闭认证；默认/`true` 时缺少 Supabase 公共配置会 fail closed，受保护页面只会进入显示配置错误的 `/login`，AI route 仍返回 503。
-
-Morpho 的正式 Agent 使用固定内部 Context Policy：`256000` window、`204800` prepare、`230400` compact、`16000` target uncompressed、独立的 `16000` response reserve。项目记忆的有界当前投影和当前任务阶段记录每轮通过 provider-only Context Frame 进入 Agent；稳定系统前缀不携带项目正文，完整历史、revision、来源细节和历史决定按需通过工具读取。Prompt cache key/retention 默认关闭，只有兼容性探针通过且显式开启时才发送；缓存未命中或 Provider 不返回 cached tokens 不影响正确性。生产环境不读取 `MORPHO_AI_CONTEXT_*` 阈值变量，客户端与服务端共享 `src/domain/morpho/agentContextPolicy.ts`；仅非生产浏览器验收可使用 localStorage override，验收后应删除。
-
-Formal user turns retain a bounded provider-visible input snapshot for product continuity, while
-Provider Context Frames carry deterministic sequence and placement for project state, turn scope,
-runtime configuration, and Summary Revisions. These are browser-local product data, not signed
-server proofs. Old image pixels are not resent automatically. Cache diagnostics distinguish
-`unavailable`, `miss`, `partialHit`, and `fullHit`; retention remains absent by default and only an
-explicit compatible `24h` value is forwarded.
-
-常用检查：
-
-```bash
-npm.cmd run lint
-npm.cmd run typecheck
-npm.cmd test
-npm.cmd run build
-```
-
-完整运行说明见 [`docs/operations/runbook.md`](docs/operations/runbook.md)。
-
-## 文档地图
-
-### 产品规则
-
-- [`docs/product/README_本次更新说明.md`](docs/product/README_本次更新说明.md)
-- [`docs/product/00_Morpho_v3_规则继承、覆盖与完整性账本.md`](docs/product/00_Morpho_v3_规则继承、覆盖与完整性账本.md)
-- [`docs/product/01_Morpho_产品定义与总体流程.md`](docs/product/01_Morpho_产品定义与总体流程.md)
-- [`docs/product/02_Morpho_工作台、画布与对象规则.md`](docs/product/02_Morpho_工作台、画布与对象规则.md)
-- [`docs/product/03_Morpho_AI工作流程、阶段Context与连续性机制.md`](docs/product/03_Morpho_AI工作流程、阶段Context与连续性机制.md)
-- [`docs/product/04_Morpho_状态、版本、项目记录与记忆.md`](docs/product/04_Morpho_状态、版本、项目记录与记忆.md)
-- [`docs/product/05_Morpho_项目入口、资产、搜索、导入与归档.md`](docs/product/05_Morpho_项目入口、资产、搜索、导入与归档.md)
-
-### 设计规则
-
-- [`docs/design/README.md`](docs/design/README.md)
-- [`docs/design/design-system/docs/DESIGN-SYSTEM.md`](docs/design/design-system/docs/DESIGN-SYSTEM.md)
-- [`docs/design/Morpho_UI_原型设计说明_v1.md`](docs/design/Morpho_UI_原型设计说明_v1.md)
-- [`docs/design/references/morpho_workspace_anchor_v2.html`](docs/design/references/morpho_workspace_anchor_v2.html)
-
-### 工程与架构
-
-- [`docs/architecture/architecture.md`](docs/architecture/architecture.md)
-- [`docs/architecture/decisions.md`](docs/architecture/decisions.md)
-- [`docs/architecture/README.md`](docs/architecture/README.md)
-- [`docs/architecture/agent-runtime-a-plus-migration.md`](docs/architecture/agent-runtime-a-plus-migration.md)
-
-### 运维与修复程序
-
-- [`docs/operations/README.md`](docs/operations/README.md)
-- [`docs/operations/runbook.md`](docs/operations/runbook.md)
-- [`docs/operations/remediation-program-map.md`](docs/operations/remediation-program-map.md)
-
-### 调研与审计证据
-
-- [`docs/research/README.md`](docs/research/README.md)
-- [`docs/research/remediation-audits/`](docs/research/remediation-audits/README.md)
-## 官方示例项目
-
-当前内置案例项目来自真实 Morpho 可编辑备份：
-
-> 测试
-> 从一句话、图片、文件或链接开始。
-
-案例包含真实的研究、文件、解析结果、方向、图片、对话、Agent 过程和项目连续性；它按备份中的未完成状态展示，不补造交付内容。更新流程见 [`docs/operations/case-study-seed.md`](docs/operations/case-study-seed.md)。
-
-不要把历史原型内容，例如 `Nightfield`、“安静的仪器”、战术工具或 compact tactical-light 方案，当成 Morpho 当前正式产品内容。
-
-## Agent 指令
-
-所有编码 Agent 在修改仓库前必须先阅读 [`AGENTS.md`](AGENTS.md)。
-
-Claude Code 可通过 [`CLAUDE.md`](CLAUDE.md) 读取同一套共享指令。
+| 任务 | 入口 |
+| --- | --- |
+| 修改现行产品或工作台交互 | [v3.2 产品规则](docs/product/README_本次更新说明.md) · [设计规范](docs/design/README.md) |
+| 定位领域命令、项目存储、Agent 或 API | [现行架构](docs/architecture/architecture.md) · [技术决策](docs/architecture/decisions.md) |
+| 配置、测试、运行 Agent Lab、部署 Web | [运行手册](docs/operations/runbook.md) |
+| 更新内置案例 | [案例导入](docs/operations/case-study-seed.md) |
+| 阅读既有研究或复核旧验收 | [研究索引](docs/research/README.md) · [历史基线](docs/archive/README.md) |
