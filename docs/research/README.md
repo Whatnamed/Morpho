@@ -7,7 +7,7 @@
 - **非权威规范**：本目录下的所有文件均为探索性调研、分析评估或特定历史基线的审计证据，**不直接定义当前产品规则或当前架构实现**。
 - **产品规则来源**：产品行为与设计语义以 [`docs/product/`](../product/README_本次更新说明.md) 为准。
 - **架构实现来源**：已落地工程架构与决策以 [`docs/architecture/`](../architecture/README.md) 为准。
-- **修复计划来源**：长期代码与体系修复规划以 [`docs/operations/remediation-program-map.md`](https://github.com/Whatnamed/Morpho/blob/d55062e7fcdc5dfe0f12b08e43523bee7223dac6/docs/operations/remediation-program-map.md) 为准。
+- 下一阶段的产品与工程方向见[过渡说明](../product/next-generation-direction.md)。
 
 ---
 
