@@ -66,6 +66,10 @@ npm.cmd run agent:lab -- live --profile scripts/agent-lab/variant.json --server 
 | 模型请求被拒 | 401 检查登录，403 检查测试资格，429 检查额度。503 检查对应服务配置、迁移、RPC 权限和结果存储。 |
 | 请求中断或执行状态未知 | 用原项目、turn、request 或 action 身份恢复。已知图像任务可查询原任务；成功发布的结果可按原身份取回。本地项目写入完成后 ACK。过期返回 410。 |
 
+## HTTP 接口变更
+
+本分支移除了独立 `/api/ai/chat` 和通用 `/api/ai/effects/[effectId]` 查询、取消入口。仓库内的工作台与 Agent Lab 都从 A+ turn 入口发送文本。接入旧接口的外部脚本需迁移：查询 turn 用 `GET /api/ai/agent/turns/[turnId]`，取消请求用 `POST /api/ai/agent/turns/[turnId]/requests/cancel`，已完成结果按原 effect ID 在 `/result` 子路由取回。独立生图继续使用 `/api/ai/image`。
+
 ## Web 发布与数据库
 
 Vercel 使用标准 Next 构建。Preview 和 Production 分开配置环境变量。发布前核对目标、提交、构建和运行时的环境配置。确认授权后再写入对应远端。发布后验证登录、首页、项目打开、未授权 API 响应及部署日志；真实 Provider 检查会消耗额度。
