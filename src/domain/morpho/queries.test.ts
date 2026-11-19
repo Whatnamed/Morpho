@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { DocumentFragmentObject, MorphoWorkspace, ObjectVisibility } from "./types";
-import { createBlankWorkspace, createDeliveryReference, createInitialWorkspace, hideObject } from "./workspace";
+import { createBlankWorkspace, createDeliveryReference, hideObject } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { importUrlObject } from "./imports";
 import { getWorkspaceAssetItems, searchWorkspace } from "./queries";
 
 describe("Morpho workspace query helpers", () => {
   it("searches hidden objects and marks them without adding them to renderable canvas content", () => {
-    const workspace = hideObject(createInitialWorkspace(), "image-soft-rail-v2");
+    const workspace = hideObject(createTestWorkspace(), "image-soft-rail-v2");
 
     const results = searchWorkspace(workspace, "柔光轨道 v2");
 
@@ -17,7 +18,7 @@ describe("Morpho workspace query helpers", () => {
   });
 
   it("searches stable delivery reference snapshots after source changes", () => {
-    const created = createDeliveryReference(createInitialWorkspace(), {
+    const created = createDeliveryReference(createTestWorkspace(), {
       deliveryObjectId: "delivery-board-a1",
       sourceObjectId: "insight-continuous-support",
       caption: "交付摘要：连续支持比单点扶手更符合真实动作路径。"
@@ -35,7 +36,7 @@ describe("Morpho workspace query helpers", () => {
   });
 
   it("keeps search result summaries user-facing without internal ids or enum fields", () => {
-    const results = searchWorkspace(createInitialWorkspace(), "v2");
+    const results = searchWorkspace(createTestWorkspace(), "v2");
     const imageResult = results.find((result) => result.kind === "object" && result.objectId === "image-soft-rail-v2");
 
     expect(imageResult?.summary).not.toContain("primaryVisual");
@@ -44,13 +45,13 @@ describe("Morpho workspace query helpers", () => {
   });
 
   it("does not match private object ids as search terms", () => {
-    const results = searchWorkspace(createInitialWorkspace(), "visual-branch-soft-rail-core");
+    const results = searchWorkspace(createTestWorkspace(), "visual-branch-soft-rail-core");
 
     expect(results).toEqual([]);
   });
 
   it("returns the formal key conclusion category in search results", () => {
-    const result = searchWorkspace(createInitialWorkspace(), "unknown").find(
+    const result = searchWorkspace(createTestWorkspace(), "unknown").find(
       (item) => item.kind === "object" && item.objectId === "insight-continuous-support"
     );
 
@@ -58,7 +59,7 @@ describe("Morpho workspace query helpers", () => {
   });
 
   it("finds a document fragment by Chinese body text and reports its source document", () => {
-    const workspace = withDocumentFragment(createInitialWorkspace(), {
+    const workspace = withDocumentFragment(createTestWorkspace(), {
       body: "夜间起夜时，走廊照明的第一段亮度必须低于卧室阈值，否则使用者会被强光唤醒。"
     });
 
@@ -76,7 +77,7 @@ describe("Morpho workspace query helpers", () => {
   });
 
   it("finds a document fragment by English body text, source title, and source file name", () => {
-    const workspace = withDocumentFragment(createInitialWorkspace(), {
+    const workspace = withDocumentFragment(createTestWorkspace(), {
       body: "Night lighting must stay below the bedroom wake threshold.",
       fileTitle: "Course brief",
       fileName: "course-brief.pdf"
@@ -92,7 +93,7 @@ describe("Morpho workspace query helpers", () => {
   });
 
   it("keeps a hidden document fragment searchable, marked hidden, and restorable", () => {
-    const workspace = withDocumentFragment(createInitialWorkspace(), {
+    const workspace = withDocumentFragment(createTestWorkspace(), {
       body: "低施工改造要求所有安装点位避开承重墙。",
       visibility: "hidden"
     });
@@ -105,9 +106,9 @@ describe("Morpho workspace query helpers", () => {
   });
 
   it("reports an unavailable fragment source instead of offering a broken source location", () => {
-    const base = withDocumentFragment(createInitialWorkspace(), { body: "夜间照明阈值说明。" });
+    const base = withDocumentFragment(createTestWorkspace(), { body: "夜间照明阈值说明。" });
     const hiddenSource = hideObject(base, "file-course-brief");
-    const missingSource = withDocumentFragment(createInitialWorkspace(), {
+    const missingSource = withDocumentFragment(createTestWorkspace(), {
       body: "夜间照明阈值说明。",
       fileObjectId: "file-removed"
     });
@@ -125,7 +126,7 @@ describe("Morpho workspace query helpers", () => {
 
   it("summarizes a long fragment body around the match instead of dumping the whole body", () => {
     const body = `${"前置说明。".repeat(200)}关键约束是夜间亮度上限。${"后续说明。".repeat(200)}`;
-    const workspace = withDocumentFragment(createInitialWorkspace(), { body });
+    const workspace = withDocumentFragment(createTestWorkspace(), { body });
 
     const result = searchWorkspace(workspace, "夜间亮度上限").find(
       (item) => item.kind === "object" && item.objectId === "document-fragment-test"

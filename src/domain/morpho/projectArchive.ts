@@ -26,7 +26,7 @@ import type {
 } from "./types";
 import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
 import { canonicalizeEditableBackupWorkspaceCompatibility } from "./editableBackupCompatibility";
-import { migrateWorkspaceToCurrentSchema } from "./workspace";
+import { migrateWorkspaceToCurrentSchema } from "./workspaceCodec";
 
 export const HUMAN_READABLE_ARCHIVE_FORMAT = "morpho-human-readable-archive";
 export const EDITABLE_PROJECT_BACKUP_FORMAT = "morpho-editable-project-backup";

@@ -16,7 +16,7 @@ import {
   buildDesignDefinitionInfoMeta,
   buildDesignDefinitionVersionDetail
 } from "./BottomDetailBar";
-import { createInitialWorkspace } from "../../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { createGeneratedImageFromAsset } from "../../../domain/morpho/generation";
 
 describe("BottomDetailBar design definition text", () => {
@@ -64,7 +64,7 @@ describe("BottomDetailBar concept direction text", () => {
 
 describe("BottomDetailBar relationship tabs", () => {
   it("shows only tabs with real direct detail for a selected image", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-soft-rail-v2"];
     if (image.type !== "image") {
       throw new Error("seed image missing");
@@ -84,7 +84,7 @@ describe("BottomDetailBar relationship tabs", () => {
   });
 
   it("renders direct source rows once per source object instead of repeating relation notes", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-soft-rail-v2"];
     if (image.type !== "image") {
       throw new Error("seed image missing");
@@ -121,7 +121,7 @@ describe("BottomDetailBar relationship tabs", () => {
   });
 
   it("shows a one-layer version view with parent, current object, and direct children", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-soft-rail-v2"];
     if (image.type !== "image") {
       throw new Error("seed image missing");
@@ -164,7 +164,7 @@ describe("BottomDetailBar relationship tabs", () => {
   });
 
   it("keeps association detail separate from source and version relationships", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-soft-rail-v2"];
     if (image.type !== "image") {
       throw new Error("seed image missing");
@@ -282,7 +282,7 @@ describe("BottomDetailBar document reader action", () => {
 
 describe("BottomDetailBar selected object surface", () => {
   it("renders a direct object relation as a thumbnail-backed locate button", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const sourceImage = workspace.objects["image-soft-rail-v2"];
     if (!sourceImage || sourceImage.type !== "image") {
       throw new Error("seed image missing");
@@ -315,7 +315,7 @@ describe("BottomDetailBar selected object surface", () => {
   });
 
   it("renders multi-reference images without a fabricated version tab or repeated provider notes", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const generated = createGeneratedImageFromAsset(workspace, {
       asset: {
         id: "asset-bottom-detail-multi-source",
@@ -368,7 +368,7 @@ describe("BottomDetailBar selected object surface", () => {
   });
 
   it("renders object information without canvas action tools", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(BottomDetailBar, {
         workspace,
@@ -398,7 +398,7 @@ describe("BottomDetailBar selected object surface", () => {
   });
 
   it("offers only assignable categories for a recovered unknown conclusion", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const source = Object.values(workspace.objects).find((object) => object.type === "keyConclusion");
     if (!source || source.type !== "keyConclusion") {
       throw new Error("seed key conclusion missing");
@@ -444,7 +444,7 @@ describe("BottomDetailBar selected object surface", () => {
   });
 
   it("renders parsed document reader as a real detail action", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const parsedFile = {
       id: "file-brief",
       type: "file" as const,
@@ -494,7 +494,7 @@ describe("BottomDetailBar selected object surface", () => {
   });
 
   it("keeps concept direction information compact instead of embedding full revision details", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const direction = workspace.objects["direction-soft-rail"];
     if (direction.type !== "conceptDirection") {
       throw new Error("seed direction missing");
@@ -544,7 +544,7 @@ describe("BottomDetailBar selected object surface", () => {
   });
 
   it("shows review actions for a pending-review image and lists deterministic usage rows", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const seedImage = base.objects["image-soft-rail-v2"];
     if (!seedImage || seedImage.type !== "image") {
       throw new Error("Expected seed image.");

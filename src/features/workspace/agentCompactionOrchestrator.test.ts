@@ -7,7 +7,9 @@ import {
   getUsableConversationSummaryRevision
 } from "@/domain/morpho/conversationCompaction";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { createCurrentCaseStudyWorkspace, createTestWorkspace, parseWorkspace, serializeWorkspace } from "@/domain/morpho/workspace";
+import { parseWorkspace, serializeWorkspace } from "@/domain/morpho/workspaceCodec";
+import { createCurrentCaseStudyWorkspace } from "@/domain/morpho/caseStudy/createCurrentCaseStudyWorkspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { AgentTurnJournalSnapshot } from "@/shared/agentTurnJournalProtocol";
 import { runAgentCompaction } from "./agentCompactionOrchestrator";
 import {
@@ -19,7 +21,7 @@ import {
   createAgentTurnHostSessionDetachedError,
   type AgentTurnHost
 } from "./agentTurnHost";
-import { createAgentTurnHostFake } from "./agentTurnHostFake";
+import { createAgentTurnHostFake } from "@/test/agentTurnHostFake";
 import type { AgentTurnCompactionMode } from "./agentTurnLifecycle";
 
 const TURN_ID = "019fa9c0-7b9d-7a20-8f31-2c676296c9d1";

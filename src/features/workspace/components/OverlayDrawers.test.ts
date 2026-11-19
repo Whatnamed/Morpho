@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { createInitialWorkspace } from "../../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { ContinuityRecordEntry, MorphoWorkspace } from "../../../domain/morpho/types";
 import { OverlayDrawers } from "./OverlayDrawers";
 
@@ -25,7 +25,7 @@ afterEach(async () => {
 
 describe("OverlayDrawers project records", () => {
   it("defaults to current project memory and keeps history controls in a separate tab", () => {
-    const seedWorkspace = createInitialWorkspace();
+    const seedWorkspace = createTestWorkspace();
     const workspace = withContinuityEntries(
       {
         ...seedWorkspace,
@@ -108,7 +108,7 @@ describe("OverlayDrawers project records", () => {
     const html = renderToStaticMarkup(
       createElement(OverlayDrawers, {
         mode: "search",
-        workspace: createInitialWorkspace(),
+        workspace: createTestWorkspace(),
         highlightedRecordIds: [],
         onClose: () => undefined,
         onFocusArea: () => undefined,
@@ -124,7 +124,7 @@ describe("OverlayDrawers project records", () => {
   });
 
   it("does not silently hide assets after the first ten", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(OverlayDrawers, {
         mode: "assets",
@@ -159,7 +159,7 @@ describe("OverlayDrawers project records", () => {
   });
 
   it("renders drawer rows as user-facing metadata instead of inert action copy", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(OverlayDrawers, {
         mode: "hidden",
@@ -188,7 +188,7 @@ describe("OverlayDrawers project records", () => {
   });
 
   it("disables hidden restore and continuity manual-state actions in read-only mode", async () => {
-    const seedWorkspace = createInitialWorkspace();
+    const seedWorkspace = createTestWorkspace();
     const workspace = withContinuityEntries(
       {
         ...seedWorkspace,

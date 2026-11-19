@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   attachDocumentExtractToFileObject,
-  createTestWorkspace
 } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { importAssetBackedObjects } from "@/domain/morpho/imports";
 import type { AssetRecord } from "@/domain/morpho/types";
 import { indexedDbBlobStore } from "@/infrastructure/assets/indexedDbAssetStore";
 
-import { createAgentTurnHostFake, type AgentTurnHostFake } from "./agentTurnHostFake";
+import { createAgentTurnHostFake, type AgentTurnHostFake } from "@/test/agentTurnHostFake";
 import type { AgentTurnHost } from "./agentTurnHost";
 import {
   A_PLUS_DOCUMENT_EXTRACT_SERIALIZATION_CAP,

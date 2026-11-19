@@ -6,13 +6,13 @@ import {
   buildStageDragUpdatePayload,
   ensureStageRegions
 } from "@/domain/morpho/stageRegions";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { getSelectedMorphoShapeIds } from "./MorphoCanvas";
 import { createStageRegionShapePartial, isStageRegionShape, STAGE_REGION_SHAPE_TYPE } from "./StageRegionShapeUtil";
 
 describe("StageRegionShapeUtil helpers", () => {
   it("creates non-morpho stage shapes from presentation records", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const regions = buildInitialStageRegions(workspace);
     const partial = createStageRegionShapePartial(regions[0]);
     expect(partial.type).toBe(STAGE_REGION_SHAPE_TYPE);
@@ -80,7 +80,7 @@ describe("StageRegionShapeUtil helpers", () => {
   });
 
   it("stage drag payload moves members with the region and supports reverse undo step", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const regions = workspace.canvas.stageRegions!;
     const visual = regions.find((region) => region.key === "visual")!;
     const memberIds = visual.memberObjectIds;

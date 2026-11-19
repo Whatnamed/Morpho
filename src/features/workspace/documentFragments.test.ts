@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { buildDocumentReaderBlocks } from "./documentReader";
 import {
   buildDocumentFragmentDraft,
@@ -16,7 +16,7 @@ import {
 describe("document fragment selection", () => {
   it("accepts one to eight consecutive parsed reader blocks from a parsed file", () => {
     const text = sampleText();
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief", text);
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief", text);
     const blocks = buildDocumentReaderBlocks(text);
 
     const selection = resolveDocumentFragmentSelection(workspace, {
@@ -39,7 +39,7 @@ describe("document fragment selection", () => {
 
   it("rejects non-consecutive, duplicate, empty, or over-limit selections", () => {
     const text = sampleText();
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief", text);
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief", text);
     const blocks = buildDocumentReaderBlocks(text);
 
     expect(
@@ -73,7 +73,7 @@ describe("document fragment selection", () => {
     ).toMatchObject({ status: "blocked" });
 
     const overLimitText = Array.from({ length: 9 }, (_, index) => `Block ${index + 1}`).join("\n\n");
-    const overLimitWorkspace = withParsedFile(createInitialWorkspace(), "file-course-brief", overLimitText);
+    const overLimitWorkspace = withParsedFile(createTestWorkspace(), "file-course-brief", overLimitText);
     const overLimitBlocks = buildDocumentReaderBlocks(overLimitText);
 
     expect(
@@ -91,7 +91,7 @@ describe("document fragment selection", () => {
 describe("document fragment draft and creation", () => {
   it("builds a draft from real source offsets and persists explicit source metadata", () => {
     const text = sampleText();
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief", text);
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief", text);
     const blocks = buildDocumentReaderBlocks(text);
     const selection = resolveDocumentFragmentSelection(workspace, {
       fileObjectId: "file-course-brief",
@@ -129,7 +129,7 @@ describe("document fragment draft and creation", () => {
 
   it("blocks caller-provided summaries that exceed the document fragment summary limit", () => {
     const text = sampleText();
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief", text);
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief", text);
     const blocks = buildDocumentReaderBlocks(text);
     const selection = resolveDocumentFragmentSelection(workspace, {
       fileObjectId: "file-course-brief",
@@ -152,7 +152,7 @@ describe("document fragment draft and creation", () => {
 
   it("records explicit extraction continuity without changing Current Focus or AI state", () => {
     const text = sampleText();
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief", text);
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief", text);
     const blocks = buildDocumentReaderBlocks(text);
     const selection = resolveDocumentFragmentSelection(workspace, {
       fileObjectId: "file-course-brief",
@@ -182,7 +182,7 @@ describe("document fragment draft and creation", () => {
 
 describe("document fragment source availability and location", () => {
   it("reports active source and exact reader location only when file and extract asset still match", () => {
-    const workspace = withCreatedFragment(withParsedFile(createInitialWorkspace(), "file-course-brief", sampleText()));
+    const workspace = withCreatedFragment(withParsedFile(createTestWorkspace(), "file-course-brief", sampleText()));
     const fragment = Object.values(workspace.objects).find(
       (object) => object.type === "documentFragment" && object.title === "Course brief fragment"
     );
@@ -201,7 +201,7 @@ describe("document fragment source availability and location", () => {
   });
 
   it("keeps fragment body while reporting hidden, missing, and asset mismatch source states", () => {
-    const workspace = withCreatedFragment(withParsedFile(createInitialWorkspace(), "file-course-brief", sampleText()));
+    const workspace = withCreatedFragment(withParsedFile(createTestWorkspace(), "file-course-brief", sampleText()));
     const fragment = Object.values(workspace.objects).find(
       (object) => object.type === "documentFragment" && object.title === "Course brief fragment"
     );

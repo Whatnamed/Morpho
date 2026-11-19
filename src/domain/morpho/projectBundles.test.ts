@@ -15,7 +15,8 @@ import {
   type ProjectBundleResolvedAsset
 } from "./projectBundles";
 import type { AssetRecord, MorphoWorkspace } from "./types";
-import { createBlankWorkspace, createInitialWorkspace, setConceptDirectionStatus } from "./workspace";
+import { createBlankWorkspace, setConceptDirectionStatus } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { captureManualHistory, createManualHistory, pushManualHistory, redoManualHistory, undoManualHistory } from "@/features/workspace/workspaceManualHistory";
 
 const NOW = "2026-07-02T12:00:00.000Z";
@@ -31,7 +32,7 @@ describe("Archive domain elimination reasons", () => {
   }
 
   test("primary -> eliminated -> Undo -> Redo preserves the real elimination reason", () => {
-    const before = setConceptDirectionStatus(createInitialWorkspace(), directionId, "primary", "primary reason");
+    const before = setConceptDirectionStatus(createTestWorkspace(), directionId, "primary", "primary reason");
     const after = setConceptDirectionStatus(before, directionId, "eliminated", "business elimination E");
     const history = pushManualHistory(createManualHistory(), captureManualHistory("淘汰方向", before, after));
     const undo = undoManualHistory(history, after);
@@ -54,14 +55,14 @@ describe("Archive domain elimination reasons", () => {
   });
 
   test("two real eliminations use the latest domain reason", () => {
-    const first = setConceptDirectionStatus(createInitialWorkspace(), directionId, "eliminated", "first elimination E");
+    const first = setConceptDirectionStatus(createTestWorkspace(), directionId, "eliminated", "first elimination E");
     const restored = setConceptDirectionStatus(first, directionId, "alternative", "restoration reason");
     const second = setConceptDirectionStatus(restored, directionId, "eliminated", "latest elimination F");
     expect(eliminationLine(second)).toContain("原因：latest elimination F");
   });
 
   test("a latest real elimination without a reason never inherits an earlier reason", () => {
-    const first = setConceptDirectionStatus(createInitialWorkspace(), directionId, "eliminated", "first elimination E");
+    const first = setConceptDirectionStatus(createTestWorkspace(), directionId, "eliminated", "first elimination E");
     const restored = setConceptDirectionStatus(first, directionId, "alternative", "restoration reason");
     const second = setConceptDirectionStatus(restored, directionId, "eliminated", "  ");
     const history = pushManualHistory(createManualHistory(), captureManualHistory("淘汰方向", restored, second));
@@ -73,7 +74,7 @@ describe("Archive domain elimination reasons", () => {
   });
 
   test.each(["legacy", "other-incarnation", "other-object"] as const)("%s elimination evidence cannot supply a reason", (binding) => {
-    const eliminated = setConceptDirectionStatus(createInitialWorkspace(), directionId, "eliminated", "unreliable reason");
+    const eliminated = setConceptDirectionStatus(createTestWorkspace(), directionId, "eliminated", "unreliable reason");
     const workspace = { ...eliminated, decisionRecords: eliminated.decisionRecords.map((record) => {
       if (record.effect?.kind !== "setDirectionStatus" || record.effect.status !== "eliminated") return record;
       return { ...record, summary: "eliminated: unreliable reason", relatedObjectIds: [directionId], effect: {

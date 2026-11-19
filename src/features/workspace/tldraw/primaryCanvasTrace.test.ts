@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { canvasEdgeKey } from "./primaryCanvasEdges";
 import { collectPrimaryCanvasTrace } from "./primaryCanvasTrace";
 
 describe("primary canvas trace", () => {
   it("direct mode highlights only the current object and its immediate primary neighbors", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const trace = collectPrimaryCanvasTrace(workspace, "direction-soft-rail", "direct");
     expect(trace).not.toBeNull();
     expect(trace!.highlightedObjectIds).toEqual(
@@ -21,7 +21,7 @@ describe("primary canvas trace", () => {
   });
 
   it("chain mode walks the full primary derivation path to the source", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const trace = collectPrimaryCanvasTrace(workspace, "image-soft-rail-v2", "chain");
     expect(trace).not.toBeNull();
     expect(trace!.highlightedObjectIds).toEqual(
@@ -44,7 +44,7 @@ describe("primary canvas trace", () => {
   });
 
   it("marks multi-reference non-primary parents as secondary without expanding branches", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-soft-rail-v2"];
     if (image?.type !== "image") {
       throw new Error("Expected versioned image.");
@@ -79,7 +79,7 @@ describe("primary canvas trace", () => {
   });
 
   it("is cycle-safe when primary edges form a loop", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const edgesPoisoned = {
       ...workspace,
       relations: [

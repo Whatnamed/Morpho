@@ -1,5 +1,5 @@
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { serializeWorkspace } from "@/domain/morpho/workspace";
+import { serializeWorkspace } from "@/domain/morpho/workspaceCodec";
 import { getProjectWorkspaceStorageKey } from "./localProjectStore";
 
 /**

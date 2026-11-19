@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 import {
   applyResearchExtractionSelection,
@@ -45,7 +45,7 @@ describe("researchExtraction", () => {
   });
 
   it("creates canvas key conclusion cards for selected research items", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = applyResearchExtractionSelection(workspace, "research-night-path", [
       getResearchExtractionKey("finding", 0),
       getResearchExtractionKey("opportunity", 0)
@@ -63,7 +63,7 @@ describe("researchExtraction", () => {
   });
 
   it("uses normalized research points for extraction items and created cards", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const research = workspace.objects["research-night-path"];
     if (!research || research.type !== "research") {
       throw new Error("Expected demo research object.");
@@ -94,7 +94,7 @@ describe("researchExtraction", () => {
   });
 
   it("spaces extracted cards by their actual card size", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = applyResearchExtractionSelection(workspace, "research-night-path", [
       getResearchExtractionKey("finding", 0),
       getResearchExtractionKey("opportunity", 0),
@@ -116,7 +116,7 @@ describe("researchExtraction", () => {
   });
 
   it("recommends a balanced set of high-value research points for AI-assisted selection", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const keys = getResearchExtractionRecommendationKeys(workspace, "research-night-path");
 
     expect(keys).toContain(getResearchExtractionKey("finding", 0));
@@ -127,7 +127,7 @@ describe("researchExtraction", () => {
   });
 
   it("does not duplicate cards when the same research items are applied again", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const first = applyResearchExtractionSelection(workspace, "research-night-path", [getResearchExtractionKey("finding", 0)]);
     const second = applyResearchExtractionSelection(first.workspace, "research-night-path", [getResearchExtractionKey("finding", 0)]);
 
@@ -137,7 +137,7 @@ describe("researchExtraction", () => {
   });
 
   it("keeps extraction linkage on the formal category and content, not the historical note", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const first = applyResearchExtractionSelection(workspace, "research-night-path", [getResearchExtractionKey("finding", 0)]);
     const objectId = first.activeObjectIds[0];
     const object = first.workspace.objects[objectId];
@@ -170,7 +170,7 @@ describe("researchExtraction", () => {
   });
 
   it("keeps previously retained conclusions when a different candidate set is retained", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const selectedKey = getResearchExtractionKey("finding", 0);
     const first = applyResearchExtractionSelection(workspace, "research-night-path", [selectedKey]);
     const objectId = first.activeObjectIds[0];

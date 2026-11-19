@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAgentTrace } from "./agentMessageTrace";
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   domainFromUrl,
   getAvailableCitationId,

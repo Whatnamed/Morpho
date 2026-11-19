@@ -1,18 +1,6 @@
 import type { MorphoWorkspace } from "../../domain/morpho/types";
-import { createCurrentCaseStudyWorkspace, parseWorkspace, serializeWorkspace } from "../../domain/morpho/workspace";
-import {
-  CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
-  CURRENT_CASE_STUDY_ID,
-  CURRENT_CASE_STUDY_VERSION
-} from "../../domain/morpho/caseStudy/currentCaseStudy";
-import { CASE_STUDY_INSTALLATION_STORAGE_KEY } from "../../domain/morpho/caseStudy/caseStudyInstallation";
-import { fingerprintCaseStudyWorkspace } from "../../domain/morpho/caseStudy/caseStudyFingerprint";
-import {
-  isPristineLegacyNightrailWorkspace,
-  LEGACY_NIGHTRAIL_OBSOLETE_STORAGE_KEYS,
-  LEGACY_NIGHTRAIL_PROJECT_ID
-} from "../../domain/morpho/caseStudy/legacyNightrailMigration";
-import { acquireProjectWriteLease, withProjectCatalogLock } from "./projectWriteLock";
+import { parseWorkspace, serializeWorkspace } from "@/domain/morpho/workspaceCodec";
+import { withProjectCatalogLock } from "./projectWriteLock";
 
 export const CATALOG_STORAGE_KEY = "morpho.projects.catalog.v1";
 export const LEGACY_WORKSPACE_STORAGE_KEY = "morpho.workspace.nightrail.v1";
@@ -34,19 +22,6 @@ export type LocalProjectCatalog = {
   recentProjectId?: string;
   projects: LocalProjectSummary[];
 };
-
-export type CatalogLoadResult =
-  | {
-      status: "ok";
-      catalog: LocalProjectCatalog;
-      didMigrate: boolean;
-      /** Workspace materialized only in memory when a read-only migration cannot persist it. */
-      migratedWorkspace?: MorphoWorkspace;
-    }
-  | {
-      status: "failed";
-      reason: string;
-    };
 
 export type LocalProjectStoreMode = "writer" | "readOnly";
 
@@ -130,46 +105,6 @@ export function getProjectWorkspaceStorageKey(projectId: string): string {
   return `morpho.project.${projectId}.workspace.v1`;
 }
 
-export function initializeLocalProjectCatalog(
-  storage: Storage,
-  options: LocalProjectStoreOptions = {}
-): CatalogLoadResult {
-  const plan = planCatalogInitialization(storage);
-  return options.mode === "readOnly" ? catalogLoadResult(plan) : applyCatalogInitialization(storage, plan);
-}
-
-export async function initializeBrowserProjectCatalog(
-  storage: Storage,
-  options: { ownedProjectId?: string; isCancelled?: () => boolean } = {}
-): Promise<CatalogLoadResult> {
-  return withProjectCatalogLock(async () => {
-    if (options.isCancelled?.()) return { status: "failed", reason: "已取消初始化项目列表。" };
-    let plan = planCatalogInitialization(storage);
-    const releases: Array<() => void | Promise<void>> = [];
-    const protectedProjects = new Set([options.ownedProjectId]);
-    try {
-      while (plan.status === "ok" && !options.isCancelled?.()) {
-        const projectId = plan.writeProjectIds.find((id) => !protectedProjects.has(id));
-        if (!projectId) return applyCatalogInitialization(storage, plan);
-        // Project leases here are non-blocking. Workspaces take their project lease first.
-        const lease = await acquireProjectWriteLease(projectId);
-        if (lease.status === "heldElsewhere") {
-          const snapshot = loadCatalog(storage);
-          return snapshot.status === "ok"
-            ? { ...snapshot, didMigrate: false }
-            : { status: "failed", reason: "项目列表正在其他标签页初始化，请稍后重试。" };
-        }
-        if (lease.status === "granted") releases.push(lease.release);
-        protectedProjects.add(projectId);
-        plan = planCatalogInitialization(storage);
-      }
-      return plan.status === "failed" ? plan : catalogLoadResult(plan);
-    } finally {
-      await Promise.all(releases.map((release) => release()));
-    }
-  });
-}
-
 export function loadLocalProjectCatalogSnapshot(storage: Storage): CatalogSnapshotResult {
   return loadCatalog(storage);
 }
@@ -216,10 +151,6 @@ export function loadProjectWorkspace(
     didMigrate: parsed.didMigrate,
     raw
   };
-}
-
-export function saveProjectWorkspace(storage: Storage, workspace: MorphoWorkspace): void {
-  void writeProjectWorkspace(storage, workspace);
 }
 
 export function persistProjectWorkspaceAndSummary(
@@ -436,232 +367,9 @@ export function describeStorageWriteFailure(kind: StorageWriteFailureKind): stri
   }
 }
 
-function safeRemoveItem(storage: Storage, key: string): void {
-  try {
-    storage.removeItem(key);
-  } catch {
-    // Best-effort cleanup only.
-  }
-}
-
-type CatalogInitialization = Extract<CatalogLoadResult, { status: "failed" }> | {
-  status: "ok";
-  catalog: LocalProjectCatalog;
-  didMigrate: boolean;
-  migratedWorkspace?: MorphoWorkspace;
-  workspaceToWrite?: MorphoWorkspace;
-  caseStudy?: MorphoWorkspace;
-  obsoleteWorkspaceKey?: string;
-  writeProjectIds: string[];
-};
-
-function catalogLoadResult(plan: CatalogInitialization): CatalogLoadResult {
-  if (plan.status === "failed") return plan;
-  const { catalog, didMigrate, migratedWorkspace } = plan;
-  return { status: "ok", catalog, didMigrate, ...(migratedWorkspace && { migratedWorkspace }) };
-}
-
-function planCatalogInitialization(storage: Storage): CatalogInitialization {
-  try {
-    const snapshot = loadCatalog(storage);
-    if (snapshot.status === "failed") return snapshot;
-    const catalog = snapshot.status === "ok" ? snapshot.catalog : createCatalog([]);
-    const marker = readCaseStudyMarker(storage);
-    const unchanged = { status: "ok" as const, catalog, didMigrate: false, writeProjectIds: [] };
-    const legacySummary = catalog.projects.find((project) => project.id === LEGACY_NIGHTRAIL_PROJECT_ID);
-    const hasCurrentCase = catalog.projects.some((project) => project.id === CURRENT_CASE_STUDY_ID);
-
-    if (!catalog.projects.length) {
-      const recovered = recoverCataloglessProjectWorkspaces(storage);
-      const legacyRaw = snapshot.status === "missing" ? storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY) : null;
-      if (legacyRaw !== null) {
-        const legacy = parseWorkspace(legacyRaw);
-        if (legacy.status === "failed") return legacy;
-        if (isPristineLegacyNightrailWorkspace(legacy.workspace)) {
-          return planCaseStudy(storage, recovered.map(summarizeProject), LEGACY_WORKSPACE_STORAGE_KEY);
-        }
-        const existing = recovered.find((workspace) => workspace.project.id === legacy.workspace.project.id);
-        const migratedWorkspace = existing ?? legacy.workspace;
-        return {
-          status: "ok",
-          catalog: createCatalog([summarizeProject(migratedWorkspace), ...recovered.filter((workspace) => workspace !== existing).map(summarizeProject)], migratedWorkspace.project.id),
-          didMigrate: true,
-          migratedWorkspace,
-          workspaceToWrite: existing ? undefined : migratedWorkspace,
-          writeProjectIds: [migratedWorkspace.project.id]
-        };
-      }
-      if (!marker && recovered.length === 1 && isPristineLegacyNightrailWorkspace(recovered[0])) {
-        return planCaseStudy(storage, [], getProjectWorkspaceStorageKey(LEGACY_NIGHTRAIL_PROJECT_ID));
-      }
-      if (recovered.length > 0) {
-        const recent = recovered.find((workspace) => workspace.project.id === catalog.recentProjectId) ?? recovered[0];
-        return {
-          ...unchanged,
-          catalog: createCatalog(recovered.map(summarizeProject), recent.project.id),
-          didMigrate: true
-        };
-      }
-      // An installation marker survives deleting the last project.
-      if (marker || snapshot.status === "ok") return { ...unchanged, didMigrate: snapshot.status === "missing" };
-      return planCaseStudy(storage, []);
-    }
-
-    if (!hasCurrentCase && legacySummary && !marker) {
-      const legacy = loadProjectWorkspace(storage, LEGACY_NIGHTRAIL_PROJECT_ID, { mode: "readOnly" });
-      if (legacy.status === "ok") {
-        const pristine = isPristineLegacyNightrailWorkspace(legacy.workspace);
-        if (!pristine || catalog.projects.length === 1) {
-          return planCaseStudy(
-            storage,
-            pristine ? [] : catalog.projects,
-            pristine ? getProjectWorkspaceStorageKey(LEGACY_NIGHTRAIL_PROJECT_ID) : undefined
-          );
-        }
-      }
-    }
-
-    if (hasCurrentCase && marker && marker.installedVersion !== CURRENT_CASE_STUDY_VERSION) {
-      const current = loadProjectWorkspace(storage, CURRENT_CASE_STUDY_ID, { mode: "readOnly" });
-      if (current.status === "ok") {
-        const next = createCurrentCaseStudyWorkspace();
-        const fingerprint = fingerprintCaseStudyWorkspace(current.workspace);
-        const alreadyUpgraded = fingerprint === fingerprintCaseStudyWorkspace(next);
-        if (fingerprint === marker.workspaceFingerprint || alreadyUpgraded) {
-          return caseStudyInitialization(next, catalog.projects, undefined, !alreadyUpgraded);
-        }
-      }
-    }
-    return unchanged;
-  } catch {
-    return { status: "failed", reason: "浏览器无法读取本地项目数据。" };
-  }
-}
-
-function recoverCataloglessProjectWorkspaces(storage: Storage): MorphoWorkspace[] {
-  const workspaces: MorphoWorkspace[] = [];
-  for (let index = 0; index < storage.length; index += 1) {
-    const key = storage.key(index);
-    const projectId = key && parseProjectWorkspaceStorageKey(key);
-    if (!projectId) continue;
-    const raw = storage.getItem(key);
-    if (raw === null) continue;
-    const parsed = parseWorkspace(raw);
-    if (parsed.status === "ok" && parsed.workspace.project.id === projectId) workspaces.push(parsed.workspace);
-  }
-  return workspaces;
-}
-
-function planCaseStudy(
-  storage: Storage,
-  projects: LocalProjectSummary[],
-  obsoleteWorkspaceKey?: string
-): CatalogInitialization {
-  const existing = loadProjectWorkspace(storage, CURRENT_CASE_STUDY_ID, { mode: "readOnly" });
-  if (existing.status === "failed") return existing;
-  return caseStudyInitialization(
-    existing.status === "ok" ? existing.workspace : createCurrentCaseStudyWorkspace(),
-    projects,
-    obsoleteWorkspaceKey,
-    existing.status === "missing"
-  );
-}
-
-function caseStudyInitialization(
-  workspace: MorphoWorkspace,
-  projects: LocalProjectSummary[],
-  obsoleteWorkspaceKey: string | undefined,
-  writeWorkspace: boolean
-): CatalogInitialization {
-  const obsoleteProjectId = obsoleteWorkspaceKey && parseProjectWorkspaceStorageKey(obsoleteWorkspaceKey);
-  return {
-    status: "ok",
-    catalog: createCatalog(
-      [summarizeProject(workspace), ...projects.filter((project) => project.id !== CURRENT_CASE_STUDY_ID)],
-      CURRENT_CASE_STUDY_ID
-    ),
-    didMigrate: true,
-    migratedWorkspace: workspace,
-    workspaceToWrite: writeWorkspace ? workspace : undefined,
-    caseStudy: workspace,
-    obsoleteWorkspaceKey,
-    writeProjectIds: obsoleteProjectId ? [CURRENT_CASE_STUDY_ID, obsoleteProjectId] : [CURRENT_CASE_STUDY_ID]
-  };
-}
-
-function applyCatalogInitialization(storage: Storage, plan: CatalogInitialization): CatalogLoadResult {
-  if (plan.status === "ok" && plan.didMigrate) {
-    if (plan.workspaceToWrite) {
-      const written = writeProjectWorkspace(storage, plan.workspaceToWrite);
-      if (written.status === "failed") return written;
-    }
-    const catalog = writeCatalog(storage, plan.catalog);
-    if (catalog.status === "failed") return catalog;
-    if (plan.caseStudy) {
-      const marker = writeCaseStudyMarker(storage, plan.caseStudy, plan.obsoleteWorkspaceKey
-        ? [...LEGACY_NIGHTRAIL_OBSOLETE_STORAGE_KEYS]
-        : undefined);
-      if (marker.status === "failed") return marker;
-    }
-    if (plan.obsoleteWorkspaceKey) safeRemoveItem(storage, plan.obsoleteWorkspaceKey);
-  }
-  return catalogLoadResult(plan);
-}
-
 export function parseProjectWorkspaceStorageKey(storageKey: string): string | null {
   const match = /^morpho\.project\.(.+)\.workspace\.v1$/.exec(storageKey);
   return match?.[1] ?? null;
-}
-
-function readCaseStudyMarker(storage: Storage): {
-  assetManifestVersion: string;
-  installedVersion: string;
-  obsoleteStorageKeys?: string[];
-  projectId: string;
-  workspaceFingerprint: string;
-} | null {
-  const raw = storage.getItem(CASE_STUDY_INSTALLATION_STORAGE_KEY);
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const value = JSON.parse(raw) as unknown;
-    if (
-      !isRecord(value) ||
-      typeof value.assetManifestVersion !== "string" ||
-      typeof value.installedVersion !== "string" ||
-      typeof value.projectId !== "string" ||
-      typeof value.workspaceFingerprint !== "string"
-    ) {
-      return null;
-    }
-    return {
-      assetManifestVersion: value.assetManifestVersion,
-      installedVersion: value.installedVersion,
-      obsoleteStorageKeys: Array.isArray(value.obsoleteStorageKeys)
-        ? value.obsoleteStorageKeys.filter((key): key is string => typeof key === "string")
-        : undefined,
-      projectId: value.projectId,
-      workspaceFingerprint: value.workspaceFingerprint
-    };
-  } catch {
-    return null;
-  }
-}
-
-function writeCaseStudyMarker(storage: Storage, workspace: MorphoWorkspace, obsoleteStorageKeys?: string[]): StorageWriteResult {
-  return persistStorageValue(
-    storage,
-    CASE_STUDY_INSTALLATION_STORAGE_KEY,
-    JSON.stringify({
-      assetManifestVersion: CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
-      installedVersion: CURRENT_CASE_STUDY_VERSION,
-      projectId: CURRENT_CASE_STUDY_ID,
-      workspaceFingerprint: fingerprintCaseStudyWorkspace(workspace),
-      obsoleteStorageKeys
-    })
-  );
 }
 
 function isCatalog(value: unknown): value is LocalProjectCatalog {

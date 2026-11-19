@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
 import { applyConversationSemanticPatch, applyProjectContinuityEvent } from "./projectContinuity";
-import { migrateWorkspaceToCurrentSchema } from "./workspace";
+import { migrateWorkspaceToCurrentSchema } from "./workspaceCodec";
 import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
 import { createEditableProjectBackupManifest } from "./projectArchive";
 import {
@@ -18,7 +18,8 @@ import {
   reconcileProjectMemoryAfterWorkspaceChange
 } from "./projectMemory";
 import type { AiMessage, MorphoWorkspace, ProjectMemoryKey } from "./types";
-import { clearDefaultReference, createBlankWorkspace, createInitialWorkspace } from "./workspace";
+import { clearDefaultReference, createBlankWorkspace } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 const MEMORY_KEYS: ProjectMemoryKey[] = [
   "projectOverview",
@@ -61,7 +62,7 @@ describe("Project Memory Kernel", () => {
     expect(getStageRecordHistory(reactivated.projectMemory, "exploration")).toEqual([historical]);
   });
   it("skips projection work for canvas, UI, and existing-message body updates", () => {
-    const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+    const workspace = reconcileProjectMemory(createTestWorkspace(), "2026-07-13T12:00:00.000Z");
     const targetMessage = workspace.ai.messages.at(-1);
     if (!targetMessage) {
       throw new Error("Expected the fixture to contain an AI message.");
@@ -95,7 +96,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("reprojects when a message identity or semantic projection input changes", () => {
-    const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+    const workspace = reconcileProjectMemory(createTestWorkspace(), "2026-07-13T12:00:00.000Z");
     const withMessage: MorphoWorkspace = {
       ...workspace,
       ai: {
@@ -122,7 +123,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("projects seven current documents and only stages that actually have project facts", () => {
-    const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+    const workspace = reconcileProjectMemory(createTestWorkspace(), "2026-07-13T12:00:00.000Z");
 
     expect(MEMORY_KEYS.map((key) => workspace.projectMemory.documents[key].title)).toHaveLength(7);
     expect(MEMORY_KEYS.filter((key) => getCurrentProjectMemoryRevision(workspace.projectMemory, key))).toEqual([
@@ -139,7 +140,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("builds a bounded current-only default memory context for ordinary Agent turns", () => {
-    let workspace = withUserMessage(createInitialWorkspace(), "default-memory-user", "以后这个项目都保持克制、低压迫感。", "12:00");
+    let workspace = withUserMessage(createTestWorkspace(), "default-memory-user", "以后这个项目都保持克制、低压迫感。", "12:00");
     workspace = applyMemoryItems(workspace, "default-memory-user", "以后这个项目都保持克制、低压迫感。", [
       { kind: "preference", evidenceQuote: "以后这个项目都保持克制、低压迫感" }
     ]);
@@ -169,7 +170,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("builds several strategy contexts from one reconciliation without changing their values", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
 
     const [discussion, stable] = buildAgentDefaultMemoryContexts(
       workspace,
@@ -181,7 +182,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("derives overview reviewRequired from real source gaps instead of an unreachable filtered entry", () => {
-    const valid = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+    const valid = reconcileProjectMemory(createTestWorkspace(), "2026-07-13T12:00:00.000Z");
     expect(getCurrentProjectMemoryRevision(valid.projectMemory, "projectOverview")?.reviewRequired).toBe(false);
 
     const missingFocusSource = reconcileProjectMemory(
@@ -204,7 +205,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("does not turn an assistant suggestion into a stable user preference", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const withSuggestion: MorphoWorkspace = {
       ...workspace,
       ai: {
@@ -220,7 +221,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("records explicit user evidence once, updates memory and stage revisions, and preserves revision chains", () => {
-    let workspace = withUserMessage(createInitialWorkspace(), "user-pref-1", "以后都保持低眩光，避免医疗器械感。", "12:00");
+    let workspace = withUserMessage(createTestWorkspace(), "user-pref-1", "以后都保持低眩光，避免医疗器械感。", "12:00");
     workspace = applyMemoryItems(workspace, "user-pref-1", "以后都保持低眩光，避免医疗器械感。", [
       { kind: "preference", evidenceQuote: "以后都保持低眩光" },
       { kind: "avoidance", evidenceQuote: "避免医疗器械感" }
@@ -251,7 +252,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("removes invalidated message-backed content from the current projection without deleting history", () => {
-    let workspace = withUserMessage(createInitialWorkspace(), "user-pref-remove", "始终避免高亮镜面。", "12:00");
+    let workspace = withUserMessage(createTestWorkspace(), "user-pref-remove", "始终避免高亮镜面。", "12:00");
     workspace = applyMemoryItems(workspace, "user-pref-remove", "始终避免高亮镜面。", [
       { kind: "avoidance", evidenceQuote: "始终避免高亮镜面" }
     ]);
@@ -362,7 +363,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("normalizes legacy cleared-default wording before projecting current memory and stage records", () => {
-    const cleared = clearDefaultReference(createInitialWorkspace(), "image-soft-rail-v2", {
+    const cleared = clearDefaultReference(createTestWorkspace(), "image-soft-rail-v2", {
       reason: "用户明确取消后续默认参考。"
     });
     const latestEntry = cleared.projectContinuity.recordEntries.at(-1);
@@ -390,7 +391,7 @@ describe("Project Memory Kernel", () => {
   });
 
   it("stays idempotent across JSON persistence and collapses consecutive equivalent revisions", () => {
-    const workspace = reconcileProjectMemory(createInitialWorkspace(), "2026-07-13T12:00:00.000Z");
+    const workspace = reconcileProjectMemory(createTestWorkspace(), "2026-07-13T12:00:00.000Z");
     const persisted = JSON.parse(JSON.stringify(workspace.projectMemory)) as MorphoWorkspace["projectMemory"];
     const root = getCurrentProjectMemoryRevision(persisted, "projectOverview");
     if (!root) {

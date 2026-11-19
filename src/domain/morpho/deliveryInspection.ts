@@ -2,7 +2,6 @@ import { hashProductValue } from "@/shared/agentProductHash";
 import { resolveSource } from "./sourceResolution";
 import { qualifyEvidence } from "./evidenceAuthority";
 import { hasDeliveredVisualObservation } from "./visualObservation";
-import { createDeliverySourceFingerprint } from "./deliveryPreparation";
 import type { DeliveryGenerationBaseline, DeliveryObject, DeliveryReference, DeliveryReferenceSnapshot, DeliverySection, DeliverySectionDraft, MorphoObject, MorphoWorkspace } from "./types";
 
 export type DeliveryReferenceInspection = {
@@ -134,4 +133,71 @@ export function isDeliveryDraftApplicability(value: unknown): value is DeliveryD
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const v = value as Record<string, unknown>;
   return ["current", "review-required", "stale", "blocked"].includes(String(v.status)) && Array.isArray(v.reasons) && v.reasons.every((reason) => typeof reason === "string");
+}
+
+export function createDeliverySourceFingerprint(workspace: MorphoWorkspace, source: MorphoObject): string {
+  switch (source.type) {
+    case "image":
+      return JSON.stringify({
+        type: source.type,
+        assetId: source.assetId,
+        role: source.role,
+        title: source.title,
+        summary: source.summary,
+        directionId: source.directionId,
+        visualBranchId: source.visualBranchId,
+        pendingReview: source.pendingReview,
+        provenance: captureDeliveryProvenance(workspace, source)
+      });
+    case "documentFragment":
+      return JSON.stringify({
+        type: source.type,
+        title: source.title,
+        summary: source.summary,
+        body: source.body,
+        sourceFileObjectId: source.source.fileObjectId,
+        sourceExtractAssetId: source.source.sourceExtractAssetId,
+        startOffset: source.source.startOffset,
+        endOffset: source.source.endOffset
+      });
+    case "keyConclusion":
+      return JSON.stringify({
+        type: source.type,
+        title: source.title,
+        summary: source.summary,
+        body: source.body,
+        state: source.state,
+        confidence: source.confidence
+      });
+    case "research":
+      return JSON.stringify({
+        type: source.type,
+        title: source.title,
+        summary: source.summary,
+        findings: source.findings,
+        opportunities: source.opportunities,
+        constraints: source.constraints,
+        openQuestions: source.openQuestions
+      });
+    case "designDefinition": {
+      const revision = workspace.designDefinitionRevisions[source.currentRevisionId];
+      return JSON.stringify({ type: source.type, revisionId: source.currentRevisionId, revisionNumber: revision?.revisionNumber, revision });
+    }
+    case "conceptDirection": {
+      const revision = workspace.directionRevisions[source.currentRevisionId];
+      return JSON.stringify({ type: source.type, revisionId: source.currentRevisionId, revisionNumber: revision?.revisionNumber, status: source.status, revision });
+    }
+    case "file":
+      return JSON.stringify({ type: source.type, title: source.title, summary: source.summary, assetId: source.assetId, extractedAssetId: source.extractedAssetId, parseStatus: source.parseStatus });
+    case "link":
+      return JSON.stringify({ type: source.type, title: source.editableTitle ?? source.title, summary: source.summary, url: source.url, description: source.description, assetId: source.assetId });
+    case "text":
+      return JSON.stringify({ type: source.type, title: source.title, summary: source.summary, body: source.body });
+    case "imageCollection":
+      return JSON.stringify({ type: source.type, title: source.title, summary: source.summary, memberObjectIds: source.memberObjectIds });
+    case "proposalDraft":
+      return JSON.stringify({ type: source.type, title: source.title, summary: source.summary, proposalId: source.proposalId });
+    case "delivery":
+      return JSON.stringify({ type: source.type, title: source.title });
+  }
 }

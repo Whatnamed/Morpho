@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { createImageGenerationOperation } from "@/domain/operations/operations";
 import type { AssetRecord } from "@/domain/morpho/types";
 import type { ImageGenerationResultCommit } from "./imageGenerationResultCommit";
@@ -25,7 +25,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 async function fixture() {
   const projectId = "independent-project", operationId = "independent-operation", clientRequestId = "independent-request";
-  let workspace = createImageGenerationOperation(createInitialWorkspace(), {
+  let workspace = createImageGenerationOperation(createTestWorkspace(), {
     operationId, clientRequestId, prompt: "same image", selectedObjectIds: [], imagePixels: false,
     modelId: "nano-banana-fast", modelLabel: "nano-banana-fast", aspectRatio: "1:1", referenceObjectIds: []
   }).workspace;

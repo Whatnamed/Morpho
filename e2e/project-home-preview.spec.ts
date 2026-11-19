@@ -399,7 +399,6 @@ test.describe("project home on-demand preview", () => {
     });
 
     // This catalog has no built-in case study, so startup must not install its assets.
-    expect(await page.evaluate(() => window.localStorage.getItem("morpho.case-study.install.v1"))).toBeNull();
 
     // Scrolling back to top and down again must not trigger duplicate workspace parses or IDB reads.
     await page.evaluate(() => (window as unknown as { __resetHomeSpy: () => void }).__resetHomeSpy());
@@ -561,14 +560,13 @@ test.describe("project home on-demand preview", () => {
 
     // 1. Seed default built-in case study cleanly first so catalog & workspace stay at current schema (didMigrate === false on reload).
     await page.goto("/", { waitUntil: "load" });
-    await page.waitForFunction(() => window.localStorage.getItem("morpho.case-study.install.v1") !== null);
     await page.waitForFunction(() => {
       const imgs = Array.from(document.querySelectorAll('.phome-hero .project-canvas-preview img[src^="blob:"]')) as HTMLImageElement[];
       return imgs.length >= 2 && imgs.every((img) => img.complete && img.naturalWidth > 0);
     });
     const expectedHeroImgCount = await page.locator('.phome-hero .project-canvas-preview img[src^="blob:"]').count();
 
-    // Corrupt one case-study image blob and delete another in IndexedDB while leaving localStorage workspace/marker untouched.
+    // Corrupt one case-study image blob and delete another in IndexedDB while leaving localStorage workspace untouched.
     await page.evaluate(async (caseStudyId) => {
       const rawWs = window.localStorage.getItem(`morpho.project.${caseStudyId}.workspace.v1`);
       if (!rawWs) throw new Error("Expected installed case study workspace");

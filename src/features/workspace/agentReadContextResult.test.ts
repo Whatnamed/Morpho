@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { buildReadSelectedContextResult } from "./agentReadContextResult";
 import { buildProviderTaskContext, buildTaskContext } from "./taskContext";
 

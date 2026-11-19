@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createTestWorkspace } from "@/domain/morpho/workspace";
-import { createAgentTurnHostFake } from "./agentTurnHostFake";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
+import { createAgentTurnHostFake } from "@/test/agentTurnHostFake";
 
 describe("Agent turn host fake", () => {
   it("preserves synchronous commit and read ordering", () => {

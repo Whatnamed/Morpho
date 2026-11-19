@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
-import { createBlankWorkspace, serializeWorkspace } from "@/domain/morpho/workspace";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { serializeWorkspace } from "@/domain/morpho/workspaceCodec";
 
 import {
   CATALOG_STORAGE_KEY,
@@ -9,7 +10,7 @@ import {
   getProjectWorkspaceStorageKey,
   loadLocalProjectCatalogSnapshot,
   loadProjectWorkspace,
-  saveProjectWorkspace,
+  writeProjectWorkspace,
   summarizeProject,
   writeCatalog
 } from "./localProjectStore";
@@ -44,7 +45,7 @@ function projectWith(projectId: string, assets: AssetRecord[]): MorphoWorkspace 
 
 function seedProjects(storage: Storage, workspaces: MorphoWorkspace[]): void {
   for (const workspace of workspaces) {
-    saveProjectWorkspace(storage, workspace);
+    writeProjectWorkspace(storage, workspace);
   }
   writeCatalog(storage, createCatalog(workspaces.map(summarizeProject), workspaces[0]?.project.id));
 }
@@ -133,7 +134,7 @@ describe("planLocalProjectDeletion", () => {
     const before = planLocalProjectDeletion(storage, "project-a");
     expect(storage.getItem(key)).toBe(legacy);
 
-    saveProjectWorkspace(storage, { ...workspace, ui: { ...workspace.ui, aiOpen: false } });
+    writeProjectWorkspace(storage, { ...workspace, ui: { ...workspace.ui, aiOpen: false } });
     const after = planLocalProjectDeletion(storage, "project-a");
     if (before.status !== "ok" || after.status !== "ok") throw new Error("Expected two readable previews.");
     expect(sameProjectDeletionPlan(before.plan, after.plan)).toBe(false);
@@ -313,7 +314,7 @@ describe("renameLocalProject", () => {
     read.mockRestore();
     expect(storage.getItem(CATALOG_STORAGE_KEY)).toBe(rawCatalog);
 
-    saveProjectWorkspace(storage, { ...target, project: { ...target.project, title: "后来修改" } });
+    writeProjectWorkspace(storage, { ...target, project: { ...target.project, title: "后来修改" } });
     const latest = storage.getItem(getProjectWorkspaceStorageKey(target.project.id));
     expect(renameLocalProject(storage, target.project.id)).toMatchObject({
       status: "ok", catalog: { recentProjectId: other.id, projects: expect.arrayContaining([

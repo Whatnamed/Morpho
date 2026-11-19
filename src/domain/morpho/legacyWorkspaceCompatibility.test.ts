@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { applyConversationSummaryRevision, hashMessageIds } from "./conversationCompaction";
-import { createBlankWorkspace, migrateWorkspaceToCurrentSchema } from "./workspace";
+import { createBlankWorkspace } from "./workspace";
+import { migrateWorkspaceToCurrentSchema } from "./workspaceCodec";
 
 const LEGACY_MESSAGES = [
   {

@@ -1,6 +1,6 @@
 import { MAX_AGENT_INPUT_IMAGE_BYTES } from "@/shared/agentImageInputLimits";
 import { describe, expect, it } from "vitest";
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { hashProviderImageDataUrl } from "@/domain/morpho/providerInputSnapshot";
 import type { AgentReadReceipt } from "@/shared/agentReadCoverage";
 import type { TurnTaskContract } from "@/shared/turnTaskContract";

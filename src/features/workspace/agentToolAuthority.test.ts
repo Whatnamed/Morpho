@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { recommendAiWorkIntent } from "./aiTaskRouting";
 import { getAgentToolAuthorizationBlockReason, resolveAgentToolAuthority } from "./agentToolAuthority";
 import type { MorphoAgentToolArguments } from "./morphoAgent";

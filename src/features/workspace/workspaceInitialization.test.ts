@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudy";
-import { LEGACY_NIGHTRAIL_PROJECT_ID } from "@/domain/morpho/caseStudy/legacyNightrailMigration";
-import { createBlankWorkspace, createTestWorkspace, serializeWorkspace } from "@/domain/morpho/workspace";
+import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudyConstants";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { serializeWorkspace } from "@/domain/morpho/workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { LEGACY_WORKSPACE_STORAGE_KEY } from "@/infrastructure/persistence/localProjectStore";
 import { createMemoryStorage } from "@/infrastructure/persistence/memoryStorage";
 import { acquireLeaseThenLoadWorkspace, loadWorkspace } from "./workspaceInitialization";
@@ -41,23 +42,6 @@ describe("workspace initialization lease boundary", () => {
     expect(installCurrentCaseStudyAssets).not.toHaveBeenCalled();
   });
 
-  it("keeps read-only in-memory legacy migration from removing the legacy workspace", async () => {
-    const tracked = createTrackedStorage();
-    tracked.storage.setItem(LEGACY_WORKSPACE_STORAGE_KEY, serializeWorkspace(createTestWorkspace()));
-    tracked.resetCounts();
-    const legacyRaw = tracked.storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY);
-
-    const result = await loadWorkspace(CURRENT_CASE_STUDY_ID, {
-      mode: "readOnly",
-      storage: tracked.storage
-    });
-
-    expect(result.workspace.project.id).toBe(CURRENT_CASE_STUDY_ID);
-    expect(tracked.setCalls).toBe(0);
-    expect(tracked.removeCalls).toBe(0);
-    expect(tracked.storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY)).toBe(legacyRaw);
-  });
-
   it("loads a modified legacy workspace from memory without persisting the migration", async () => {
     const tracked = createTrackedStorage();
     const legacy = createTestWorkspace();
@@ -82,12 +66,12 @@ describe("workspace initialization lease boundary", () => {
     tracked.resetCounts();
     const legacyRaw = tracked.storage.getItem(LEGACY_WORKSPACE_STORAGE_KEY);
 
-    const result = await loadWorkspace(LEGACY_NIGHTRAIL_PROJECT_ID, {
+    const result = await loadWorkspace("project-nightrail", {
       mode: "readOnly",
       storage: tracked.storage
     });
 
-    expect(result.workspace.project.id).toBe(LEGACY_NIGHTRAIL_PROJECT_ID);
+    expect(result.workspace.project.id).toBe("project-nightrail");
     expect(result.workspace.objects["user-note"]).toBeDefined();
     expect(tracked.setCalls).toBe(0);
     expect(tracked.removeCalls).toBe(0);

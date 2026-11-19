@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { collectDirectCanvasEdges } from "./canvasRelationships";
 import { canvasEdgeKey, collectPrimaryCanvasEdges, selectFirstBatchDirectionPreviewIds } from "./primaryCanvasEdges";
 
 describe("primary canvas edges", () => {
   it("includes the five permanent primary families from the seed workspace", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const edges = collectPrimaryCanvasEdges(workspace);
     const keys = edges.map((edge) => canvasEdgeKey(edge.fromObjectId, edge.toObjectId));
 
@@ -21,7 +21,7 @@ describe("primary canvas edges", () => {
   });
 
   it("excludes secondary multi-reference and non-primary generation refs", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-night-scenario"];
     if (image?.type !== "image") {
       throw new Error("Expected seeded image.");
@@ -47,7 +47,7 @@ describe("primary canvas edges", () => {
   });
 
   it("does not promote raw research source bags that are not definition inputs", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const all = collectDirectCanvasEdges(workspace);
     const primary = collectPrimaryCanvasEdges(workspace);
     const researchSourceOnly = all.filter((edge) => edge.relationKind === "researchSource");
@@ -65,7 +65,7 @@ describe("primary canvas edges", () => {
   });
 
   it("picks a stable first-batch direction preview independent of array order", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const a = selectFirstBatchDirectionPreviewIds(workspace, "direction-soft-rail");
     const b = selectFirstBatchDirectionPreviewIds(workspace, "direction-soft-rail");
     expect(a).toEqual(b);

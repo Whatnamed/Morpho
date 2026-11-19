@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   applyWorkspaceTextPromptIfCurrent,
   createWorkspaceTextPromptSession,
@@ -138,7 +138,7 @@ describe("workspace text prompt session boundary", () => {
 });
 
 function createWorkspace(projectId: string, source?: MorphoWorkspace): MorphoWorkspace {
-  const workspace = source ?? createInitialWorkspace();
+  const workspace = source ?? createTestWorkspace();
   return {
     ...workspace,
     project: {
@@ -183,7 +183,7 @@ function eliminatePrompt(directionId: string): WorkspaceTextPrompt {
 }
 
 it("edits a stable ordinary note and refuses changed text or reincarnated identity", () => {
-  const workspace = createInitialWorkspace();
+  const workspace = createTestWorkspace();
   workspace.objects.note = { id: "note", incarnationId: "note-v1", type: "text", title: "before", summary: "before", body: "before", createdBy: "user", visibility: "active" };
   const session = createWorkspaceTextPromptSession(workspace.project.id, workspace.project.id, true);
   const prompt: WorkspaceTextPrompt = { kind: "editText", objectId: "note", incarnationId: "note-v1", title: "Edit", body: "", label: "text", initialValue: "before" };

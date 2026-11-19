@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 import { getKeyConclusionCategoryLabel, getObjectTypeLabel, getSuggestionsForSelection } from "./workspaceUi";
 
@@ -14,7 +14,7 @@ describe("workspace suggestions", () => {
   });
 
   it("labels document fragments distinctly from generic objects", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
 
     expect(
       getObjectTypeLabel({
@@ -41,7 +41,7 @@ describe("workspace suggestions", () => {
   });
 
   it("keeps research-driven design-definition suggestions on revise intent when a current definition exists", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const research = workspace.objects["research-night-path"];
 
     if (!research || research.type !== "research") {
@@ -58,7 +58,7 @@ describe("workspace suggestions", () => {
   });
 
   it("keeps key-conclusion design-definition suggestions on revise intent when a current definition exists", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const keyConclusion = workspace.objects["insight-continuous-support"];
 
     if (!keyConclusion || keyConclusion.type !== "keyConclusion") {

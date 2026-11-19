@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { MorphoAgentToolArguments, RequestConfirmationArgs } from "./morphoAgent";
 import { buildPendingAgentActionConfirmation, buildRequestedAgentActionConfirmation } from "./agentConfirmation";
 
 describe("agent confirmation construction", () => {
   it("binds concept-direction proposals to the current design-definition revision", () => {
-    const initial = createInitialWorkspace();
+    const initial = createTestWorkspace();
     const definition = Object.values(initial.objects).find((object) => object.type === "designDefinition");
     if (!definition || definition.type !== "designDefinition") {
       throw new Error("Expected a design definition in the test workspace.");
@@ -50,7 +50,7 @@ describe("agent confirmation construction", () => {
   });
 
   it("does not attach design-definition base facts to research confirmations", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const parsed: Extract<MorphoAgentToolArguments, { name: "create_research_analysis" }> = {
       name: "create_research_analysis",
       args: {
@@ -84,7 +84,7 @@ describe("agent confirmation construction", () => {
   });
 
   it("binds Agent confirmations to the current default reference and direction status", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const direction = workspace.objects["direction-support-island"];
     const defaultReference = Object.values(workspace.objects).find(
       (object) => object.type === "image" && object.isDefaultReference

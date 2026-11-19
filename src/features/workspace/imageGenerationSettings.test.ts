@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   DEVELOPMENT_IMAGE_MODEL_ID,
   getDefaultImageGenerationSettings,
@@ -13,7 +13,7 @@ import {
 
 describe("workspace image generation settings", () => {
   it("uses the selected image asset ratio before the default reference", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const withAssets = {
       ...workspace,
       objects: {
@@ -44,7 +44,7 @@ describe("workspace image generation settings", () => {
   });
 
   it("uses the active default reference image ratio when no selected image has dimensions", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const withDefaultReferenceAsset = {
       ...workspace,
       objects: {
@@ -75,7 +75,7 @@ describe("workspace image generation settings", () => {
   });
 
   it("falls back to square when no image dimensions are available", () => {
-    expect(inferGenerationAspectRatio(createInitialWorkspace(), [])).toBe("1:1");
+    expect(inferGenerationAspectRatio(createTestWorkspace(), [])).toBe("1:1");
   });
 
   it("uses gpt-image-2 as the default image generation model", () => {

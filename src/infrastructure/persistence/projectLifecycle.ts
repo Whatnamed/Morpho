@@ -1,5 +1,5 @@
 import type { MorphoWorkspace } from "../../domain/morpho/types";
-import { parseWorkspace } from "../../domain/morpho/workspace";
+import { parseWorkspace } from "../../domain/morpho/workspaceCodec";
 import {
   deleteProjectWorkspace,
   LEGACY_WORKSPACE_STORAGE_KEY,

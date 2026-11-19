@@ -1,6 +1,6 @@
 import { hashSourceMessageIds } from "@/shared/agentProductHash";
 import { describe, expect, it } from "vitest";
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { rebuildAgentProviderConversation } from "./agentTurnProductPreparationAPlus";
 import type { APlusAgentProviderRequest } from "@/shared/agentTurnJournalProtocol";
 import { MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";

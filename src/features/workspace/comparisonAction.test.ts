@@ -1,14 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import type { ComparisonAnalysis, MorphoWorkspace } from "../../domain/morpho/types";
-import { createInitialWorkspace, hideObject } from "../../domain/morpho/workspace";
+import { hideObject } from "../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { validateComparisonActionTarget, validateComparisonKeyConclusionSources } from "./comparisonAction";
 import { buildDocumentReaderBlocks } from "./documentReader";
 import { buildDocumentFragmentDraft, createDocumentFragment, resolveDocumentFragmentSelection } from "./documentFragments";
 
 describe("comparison action target validation", () => {
   it("blocks actions when analysis is missing, target is outside sources, or target is hidden", () => {
-    const workspace = withAnalysis(createInitialWorkspace(), makeAnalysis());
+    const workspace = withAnalysis(createTestWorkspace(), makeAnalysis());
 
     expect(validateComparisonActionTarget(workspace, "missing-analysis", "setPrimary", "direction-soft-rail")).toMatchObject({
       status: "blocked"
@@ -22,7 +23,7 @@ describe("comparison action target validation", () => {
   });
 
   it("only allows restoreAlternative for eliminated compare directions", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const direction = base.objects["direction-soft-rail"];
     if (!direction || direction.type !== "conceptDirection") {
       throw new Error("missing direction fixture");
@@ -51,7 +52,7 @@ describe("comparison action target validation", () => {
   });
 
   it("requires current type and state to match default-reference and key-conclusion actions", () => {
-    const workspace = withAnalysis(createInitialWorkspace(), makeAnalysis());
+    const workspace = withAnalysis(createTestWorkspace(), makeAnalysis());
 
     expect(validateComparisonActionTarget(workspace, "comparison-a", "setDefaultReference", "direction-soft-rail")).toMatchObject({
       status: "blocked"
@@ -68,7 +69,7 @@ describe("comparison action target validation", () => {
   });
 
   it("blocks a recovered Compare candidate that still has unknown category", () => {
-    const workspace = withAnalysis(createInitialWorkspace(), makeAnalysis());
+    const workspace = withAnalysis(createTestWorkspace(), makeAnalysis());
     const analysis = workspace.ai.comparisonAnalyses?.["comparison-a"];
     if (!analysis?.keyConclusionCandidate) {
       throw new Error("missing Compare candidate");
@@ -82,7 +83,7 @@ describe("comparison action target validation", () => {
   });
 
   it("blocks historical key-conclusion candidates backed only by direction summaries", () => {
-    const workspace = withAnalysis(createInitialWorkspace(), makeAnalysis());
+    const workspace = withAnalysis(createTestWorkspace(), makeAnalysis());
 
     expect(validateComparisonKeyConclusionSources(workspace, "comparison-a", ["direction-soft-rail"])).toMatchObject({
       status: "blocked"
@@ -96,7 +97,7 @@ describe("comparison action target validation", () => {
   });
 
   it("allows historical key-conclusion candidates backed by current text evidence sources", () => {
-    const workspaceWithFragment = withDocumentFragment(withParsedFile(createInitialWorkspace(), "file-course-brief"));
+    const workspaceWithFragment = withDocumentFragment(withParsedFile(createTestWorkspace(), "file-course-brief"));
     const fragment = Object.values(workspaceWithFragment.objects).find((object) => object.type === "documentFragment");
     if (!fragment || fragment.type !== "documentFragment") {
       throw new Error("Expected document fragment fixture.");
@@ -120,7 +121,7 @@ describe("comparison action target validation", () => {
   });
 
   it("blocks hidden research, key-conclusion, and parsed-file evidence", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
 
     expect(
       validateComparisonKeyConclusionSources(
@@ -167,7 +168,7 @@ describe("comparison action target validation", () => {
   });
 
   it("blocks historical key-conclusion candidates with image, direction, unparsed file, or mismatched evidence ids", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     expect(
       validateComparisonKeyConclusionSources(
         withAnalysis(

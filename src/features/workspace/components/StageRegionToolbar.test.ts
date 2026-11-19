@@ -6,12 +6,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { ensureStageRegions, getStageRegions } from "@/domain/morpho/stageRegions";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { StageRegionToolbar, type StageRegionOpenPopover } from "./StageRegionToolbar";
 
 describe("StageRegionToolbar", () => {
   it("uses icon-only controls with accessible labels", () => {
-    const region = getStageRegions(ensureStageRegions(createInitialWorkspace()))[0];
+    const region = getStageRegions(ensureStageRegions(createTestWorkspace()))[0];
     const html = renderToStaticMarkup(
       createElement(StageRegionToolbar, {
         region,
@@ -42,7 +42,7 @@ describe("StageRegionToolbar", () => {
   });
 
   it("disables fit when locked or when a region has no visible members", () => {
-    const region = { ...getStageRegions(ensureStageRegions(createInitialWorkspace()))[0], locked: true };
+    const region = { ...getStageRegions(ensureStageRegions(createTestWorkspace()))[0], locked: true };
     const html = renderToStaticMarkup(
       createElement(StageRegionToolbar, {
         region,
@@ -64,7 +64,7 @@ describe("StageRegionToolbar", () => {
   });
 
   it("keeps the opacity panel markup when openPopover is controlled as opacity", () => {
-    const region = getStageRegions(ensureStageRegions(createInitialWorkspace()))[0];
+    const region = getStageRegions(ensureStageRegions(createTestWorkspace()))[0];
     const html = renderToStaticMarkup(
       createElement(StageRegionToolbar, {
         region,
@@ -89,7 +89,7 @@ describe("StageRegionToolbar", () => {
 
   it("uses icon changes for persisted background and lock state", () => {
     const region = {
-      ...getStageRegions(ensureStageRegions(createInitialWorkspace()))[0],
+      ...getStageRegions(ensureStageRegions(createTestWorkspace()))[0],
       backgroundVisible: false,
       locked: true
     };
@@ -118,7 +118,7 @@ describe("StageRegionToolbar", () => {
 
   it("keeps opacity open through repeated pointer commits and closes only outside or on Escape", async () => {
     (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    const region = getStageRegions(ensureStageRegions(createInitialWorkspace()))[0]!;
+    const region = getStageRegions(ensureStageRegions(createTestWorkspace()))[0]!;
     const begin = vi.fn();
     const preview = vi.fn();
     const commit = vi.fn();

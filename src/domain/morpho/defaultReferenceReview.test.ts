@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   clearVisualReviewMark,
   collectDefaultReferenceReviewTargets,
-  createInitialWorkspace,
   setDefaultReference
 } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { ImageCollectionObject, ImageObject, ImageRole, MorphoWorkspace } from "./types";
 
 const ANCHOR_ID = "image-soft-rail-v2";
@@ -56,7 +56,7 @@ function makeCollection(id: string, memberObjectIds: string[]): ImageCollectionO
 
 /** 旧锚点 + 一批延展/非延展素材的固定测试场景。 */
 function createReplacementScenario(): MorphoWorkspace {
-  const base = setDefaultReference(createInitialWorkspace(), ANCHOR_ID, {
+  const base = setDefaultReference(createTestWorkspace(), ANCHOR_ID, {
     reason: "测试：先设定旧默认参考。"
   });
 

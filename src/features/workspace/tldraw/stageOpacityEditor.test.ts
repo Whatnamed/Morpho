@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createStageRegionShapePartial, StageRegionShapeUtil, type StageRegionShape } from "./StageRegionShapeUtil";
 import { createMorphoShapePartial, isMorphoShape, MorphoShapeUtil } from "./MorphoShapeUtil";
 import { ensureStageRegions, getStageRegions } from "@/domain/morpho/stageRegions";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { areSelectionIdsEqual, normalizeCanvasSelectionIds } from "./canvasSelection";
 import { createStageOpacitySessionController } from "./stageOpacitySession";
 
@@ -83,7 +83,7 @@ function createOpacitySession(editor: Editor, stageId: string) {
 
 describe("stage opacity editor session", () => {
   function createStage() {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const region = getStageRegions(workspace)[0]!;
     const editor = createInMemoryEditor();
     editor.createShapes([createStageRegionShapePartial(region)]);
@@ -138,7 +138,7 @@ describe("stage opacity editor session", () => {
   });
 
   it("commits an active stage before beginning a different stage", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const [first, second] = getStageRegions(workspace);
     const editor = createInMemoryEditor();
     editor.createShapes([createStageRegionShapePartial(first), createStageRegionShapePartial(second)]);
@@ -162,7 +162,7 @@ describe("stage opacity editor session", () => {
 
 describe("stage selection editor integration", () => {
   it("normalizes a stage plus its member into ordinary-object selection before page state commits", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const region = getStageRegions(workspace)[0]!;
     const instance = workspace.canvas.instances.find((item) => region.memberObjectIds.includes(item.objectId))!;
     const object = workspace.objects[instance.objectId]!;

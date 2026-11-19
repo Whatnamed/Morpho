@@ -6,8 +6,9 @@ import type { PendingAiConfirmation } from "../workspaceConfirmation";
 import type { PendingComparisonConfirmation } from "../comparisonDecision";
 
 import { AiConversationPanel, getVisibleAiMessageBody, parseMarkdownBlocks } from "./AiConversationPanel";
-import { buildAiConversationPanelProps } from "./aiConversationPanelProps";
-import { createInitialWorkspace, hideObject } from "../../../domain/morpho/workspace";
+import { buildAiConversationPanelProps } from "@/test/aiConversationPanelProps";
+import { hideObject } from "../../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { recordDesignDefinitionProposal } from "../../../domain/operations/operations";
 
 describe("AiConversationPanel", () => {
@@ -39,7 +40,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("renders restored AI messages without proposal technical blocks", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const rawBody = [
       "这里是用户应该看到的说明。",
       "```json",
@@ -84,7 +85,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("renders a jumpable feedback action for saved continuity records", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -110,7 +111,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("renders research citations with the selected left-rule source style", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const citationIds = ["citation-a", "citation-b", "citation-c", "citation-d", "citation-e"];
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
@@ -153,7 +154,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("derives citation identity from the destination and keeps unsafe stored citations inert", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -199,7 +200,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("shows the actual hostname for Markdown links and renders unsafe schemes inert", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -224,7 +225,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("does not expose deprecated conversation checkpoint feedback", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -250,7 +251,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("keeps canvas-placed proposals out of the chat editor surface", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const proposed = recordDesignDefinitionProposal(workspace, {
       proposalId: "proposal-definition-on-canvas",
       title: "Definition draft on canvas",
@@ -283,7 +284,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("renders compare analysis actions only after analysis is saved", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -390,7 +391,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("renders compare object details and recommended questions before decision actions", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -470,7 +471,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("only offers restore for eliminated directions in compare decisions", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const direction = workspace.objects["direction-soft-rail"];
     if (!direction || direction.type !== "conceptDirection") {
       throw new Error("missing direction fixture");
@@ -554,7 +555,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("keeps saved compare snapshots visible when a source becomes hidden", () => {
-    const hiddenWorkspace = hideObject(createInitialWorkspace(), "direction-support-island");
+    const hiddenWorkspace = hideObject(createTestWorkspace(), "direction-support-island");
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -740,7 +741,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("uses a user bubble and assistant prose without the same bubble chrome", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -772,7 +773,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("shows a thinking indicator for an empty streaming assistant message", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -799,7 +800,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("renders ordered Agent process parts above independently streamed final body", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -858,7 +859,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("keeps image progress inside Agent Process without a duplicate Thinking row", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -902,7 +903,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("shows specific project-memory feedback only when a persisted update exists", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -935,7 +936,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("collapses completed historical Agent trace by default and keeps its duration title", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace: {
@@ -976,7 +977,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("uses the primary input action to stop an unfinished operation without adding a second stop control", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace,
@@ -1013,7 +1014,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("renders a compact status surface separate from the chat stream", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         workspace,
@@ -1062,7 +1063,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("keeps selected context compact near the input instead of flooding the chat scroll", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const selectedObjects = Object.values(workspace.objects).slice(0, 6);
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
@@ -1090,7 +1091,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("uses generic failure copy for failed chat or Compare turns", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         showFailure: true,
@@ -1129,7 +1130,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("keeps image-generation failure copy specific to image tasks", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({
         showFailure: true,
@@ -1168,7 +1169,7 @@ describe("AiConversationPanel", () => {
   });
 
   it("keeps 1/2/4/6 direction-count shortcuts without exposing model routing", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const selectedObjects = Object.values(workspace.objects).filter((object) => object.type === "conceptDirection");
     const html = renderToStaticMarkup(
       createElement(AiConversationPanel, makeProps({

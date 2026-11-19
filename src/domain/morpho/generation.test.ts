@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { reconcileWorkspaceDerivedState } from "./derivedState";
 import { createGeneratedImageFromAsset } from "./generation";
-import { createInitialWorkspace } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 describe("Morpho image generation domain helpers", () => {
   it("creates a new image object and asset without overwriting the source image", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const sourceBefore = workspace.objects["image-soft-rail-v2"];
 
     const result = createGeneratedImageFromAsset(workspace, {
@@ -64,7 +64,7 @@ describe("Morpho image generation domain helpers", () => {
   });
 
   it("attaches a generated image to the selected direction without fabricating a version source", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = createGeneratedImageFromAsset(workspace, {
       asset: {
         id: "asset-generated-direction",
@@ -105,7 +105,7 @@ describe("Morpho image generation domain helpers", () => {
   });
 
   it("keeps multiple selected images as direct sources instead of treating every reference as a parent version", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = createGeneratedImageFromAsset(workspace, {
       asset: {
         id: "asset-generated-multi-reference",
@@ -139,7 +139,7 @@ describe("Morpho image generation domain helpers", () => {
   });
 
   it("removes legacy version relations from generated images that record multiple image references", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const generated = createGeneratedImageFromAsset(workspace, {
       asset: {
         id: "asset-generated-legacy-multi-reference",
@@ -196,7 +196,7 @@ describe("Morpho image generation domain helpers", () => {
   });
 
   it("does not fabricate ownership from a legacy reference without a lineage contract", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = createGeneratedImageFromAsset(workspace, {
       asset: {
         id: "asset-generated-branch",
@@ -228,7 +228,7 @@ describe("Morpho image generation domain helpers", () => {
   });
 
   it("uses an explicit visual branch only when it belongs to the target direction", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = createGeneratedImageFromAsset(workspace, {
       asset: {
         id: "asset-generated-explicit-branch",
@@ -263,7 +263,7 @@ describe("Morpho image generation domain helpers", () => {
   });
 
   it("sizes generated image instances from intrinsic asset dimensions", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = createGeneratedImageFromAsset(workspace, {
       asset: {
         id: "asset-generated-wide",
@@ -294,7 +294,7 @@ describe("Morpho image generation domain helpers", () => {
   });
 
   it("keeps a planned generation frame when the returned asset uses a different aspect ratio", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = createGeneratedImageFromAsset(workspace, {
       asset: {
         id: "asset-generated-planned-frame",
@@ -325,7 +325,7 @@ describe("Morpho image generation domain helpers", () => {
   });
 
   it("treats an explicit generated-image position as a preferred position and avoids visible objects", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const occupied = workspace.canvas.instances[0];
     expect(occupied).toBeDefined();
 

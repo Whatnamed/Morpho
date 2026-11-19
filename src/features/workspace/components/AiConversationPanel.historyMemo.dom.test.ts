@@ -5,14 +5,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { AiMessage, MorphoWorkspace } from "@/domain/morpho/types";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 import {
   AiConversationPanel,
   aiMessageRowRenderCount,
   areAiMessageListPropsEqual
 } from "./AiConversationPanel";
-import { buildAiConversationPanelProps } from "./aiConversationPanelProps";
+import { buildAiConversationPanelProps } from "@/test/aiConversationPanelProps";
 
 /**
  * Guard for the Phase 5 message-list render isolation, in three parts:
@@ -55,7 +55,7 @@ function makeMessages(count: number): AiMessage[] {
 }
 
 function makeBaseWorkspace(): MorphoWorkspace {
-  return { ...createInitialWorkspace(), ai: { ...createInitialWorkspace().ai, messages: [] } };
+  return { ...createTestWorkspace(), ai: { ...createTestWorkspace().ai, messages: [] } };
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { addObjectsToDeliverySection } from "@/domain/morpho/deliveryPreparation";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { DeliveryObject } from "@/domain/morpho/types";
 import {
   buildDeliveryReferenceReaderTransition,
@@ -11,7 +11,7 @@ import {
 
 describe("delivery preparation UI helpers", () => {
   it("returns document reader location data for available document fragment references", () => {
-    const initialWorkspace = createInitialWorkspace();
+    const initialWorkspace = createTestWorkspace();
     const file = initialWorkspace.objects["file-course-brief"];
     if (!file || file.type !== "file") {
       throw new Error("Expected source file.");
@@ -95,7 +95,7 @@ describe("delivery preparation UI helpers", () => {
   });
 
   it("resolves image preview from the stable snapshot asset instead of the live source", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const delivery = workspace.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections[0]?.id ?? "";
     const added = addObjectsToDeliverySection(workspace, {

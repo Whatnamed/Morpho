@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { hasCanvasEditorSyncInputChange, type CanvasEditorSyncInputs } from "./canvasEditorSyncInputs";
 
 describe("canvas editor sync inputs", () => {

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { createResearchOperation } from "@/domain/operations/operations";
 import type { AgentTrace, MorphoWorkspace } from "@/domain/morpho/types";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { appendAgentTurnMessages } from "./agentTurnMessages";
 import {
   applyAgentStreamEventsToTrace,
@@ -18,7 +18,7 @@ describe("workspace commit boundary", () => {
   it("preserves streamed trace, concurrent user edits, tool writes, operation data, continuity, and final text", () => {
     const startedAt = "2026-07-13T00:00:00.000Z";
     const assistantMessageId = "assistant-agent";
-    let workspace = createInitialWorkspace();
+    let workspace = createTestWorkspace();
     const targetObjectId = Object.keys(workspace.objects)[0];
     if (!targetObjectId) {
       throw new Error("Expected the demo workspace to contain an object.");

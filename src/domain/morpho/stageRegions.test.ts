@@ -16,12 +16,12 @@ import {
   updateStageRegionStyle,
   updateStageRegionLayout
 } from "./stageRegions";
-import { createInitialWorkspace } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { MorphoObject, MorphoWorkspace } from "./types";
 
 describe("stage region membership", () => {
   it("classifies objects by semantic type, not coordinates", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     expect(classifyStageRegionKey(workspace.objects["research-night-path"]!)).toBe("research");
     expect(classifyStageRegionKey(workspace.objects["definition-current"]!)).toBe("definition");
     expect(classifyStageRegionKey(workspace.objects["direction-soft-rail"]!)).toBe("visual");
@@ -30,7 +30,7 @@ describe("stage region membership", () => {
   });
 
   it("builds four initial regions with members and bounds", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const regions = buildInitialStageRegions(workspace);
     expect(regions).toHaveLength(4);
     expect(regions.map((region) => region.key)).toEqual(["research", "definition", "visual", "delivery"]);
@@ -41,7 +41,7 @@ describe("stage region membership", () => {
   });
 
   it("initializes missing stage records without changing schemaVersion", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const withoutRegions: MorphoWorkspace = {
       ...workspace,
       canvas: { ...workspace.canvas, stageRegions: undefined }
@@ -52,7 +52,7 @@ describe("stage region membership", () => {
   });
 
   it("normalizes old stage records with persistent visual defaults", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const oldStyleWorkspace: MorphoWorkspace = {
       ...workspace,
       canvas: {
@@ -75,7 +75,7 @@ describe("stage region membership", () => {
   });
 
   it("persists 0 and 100 fill opacity without changing unrelated fields", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const region = getStageRegions(workspace)[0];
     const transparent = updateStageRegionStyle(workspace, region.id, { fillOpacity: 0, backgroundVisible: false });
     const opaque = updateStageRegionStyle(transparent, region.id, { fillOpacity: 100, backgroundVisible: true });
@@ -85,7 +85,7 @@ describe("stage region membership", () => {
   });
 
   it("resets style without moving, unlocking, or changing members", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const region = getStageRegions(workspace)[0];
     const styled = updateStageRegionStyle(workspace, region.id, {
       colorKey: "clay",
@@ -109,7 +109,7 @@ describe("stage region membership", () => {
   });
 
   it("keeps a hidden object as a member but excludes it from fit bounds", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const research = getStageRegions(workspace).find((region) => region.key === "research")!;
     const hiddenMemberId = research.memberObjectIds[0];
     const withHiddenMember: MorphoWorkspace = {
@@ -138,14 +138,14 @@ describe("stage region membership", () => {
   });
 
   it("does not fit a locked region even when it has visible members", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const region = getStageRegions(workspace)[0]!;
     const locked = updateStageRegionStyle(workspace, region.id, { locked: true });
     expect(fitStageRegionToVisibleMembers(locked, region.id)).toBe(locked);
   });
 
   it("routes proposal drafts by proposal type instead of treating every draft as a definition", () => {
-    const base = createInitialWorkspace().objects["definition-current"]!;
+    const base = createTestWorkspace().objects["definition-current"]!;
     const proposal = (proposalType: "researchAnalysis" | "designDefinition" | "conceptDirection" | "deliveryPlan") => ({
       ...base,
       id: `proposal-${proposalType}`,
@@ -160,7 +160,7 @@ describe("stage region membership", () => {
   });
 
   it("keeps empty projects quiet until a stage receives an object", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const empty: MorphoWorkspace = {
       ...workspace,
       objects: {},
@@ -170,7 +170,7 @@ describe("stage region membership", () => {
   });
 
   it("keeps an activated stage visible after its last member is deleted", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const delivery = getStageRegions(workspace).find((region) => region.key === "delivery")!;
     const objects = { ...workspace.objects };
     for (const objectId of delivery.memberObjectIds) {
@@ -183,7 +183,7 @@ describe("stage region membership", () => {
   });
 
   it("adds new active objects to semantic home but does not drop members when instances move", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const regionsBefore = getStageRegions(workspace);
     const visual = regionsBefore.find((region) => region.key === "visual")!;
     const memberId = visual.memberObjectIds[0];
@@ -205,7 +205,7 @@ describe("stage region membership", () => {
   });
 
   it("updates layout only through explicit layout writes", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const region = getStageRegions(workspace)[0];
     const next = updateStageRegionLayout(workspace, [{ id: region.id, x: 10, y: 20, w: 400, h: 300 }]);
     const updated = getStageRegions(next).find((item) => item.id === region.id)!;
@@ -213,7 +213,7 @@ describe("stage region membership", () => {
   });
 
   it("applies stage drag delta to member instances only", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const memberId = "direction-soft-rail";
     const before = workspace.canvas.instances.find((instance) => instance.objectId === memberId)!;
     const other = workspace.canvas.instances.find((instance) => instance.objectId !== memberId)!;
@@ -225,7 +225,7 @@ describe("stage region membership", () => {
   });
 
   it("treats equal stage layouts as no-op for persistence", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const regions = getStageRegions(workspace);
     expect(areStageRegionRecordsEqual(regions, regions.map((region) => ({ ...region })))).toBe(true);
     expect(
@@ -234,7 +234,7 @@ describe("stage region membership", () => {
   });
 
   it("only merges layouts that actually changed when building the persist payload", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const regions = getStageRegions(workspace);
     const same = mergeStageShapeLayoutsIntoRecords(regions, regions.map((region) => ({ ...region })));
     expect(areStageRegionRecordsEqual(regions, same)).toBe(true);
@@ -246,7 +246,7 @@ describe("stage region membership", () => {
   });
 
   it("never lets a shape layout activate an inactive stage", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const regions = getStageRegions(workspace).map((region, index) => (index === 0 ? { ...region, isActivated: false } : region));
     const merged = mergeStageShapeLayoutsIntoRecords(regions, [
       { id: regions[0].id, x: regions[0].x + 1, y: regions[0].y, w: regions[0].w, h: regions[0].h }
@@ -255,7 +255,7 @@ describe("stage region membership", () => {
   });
 
   it("builds an atomic stage-drag payload for stage + members (undo-friendly unit)", () => {
-    const workspace = ensureStageRegions(createInitialWorkspace());
+    const workspace = ensureStageRegions(createTestWorkspace());
     const regions = getStageRegions(workspace);
     const visual = regions.find((region) => region.key === "visual")!;
     const memberId = visual.memberObjectIds[0];

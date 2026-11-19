@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { ComparisonAnalysis, MorphoWorkspace } from "@/domain/morpho/types";
-import { createInitialWorkspace, hideObject } from "@/domain/morpho/workspace";
+import { hideObject } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   applyConfirmedComparisonDecision,
   isComparisonDecisionReasonRequired,
@@ -54,7 +55,7 @@ describe("comparison decision workflow", () => {
   });
 
   it("prepares all seven Compare actions without mutating the workspace", () => {
-    const workspace = withAnalysis(createInitialWorkspace(), makeWorkflowAnalysis());
+    const workspace = withAnalysis(createTestWorkspace(), makeWorkflowAnalysis());
     const before = structuredClone(workspace);
     const cases = [
       ["setPrimary", "direction-support-island", "compareSetPrimary"],
@@ -90,7 +91,7 @@ describe("comparison decision workflow", () => {
     ] as const;
 
     for (const [action, objectId] of cases) {
-      const workspace = withAnalysis(createInitialWorkspace(), makeWorkflowAnalysis());
+      const workspace = withAnalysis(createTestWorkspace(), makeWorkflowAnalysis());
       const prepared = prepareComparisonDecision(workspace, "comparison-workflow", action, objectId);
       if (prepared.status !== "ready") {
         throw new Error(prepared.reason);
@@ -132,7 +133,7 @@ describe("comparison decision workflow", () => {
       ).status
     ).toBe("applied");
 
-    const keyConclusionWorkspace = withAnalysis(createInitialWorkspace(), makeWorkflowAnalysis());
+    const keyConclusionWorkspace = withAnalysis(createTestWorkspace(), makeWorkflowAnalysis());
     const keyConclusion = prepareComparisonDecision(keyConclusionWorkspace, "comparison-workflow", "createKeyConclusion");
     if (keyConclusion.status !== "ready") {
       throw new Error(keyConclusion.reason);
@@ -158,7 +159,7 @@ describe("comparison decision workflow", () => {
     expect(isComparisonDecisionReasonRequired("setDefaultReference")).toBe(true);
     expect(isComparisonDecisionReasonRequired("clearDefaultReference")).toBe(true);
 
-    const workspace = withAnalysis(createInitialWorkspace(), makeWorkflowAnalysis());
+    const workspace = withAnalysis(createTestWorkspace(), makeWorkflowAnalysis());
     const required = prepareComparisonDecision(workspace, "comparison-workflow", "eliminate", "direction-support-island");
     if (required.status !== "ready") {
       throw new Error(required.reason);
@@ -201,7 +202,7 @@ describe("comparison decision workflow", () => {
   });
 
   it("blocks key-conclusion writeback when its text evidence becomes hidden", () => {
-    const workspace = withAnalysis(createInitialWorkspace(), makeWorkflowAnalysis());
+    const workspace = withAnalysis(createTestWorkspace(), makeWorkflowAnalysis());
     const prepared = prepareComparisonDecision(workspace, "comparison-workflow", "createKeyConclusion");
     if (prepared.status !== "ready") {
       throw new Error(prepared.reason);
@@ -232,7 +233,7 @@ function withAnalysis(workspace: MorphoWorkspace, analysis: ComparisonAnalysis):
 }
 
 function makeEliminatedWorkspace(): MorphoWorkspace {
-  const workspace = createInitialWorkspace();
+  const workspace = createTestWorkspace();
   const direction = workspace.objects["direction-support-island"];
   if (!direction || direction.type !== "conceptDirection") {
     throw new Error("Missing comparison direction fixture.");

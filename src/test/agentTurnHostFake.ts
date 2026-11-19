@@ -4,8 +4,8 @@ import type { MorphoWorkspace } from "@/domain/morpho/types";
 import {
   commitWorkspaceStateNow,
   type WorkspaceCommitTransform
-} from "./workspaceCommitBoundary";
-import type { WorkspacePersistenceState } from "./workspacePersistence";
+} from "@/features/workspace/workspaceCommitBoundary";
+import type { WorkspacePersistenceState } from "@/features/workspace/workspacePersistence";
 
 export type MutableSlot<T> = {
   get: () => T;

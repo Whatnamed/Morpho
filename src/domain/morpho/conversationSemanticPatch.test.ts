@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   buildSemanticPatchAuthorization,
   buildSemanticPatchSummary,
@@ -127,7 +127,7 @@ describe("conversation semantic patch", () => {
   });
 
   it("validates quote containment and rejects unauthorized workspace refs without scanning the full workspace", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
       draft,
@@ -179,7 +179,7 @@ describe("conversation semantic patch", () => {
   });
 
   it("requires real authorized decision refs for decision and rejection reasons", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
       draft: "淘汰原因是它太像医疗器械。",
@@ -210,7 +210,7 @@ describe("conversation semantic patch", () => {
   });
 
   it("does not write semantic entries when the same assistant reply contains a pending proposal block", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
       draft,

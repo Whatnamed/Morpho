@@ -5,7 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { AiTaskMode, ComparisonAnalysis, MorphoWorkspace } from "@/domain/morpho/types";
-import { createInitialWorkspace, hideObject } from "@/domain/morpho/workspace";
+import { hideObject } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import {
   useWorkspaceComparisonDecisionController,
@@ -41,7 +42,7 @@ describe("useWorkspaceComparisonDecisionController", () => {
     ] as const;
 
     for (const [action, objectId, expectedKind] of cases) {
-      const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis()));
+      const harness = createHarness(withAnalysis(createTestWorkspace(), makeAnalysis()));
       if (action === "restoreAlternative") {
         harness.workspace = makeEliminatedWorkspace();
       }
@@ -60,7 +61,7 @@ describe("useWorkspaceComparisonDecisionController", () => {
   });
 
   it("does not overwrite an existing non-Compare confirmation", async () => {
-    const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis()));
+    const harness = createHarness(withAnalysis(createTestWorkspace(), makeAnalysis()));
     harness.pending = {
       kind: "deleteObject",
       targetObjectId: "direction-support-island",
@@ -83,7 +84,7 @@ describe("useWorkspaceComparisonDecisionController", () => {
   });
 
   it("confirms an optional-reason action exactly once and returns UI effects", async () => {
-    const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis()));
+    const harness = createHarness(withAnalysis(createTestWorkspace(), makeAnalysis()));
     const rendered = await renderController(createInput(harness));
 
     rendered.current().requestAction("comparison-controller", "setPrimary", "direction-support-island");
@@ -111,7 +112,7 @@ describe("useWorkspaceComparisonDecisionController", () => {
   });
 
   it("blocks an empty required reason without undo or domain mutation", async () => {
-    const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis()));
+    const harness = createHarness(withAnalysis(createTestWorkspace(), makeAnalysis()));
     const rendered = await renderController(createInput(harness));
 
     rendered.current().requestAction("comparison-controller", "eliminate", "direction-support-island");
@@ -128,7 +129,7 @@ describe("useWorkspaceComparisonDecisionController", () => {
   });
 
   it("cancels a Compare confirmation without workspace, undo, or decision writes", async () => {
-    const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis()));
+    const harness = createHarness(withAnalysis(createTestWorkspace(), makeAnalysis()));
     const rendered = await renderController(createInput(harness));
 
     rendered.current().requestAction("comparison-controller", "setPrimary", "direction-support-island");
@@ -146,7 +147,7 @@ describe("useWorkspaceComparisonDecisionController", () => {
   });
 
   it("revalidates the current workspace before confirming", async () => {
-    const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis()));
+    const harness = createHarness(withAnalysis(createTestWorkspace(), makeAnalysis()));
     const rendered = await renderController(createInput(harness));
 
     rendered.current().requestAction("comparison-controller", "setPrimary", "direction-support-island");
@@ -164,7 +165,7 @@ describe("useWorkspaceComparisonDecisionController", () => {
   });
 
   it("clears Compare pending state on project transitions, keeps it on same-project rerenders, and rejects stale callbacks", async () => {
-    const harness = createHarness(withAnalysis(createInitialWorkspace(), makeAnalysis(), "project-a"));
+    const harness = createHarness(withAnalysis(createTestWorkspace(), makeAnalysis(), "project-a"));
     const rendered = await renderController(createInput(harness));
 
     rendered.current().requestAction("comparison-controller", "setPrimary", "direction-support-island");
@@ -176,11 +177,11 @@ describe("useWorkspaceComparisonDecisionController", () => {
     await rendered.rerender(createInput(harness));
     expect(harness.pending?.kind).toBe("compareSetPrimary");
 
-    harness.workspace = withAnalysis(createInitialWorkspace(), makeAnalysis(), "project-b");
+    harness.workspace = withAnalysis(createTestWorkspace(), makeAnalysis(), "project-b");
     await rendered.rerender(createInput(harness, { projectId: "project-b" }));
     expect(harness.pending).toBeNull();
 
-    harness.workspace = withAnalysis(createInitialWorkspace(), makeAnalysis(), "project-a");
+    harness.workspace = withAnalysis(createTestWorkspace(), makeAnalysis(), "project-a");
     await rendered.rerender(createInput(harness, { projectId: "project-a" }));
     const beforeStale = structuredClone(harness.workspace);
     staleRequest("comparison-controller", "setPrimary", "direction-support-island");
@@ -330,7 +331,7 @@ function withAnalysis(workspace: MorphoWorkspace, analysis: ComparisonAnalysis, 
 }
 
 function makeEliminatedWorkspace(): MorphoWorkspace {
-  const workspace = createInitialWorkspace();
+  const workspace = createTestWorkspace();
   const direction = workspace.objects["direction-support-island"];
   if (!direction || direction.type !== "conceptDirection") {
     throw new Error("Missing comparison direction fixture.");

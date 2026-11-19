@@ -6,7 +6,7 @@ import { hashAPlusExternalActionBody } from "./agentExternalActionClientAPlus";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import { captureSourceSnapshots } from "@/domain/morpho/sourceResolution";
 import { restorePreparedAgentTurnProductAPlus } from "./agentTurnProductPreparationAPlus";
-import { createAgentTurnHostFake } from "./agentTurnHostFake";
+import { createAgentTurnHostFake } from "@/test/agentTurnHostFake";
 import type { AgentTurnHost } from "./agentTurnHost";
 import {
   createAgentTurnLifecycleState,

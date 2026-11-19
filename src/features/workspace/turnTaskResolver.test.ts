@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { resolveTurnTaskContract } from "./turnTaskResolver";
 import { buildTurnTaskContexts } from "./taskContext";
 import { getAgentToolAuthorizationBlockReason, resolveAgentToolAuthority } from "./agentToolAuthority";

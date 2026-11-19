@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { createAgentTurnCoordinatorHttpHost } from "@/features/workspace/agentTurnCoordinatorHttpHost";
 import type { AgentTurnHost } from "@/features/workspace/agentTurnHost";
-import { createAgentTurnHostFake } from "@/features/workspace/agentTurnHostFake";
+import { createAgentTurnHostFake } from "@/test/agentTurnHostFake";
 import { createAgentTurnRecoveryStore, type APlusTurnRecoveryRecord } from "@/features/workspace/agentTurnRecoveryStore";
 import { prepareAgentTurnProductAPlus } from "@/features/workspace/agentTurnProductPreparationAPlus";
 import { detachMorphoAgentTurnForPageUnload, runMorphoAgentTurn } from "@/features/workspace/agentTurnRunner";

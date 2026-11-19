@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "../morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { ImageObject, MorphoWorkspace } from "../morpho/types";
 import { compileImagePrompt, compileVisualGenerationPlan, IMAGE_PROMPT_CONTRACT_VERSION } from "./imagePromptCompiler";
 import { resolveVisualReferences } from "./visualReferenceResolver";
@@ -8,7 +8,7 @@ import type { VisualIntentItem } from "./types";
 
 describe("Image Prompt Compiler and reference resolver", () => {
   it("resolves explicit, selected, lineage, default, and project references deterministically with omissions", () => {
-    const workspace = withImageAssets(createInitialWorkspace());
+    const workspace = withImageAssets(createTestWorkspace());
     const resolution = resolveVisualReferences({
       workspace,
       intent: intent({ requestedReferenceObjectIds: ["image-night-scenario", "image-night-scenario"] }),
@@ -36,7 +36,7 @@ describe("Image Prompt Compiler and reference resolver", () => {
   });
 
   it("honors default-reference exclusion and retains explicit cross-direction references", () => {
-    const workspace = withImageAssets(createInitialWorkspace());
+    const workspace = withImageAssets(createTestWorkspace());
     const resolution = resolveVisualReferences({
       workspace,
       intent: intent({
@@ -63,7 +63,7 @@ describe("Image Prompt Compiler and reference resolver", () => {
   });
 
   it("compiles current user input, Design Brief, direction revision, role policy, and preservation boundaries", () => {
-    const workspace = withImageAssets(createInitialWorkspace());
+    const workspace = withImageAssets(createTestWorkspace());
     const visualIntent = intent({
       title: "局部修改转角节点",
       purpose: "只改转角连接，继续发展当前方案",
@@ -97,7 +97,7 @@ describe("Image Prompt Compiler and reference resolver", () => {
   });
 
   it("compiles complete 3-image and 12-image plans without treating quick presets as a backend cap", () => {
-    const workspace = withImageAssets(createInitialWorkspace());
+    const workspace = withImageAssets(createTestWorkspace());
     const three = compileVisualGenerationPlan({
       workspace,
       kind: "visualDevelopment",
@@ -122,7 +122,7 @@ describe("Image Prompt Compiler and reference resolver", () => {
   });
 
   it("uses distinct task templates and model adapters for each visual role", () => {
-    const workspace = withImageAssets(createInitialWorkspace());
+    const workspace = withImageAssets(createTestWorkspace());
     const roles = [
       ["preview", "任务模板：方向预览"],
       ["sceneVisual", "任务模板：使用场景"],
@@ -174,7 +174,7 @@ describe("Image Prompt Compiler and reference resolver", () => {
   });
 
   it("prioritizes design intent over rendering decoration for every role", () => {
-    const workspace = withImageAssets(createInitialWorkspace());
+    const workspace = withImageAssets(createTestWorkspace());
     for (const role of ["preview", "sceneVisual", "cmfStudy", "detailStudy", "primaryVisual"] as const) {
       const visualIntent = intent({ title: `生成${role}`, purpose: "验证表达", changeGoals: ["验证表达"], role });
       const referenceResolution = resolveVisualReferences({
@@ -194,7 +194,7 @@ describe("Image Prompt Compiler and reference resolver", () => {
   });
 
   it("grounds scenario visuals in scale, action, and human-product relationship", () => {
-    const workspace = withImageAssets(createInitialWorkspace());
+    const workspace = withImageAssets(createTestWorkspace());
     const visualIntent = intent({ title: "使用场景图", purpose: "说明夜间使用情境", role: "sceneVisual" });
     const referenceResolution = resolveVisualReferences({
       workspace,

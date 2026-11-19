@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
 import { validateCurrentWorkspaceContract } from "@/domain/morpho/currentWorkspaceContractValidation";
-import { migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
+import { migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspaceCodec";
 import type { RunMorphoAgentTurnAPlusInput } from "@/features/workspace/agentTurnProductPreparationAPlus";
 import { loadAgentLabAssets } from "./assets";
 

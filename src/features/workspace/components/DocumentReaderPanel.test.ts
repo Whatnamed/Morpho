@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { createInitialWorkspace } from "../../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { buildDocumentReaderBlocks } from "../documentReader";
 import { DocumentReaderPanel, buildSelectionWarning } from "./DocumentReaderPanel";
 
@@ -24,7 +24,7 @@ describe("DocumentReaderPanel selection helpers", () => {
   });
 
   it("renders an original source preview beside parsed text when the source file can be previewed", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const file = workspace.objects["file-course-brief"];
 
     if (!file || file.type !== "file") {
@@ -56,7 +56,7 @@ describe("DocumentReaderPanel selection helpers", () => {
   });
 
   it("states unsupported original previews honestly while keeping parsed text readable", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const seedFile = workspace.objects["file-course-brief"];
 
     if (!seedFile || seedFile.type !== "file") {

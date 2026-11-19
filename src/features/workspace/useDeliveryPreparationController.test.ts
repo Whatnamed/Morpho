@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createDeliverySectionDraft } from "@/domain/morpho/deliveryPreparation";
 import { importTextObject } from "@/domain/morpho/imports";
-import { createBlankWorkspace, createInitialWorkspace, hideObject } from "@/domain/morpho/workspace";
+import { createBlankWorkspace, hideObject } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { DeliveryObject, MorphoWorkspace } from "@/domain/morpho/types";
 
 import {
@@ -31,7 +32,7 @@ afterEach(async () => {
 
 describe("useDeliveryPreparationController", () => {
   it("opens and closes while selecting a valid requested delivery", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
 
     act(() => harness.current().open("delivery-ppt-six"));
 
@@ -44,7 +45,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("falls back from a removed requested delivery without writing workspace state", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const before = harness.workspace();
 
     act(() => harness.current().open("delivery-board-a1"));
@@ -73,7 +74,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("selects another delivery and clears the active section", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const board = getDelivery(harness.workspace(), "delivery-board-a1");
     const sectionId = board.sections[0]?.id;
     if (!sectionId) {
@@ -138,7 +139,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("uses the latest workspace for a reference mutation and keeps concurrent objects", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const delivery = getDelivery(harness.workspace(), "delivery-board-a1");
     const sectionId = delivery.sections[0]?.id;
     if (!sectionId) {
@@ -173,7 +174,7 @@ describe("useDeliveryPreparationController", () => {
 
   it("returns blocked reasons once and preserves the active state", async () => {
     const onBlocked = vi.fn();
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace(), onBlocked });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace(), onBlocked });
     act(() => harness.current().open("delivery-board-a1"));
     const before = harness.workspace();
     const activeBefore = harness.current().activeDeliveryObjectId;
@@ -194,7 +195,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("creates, updates, moves, and removes sections through the domain functions", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const delivery = getDelivery(harness.workspace(), "delivery-board-a1");
 
     let created!: ReturnType<DeliveryPreparationController["createSection"]>;
@@ -237,7 +238,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("adds, moves, edits, and removes real delivery references", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const delivery = getDelivery(harness.workspace(), "delivery-board-a1");
     const firstSectionId = delivery.sections[0]?.id;
     const secondSectionId = delivery.sections[1]?.id;
@@ -287,7 +288,7 @@ describe("useDeliveryPreparationController", () => {
 
   it("refreshes a changed reference with the fixed reason and blocks unavailable sources", async () => {
     const onBlocked = vi.fn();
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace(), onBlocked });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace(), onBlocked });
     const delivery = getDelivery(harness.workspace(), "delivery-board-a1");
     const sectionId = delivery.sections[0]?.id;
     if (!sectionId) {
@@ -337,7 +338,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("adds, resolves, reopens, and removes manual gaps", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const delivery = getDelivery(harness.workspace(), "delivery-board-a1");
     const sectionId = delivery.sections[0]?.id;
     if (!sectionId) {
@@ -367,7 +368,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("applies and discards real pending section drafts", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const delivery = getDelivery(harness.workspace(), "delivery-board-a1");
     const sectionId = delivery.sections[0]?.id;
     if (!sectionId) {
@@ -424,7 +425,7 @@ describe("useDeliveryPreparationController", () => {
 
   it("blocks section draft requests without changing pending target or workspace", async () => {
     const onBlocked = vi.fn();
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const harness = await renderController({ initialWorkspace: workspace, onBlocked });
     const before = harness.workspace();
 
@@ -444,7 +445,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("builds the exact section draft prompt and clears its pending target", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const delivery = getDelivery(harness.workspace(), "delivery-board-a1");
     const sectionId = delivery.sections[0]?.id;
     if (!sectionId) {
@@ -491,7 +492,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("clears active and pending delivery state without exposing it during a project change", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const delivery = getDelivery(harness.workspace(), "delivery-board-a1");
     const sectionId = delivery.sections[0]?.id;
     if (!sectionId) {
@@ -536,7 +537,7 @@ describe("useDeliveryPreparationController", () => {
   });
 
   it("blocks stale domain operations after A to B to A2", async () => {
-    const harness = await renderController({ initialWorkspace: createInitialWorkspace() });
+    const harness = await renderController({ initialWorkspace: createTestWorkspace() });
     const staleCreateDelivery = harness.current().createDelivery;
     const staleCreateSection = harness.current().createSection;
 

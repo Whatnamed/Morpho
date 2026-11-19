@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { getUsableConversationMessages } from "@/domain/morpho/conversationCompaction";
 import { createProviderOutputSnapshot } from "@/domain/morpho/providerInputSnapshot";
 import {
@@ -74,7 +74,7 @@ describe("agent turn work ledger", () => {
 
 describe("agent turn messages", () => {
   it("keeps the user draft and assistant placeholder in the workspace used for later agent writeback", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const next = appendAgentTurnMessages(workspace, {
       userMessageId: "user-agent-turn",
       assistantMessageId: "assistant-agent-turn",
@@ -140,7 +140,7 @@ describe("agent turn messages", () => {
     ["failedDuringProvider", "failed"],
     ["cancelledDuringProvider", "cancelled"]
   ] as const)("finalizes %s once and removes the whole pair from usable context", (outcome, status) => {
-    const workspace = appendAgentTurnMessages(createInitialWorkspace(), {
+    const workspace = appendAgentTurnMessages(createTestWorkspace(), {
       userMessageId: `user-${outcome}`,
       assistantMessageId: `assistant-${outcome}`,
       userBody: "继续海洋浮标",
@@ -206,7 +206,7 @@ describe("agent turn messages", () => {
     ["partialSuccess", "已完成读取，但写入失败。"],
     ["pendingConfirmation", "已准备确认，尚未执行。"]
   ] as const)("keeps only a bounded %s outcome summary in usable context", (outcome, summary) => {
-    const workspace = appendAgentTurnMessages(createInitialWorkspace(), {
+    const workspace = appendAgentTurnMessages(createTestWorkspace(), {
       userMessageId: `user-${outcome}`,
       assistantMessageId: `assistant-${outcome}`,
       userBody: "处理海洋浮标资料",

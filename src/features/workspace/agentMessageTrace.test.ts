@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   AGENT_TRACE_MAX_ACTIVITY_DETAIL_CHARS,
   AGENT_TRACE_MAX_PARTS,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "../morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { VisualIntentItem } from "./types";
 import {
   inferImageRole,
@@ -50,7 +50,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("requires direction preview plans to match selected directions exactly", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = validateVisualGenerationPlan(workspace, {
       plan: {
         kind: "directionPreview",
@@ -78,7 +78,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("allows controlled multi-preview counts per selected direction", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = validateVisualGenerationPlan(workspace, {
       plan: {
         kind: "directionPreview",
@@ -133,7 +133,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("blocks wrong direction preview plans while allowing arbitrary positive counts", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
 
     expect(
       validateVisualGenerationPlan(workspace, {
@@ -209,7 +209,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("blocks plan items that cite objects outside the allowed scope", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = validateVisualGenerationPlan(workspace, {
       plan: {
         kind: "visualDevelopment",
@@ -237,7 +237,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("rejects an incomplete visual development count instead of silently slicing the plan", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = validateVisualGenerationPlan(workspace, {
       plan: {
         kind: "visualDevelopment",
@@ -274,7 +274,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("preserves every requested visual development item in a validated Agent batch", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = validateVisualGenerationPlan(workspace, {
       plan: {
         kind: "visualDevelopment",
@@ -314,7 +314,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("drops fabricated visual branch ids from visual development plans", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = validateVisualGenerationPlan(workspace, {
       plan: {
         kind: "visualDevelopment",
@@ -350,7 +350,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("blocks visual development across directions without a matching target", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = validateVisualGenerationPlan(workspace, {
       plan: {
         kind: "visualDevelopment",
@@ -383,7 +383,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("keeps an explicitly selected image when it crosses into another direction", () => {
-    const workspace = withAvailableImages(createInitialWorkspace());
+    const workspace = withAvailableImages(createTestWorkspace());
     const intent = visualIntent({
       targetDirectionId: "direction-support-island",
       requestedReferenceObjectIds: ["image-soft-rail-v2"]
@@ -408,7 +408,7 @@ describe("visual generation plan parsing and validation", () => {
   });
 
   it("does not inject an automatic reference from another direction, while retaining or excluding the default explicitly", () => {
-    const workspace = withAvailableImages(createInitialWorkspace());
+    const workspace = withAvailableImages(createTestWorkspace());
     const automatic = resolveVisualReferences({
       workspace,
       intent: visualIntent({ targetDirectionId: "direction-support-island" }),
@@ -457,7 +457,7 @@ function visualIntent(overrides: Partial<VisualIntentItem> = {}): VisualIntentIt
   };
 }
 
-function withAvailableImages(workspace: ReturnType<typeof createInitialWorkspace>) {
+function withAvailableImages(workspace: ReturnType<typeof createTestWorkspace>) {
   const objects = { ...workspace.objects };
   for (const object of Object.values(objects)) {
     if (object.type === "image") {

@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   CanvasContextMenu,
   getDirectionMenuVerticalDirection,
@@ -12,7 +12,7 @@ import {
 
 describe("SelectionToolbar", () => {
   it("renders action tools near the selection without repeating object titles", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const selected = [workspace.objects["image-soft-rail-v2"]];
 
     const html = renderToStaticMarkup(
@@ -66,7 +66,7 @@ describe("SelectionToolbar", () => {
   });
 
   it("shows an inactive pin for images that are not the default reference", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const selected = [workspace.objects["image-soft-rail-v2"]];
     if (!selected[0] || selected[0].type !== "image") {
       throw new Error("Expected seed image.");
@@ -114,7 +114,7 @@ describe("SelectionToolbar", () => {
   });
 
   it("keeps detail actions neutral and changes the trace icon instead of adding an active fill", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const selected = [workspace.objects["research-night-path"]];
     const html = renderToStaticMarkup(
       createElement(SelectionToolbar, {
@@ -158,7 +158,7 @@ describe("SelectionToolbar", () => {
   });
 
   it("offers setting a non-current design definition as current", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const current = workspace.objects["definition-current"];
     if (!current || current.type !== "designDefinition") {
       throw new Error("Expected a design definition.");
@@ -203,7 +203,7 @@ describe("SelectionToolbar", () => {
   });
 
   it("offers research detail only for a selected research object", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const selected = [workspace.objects["research-night-path"]];
 
     const html = renderToStaticMarkup(
@@ -270,7 +270,7 @@ describe("SelectionToolbar", () => {
   };
 
   it("offers stable layer operations in the Morpho context menu", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const html = renderToStaticMarkup(
       createElement(CanvasContextMenu, {
         x: 100,
@@ -423,7 +423,7 @@ describe("SelectionToolbar", () => {
   });
 
   it("offers a direct detail action for a selected concept direction", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const direction = workspace.objects["direction-soft-rail"];
     if (!direction || direction.type !== "conceptDirection") {
       throw new Error("Expected concept direction.");
@@ -474,7 +474,7 @@ describe("SelectionToolbar", () => {
   });
 
   it("keeps hide and delete in the direction menu only, while ordinary objects retain generic actions", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const direction = workspace.objects["direction-soft-rail"]!;
     const image = workspace.objects["image-soft-rail-v2"]!;
     expect(shouldRenderGenericObjectActions([direction])).toBe(false);

@@ -6,7 +6,9 @@ import type { VisualIntentItem } from "@/domain/operations/types";
 import { createGeneratedImageFromAsset } from "@/domain/morpho/generation";
 import { traceDesignChain } from "@/domain/morpho/designTrace";
 import { validateCurrentMorphoWorkspace } from "@/domain/morpho/currentWorkspaceValidation";
-import { createInitialWorkspace, parseWorkspace, serializeWorkspace, collectDefaultReferenceReviewTargets, deleteObject } from "@/domain/morpho/workspace";
+import { collectDefaultReferenceReviewTargets, deleteObject } from "@/domain/morpho/workspace";
+import { parseWorkspace, serializeWorkspace } from "@/domain/morpho/workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { createEditableProjectBackupManifest } from "@/domain/morpho/projectArchive";
 import { createEditableProjectBackupBundle, validateEditableProjectBackupBundle, planEditableProjectBackupRestore } from "@/domain/morpho/projectBundles";
 import type { AssetRecord, ImageObject, MorphoWorkspace } from "@/domain/morpho/types";
@@ -29,7 +31,7 @@ function asset(id: string): AssetRecord {
     storageKey: `blob:${id}`, sourceType: "aiGeneratedImage", width: 1, height: 1 };
 }
 function fixture(): MorphoWorkspace {
-  const workspace = createInitialWorkspace();
+  const workspace = createTestWorkspace();
   for (const object of Object.values(workspace.objects)) {
     if (object.type !== "image") continue;
     const record = asset(`asset-p4-${object.id}`);

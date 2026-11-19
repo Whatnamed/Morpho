@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace, hideObject } from "../../domain/morpho/workspace";
+import { hideObject } from "../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { buildTaskContext } from "./taskContext";
 import { applyConversationSemanticPatchFromReply } from "./workspaceSemanticPatch";
 
@@ -8,7 +9,7 @@ const draft = "Keep the night light warm and do not make it look medical.";
 
 describe("workspace conversation semantic patch helpers", () => {
   it("strips semantic JSON, writes authorized entries, and ignores provider summary", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const context = buildTaskContext(workspace, {
       kind: "general",
       draft,
@@ -90,7 +91,7 @@ describe("workspace conversation semantic patch helpers", () => {
   });
 
   it("does not write semantic entries when a proposal is present in the same reply", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const context = buildTaskContext(workspace, {
       kind: "designDefinition",
       draft,
@@ -145,7 +146,7 @@ describe("workspace conversation semantic patch helpers", () => {
   });
 
   it("does not authorize hidden selected objects as new active semantic sources", () => {
-    const workspace = hideObject(createInitialWorkspace(), "image-soft-rail-v2");
+    const workspace = hideObject(createTestWorkspace(), "image-soft-rail-v2");
     const context = buildTaskContext(workspace, {
       kind: "visualDevelopment",
       draft,
@@ -187,7 +188,7 @@ describe("workspace conversation semantic patch helpers", () => {
   });
 
   it("strips schema-invalid semantic blocks from visible text without writing continuity", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const context = buildTaskContext(workspace, {
       kind: "general",
       draft,
@@ -229,7 +230,7 @@ describe("workspace conversation semantic patch helpers", () => {
   });
 
   it("skips image-generation replies even when a semantic patch block appears", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const context = buildTaskContext(workspace, {
       kind: "visualDevelopment",
       draft,
@@ -274,9 +275,9 @@ describe("workspace conversation semantic patch helpers", () => {
     const userMessageId = "ai-user-semantic-client-4";
     const userMessageCreatedAt = "2026-06-30T11:03:00.000Z";
     const workspace = {
-      ...createInitialWorkspace(),
+      ...createTestWorkspace(),
       ai: {
-        ...createInitialWorkspace().ai,
+        ...createTestWorkspace().ai,
         messages: [
           {
             id: userMessageId,

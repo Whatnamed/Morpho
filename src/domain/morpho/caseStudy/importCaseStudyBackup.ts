@@ -7,7 +7,7 @@ import { unzipSync } from "fflate";
 import { planEditableProjectBackupRestore, validateEditableProjectBackupBundle } from "../projectBundles";
 import type { EditableProjectBackupManifest } from "../projectArchive";
 import type { AssetRecord, MorphoObject, MorphoWorkspace } from "../types";
-import { parseWorkspace } from "../workspace";
+import { parseWorkspace } from "../workspaceCodec";
 import { fingerprintCaseStudyWorkspace } from "./caseStudyFingerprint";
 import { CURRENT_CASE_STUDY_ID } from "./currentCaseStudyConstants";
 

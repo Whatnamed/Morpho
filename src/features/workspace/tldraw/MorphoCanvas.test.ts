@@ -1,6 +1,7 @@
 ﻿import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace, getRenderableCanvasInstances } from "@/domain/morpho/workspace";
+import { getRenderableCanvasInstances } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { recordDesignDefinitionProposal } from "@/domain/operations/operations";
 import {
   MORPHO_EDITOR_SYNC_RUN_OPTIONS,
@@ -39,7 +40,7 @@ describe("MorphoCanvas focus navigation", () => {
   });
 
   it("restores valid persisted selections while filtering hidden and missing objects", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const visible = workspace.objects["image-soft-rail-v2"]!;
     const hidden = { ...workspace.objects["image-night-rail"]!, visibility: "hidden" as const };
     const shapes = [
@@ -52,7 +53,7 @@ describe("MorphoCanvas focus navigation", () => {
   });
 
   it("uses real canvas instance positions before falling back to fixed landmarks", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const movedWorkspace = {
       ...workspace,
       canvas: {
@@ -97,7 +98,7 @@ describe("MorphoCanvas focus navigation", () => {
   });
 
   it("treats newly imported object shapes as active when the latest workspace contains them", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const importedObject = {
       id: "imported-text-object",
       type: "text" as const,
@@ -126,7 +127,7 @@ describe("MorphoCanvas focus navigation", () => {
   });
 
   it("renders pending design definition proposals through real workspace canvas objects", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const proposed = recordDesignDefinitionProposal(workspace, {
       proposalId: "proposal-definition-on-tldraw-canvas",
       title: "Definition draft A",
@@ -170,7 +171,7 @@ describe("MorphoCanvas focus navigation", () => {
   });
 
   it("keeps pending proposal shapes active while their proposal is pending", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const proposed = recordDesignDefinitionProposal(workspace, {
       proposalId: "proposal-active-shape",
       title: "Definition proposal",
@@ -221,7 +222,7 @@ describe("MorphoCanvas focus navigation", () => {
 
 
   it("keeps pending editor geometry ahead of stale workspace geometry while syncing back to tldraw", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const instance = workspace.canvas.instances.find((item) => item.objectId === "image-soft-rail-v2");
 
     if (!instance) {

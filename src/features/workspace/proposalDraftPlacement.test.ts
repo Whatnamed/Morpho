@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   getPlacementNearObjects,
   getProposalPlacement,
@@ -17,7 +17,7 @@ describe("proposal draft placement", () => {
   });
 
   it("places work to the right of its source objects", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const source = workspace.canvas.instances[0];
     expect(source).toBeDefined();
 
@@ -32,7 +32,7 @@ describe("proposal draft placement", () => {
   });
 
   it("keeps proposal fallbacks tied to the current canvas view", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     expect(getProposalPlacement(workspace, [], "definition")).toEqual({
       x: workspace.canvas.view.x + 280,
       y: workspace.canvas.view.y + 180

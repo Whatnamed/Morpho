@@ -7,14 +7,15 @@ import {
   resolveComparisonSelection,
   validateComparisonAnalysis
 } from "./comparisonAnalysis";
-import { createInitialWorkspace, hideObject } from "./workspace";
+import { hideObject } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { MorphoWorkspace } from "./types";
 import { buildDocumentReaderBlocks } from "@/features/workspace/documentReader";
 import { buildDocumentFragmentDraft, createDocumentFragment, resolveDocumentFragmentSelection } from "@/features/workspace/documentFragments";
 
 describe("comparison analysis domain rules", () => {
   it("allows 2 active directions, 4 active images, and valid mixed selections with an explicit shared goal", () => {
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief");
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief");
 
     expect(resolveComparisonSelection(workspace, ["direction-soft-rail", "direction-support-island"]).status).toBe("ready");
     expect(
@@ -39,7 +40,7 @@ describe("comparison analysis domain rules", () => {
   });
 
   it("allows active document fragments as explicit Compare text sources with documentFragment evidence basis", () => {
-    const workspace = withDocumentFragment(withParsedFile(createInitialWorkspace(), "file-course-brief"));
+    const workspace = withDocumentFragment(withParsedFile(createTestWorkspace(), "file-course-brief"));
     const fragment = Object.values(workspace.objects).find((object) => object.type === "documentFragment");
     if (!fragment || fragment.type !== "documentFragment") {
       throw new Error("Expected document fragment fixture.");
@@ -112,7 +113,7 @@ describe("comparison analysis domain rules", () => {
   });
 
   it("blocks documentFragment evidence basis when the fragment body was not sent to the provider", () => {
-    const workspace = withDocumentFragment(withParsedFile(createInitialWorkspace(), "file-course-brief"));
+    const workspace = withDocumentFragment(withParsedFile(createTestWorkspace(), "file-course-brief"));
     const fragment = Object.values(workspace.objects).find((object) => object.type === "documentFragment");
     if (!fragment || fragment.type !== "documentFragment") {
       throw new Error("Expected document fragment fixture.");
@@ -166,7 +167,7 @@ describe("comparison analysis domain rules", () => {
   });
 
   it("blocks fewer than 2, more than 4, duplicate, hidden, missing, or unparsed file selections", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     expect(resolveComparisonSelection(workspace, ["direction-soft-rail"]).status).toBe("blocked");
     expect(
       resolveComparisonSelection(workspace, [
@@ -186,7 +187,7 @@ describe("comparison analysis domain rules", () => {
   });
 
   it("blocks mixed sources without a shared comparison target", () => {
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief");
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief");
     const result = buildComparisonAuthorization({
       workspace,
       selectedObjectIds: ["direction-soft-rail", "file-course-brief", "image-soft-rail-v2"],
@@ -283,7 +284,7 @@ describe("comparison analysis domain rules", () => {
   });
 
   it("requires exact selection coverage and valid key conclusion candidate evidence", () => {
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief");
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief");
     const authorization = getReadyAuthorization(
       buildComparisonAuthorization({
         workspace,
@@ -409,7 +410,7 @@ describe("comparison analysis domain rules", () => {
   });
 
   it("rejects key conclusion candidates backed by direction summaries or mismatched evidence sources", () => {
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief");
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief");
     const authorization = getReadyAuthorization(
       buildComparisonAuthorization({
         workspace,
@@ -512,7 +513,7 @@ describe("comparison analysis domain rules", () => {
   });
 
   it("requires evidence limits and object-summary basis for selected images without pixels", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const authorization = getReadyAuthorization(
       buildComparisonAuthorization({
         workspace,
@@ -590,7 +591,7 @@ describe("comparison analysis domain rules", () => {
   });
 
   it("requires attached pixels before image comparisons can claim visual evidence", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const authorization = getReadyAuthorization(
       buildComparisonAuthorization({
         workspace,

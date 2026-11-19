@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { unzipSync, strFromU8 } from "fflate";
-import { createBlankWorkspace, createInitialWorkspace, migrateWorkspaceToCurrentSchema, setConceptDirectionStatus } from "./workspace";
+import { createBlankWorkspace, setConceptDirectionStatus } from "./workspace";
+import { migrateWorkspaceToCurrentSchema } from "./workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { addObjectsToDeliverySection, applyDeliverySectionDraft, confirmDeliveryCopyReview, createDeliveryPreparation, createDeliverySectionDraft, moveDeliveryReference, refreshDeliveryReferenceSnapshot, removeDeliveryReference, removeDeliverySection, updateDeliveryReferenceEditorial, updateDeliverySection } from "./deliveryPreparation";
 import { captureDeliveryGenerationBaseline, inspectDelivery, inspectDeliveryDraft, inspectDeliveryReference } from "./deliveryInspection";
 import { createEditableProjectBackupManifest } from "./projectArchive";
@@ -199,7 +201,7 @@ describe("P5 inspection, ordering, output and manual history", () => {
   });
 
   it("binds elimination rationale to the real status effect, never the older primary decision", () => {
-    let next = createInitialWorkspace();
+    let next = createTestWorkspace();
     next = setConceptDirectionStatus(next, "direction-soft-rail", "primary", "primary rationale should not leak");
     next = setConceptDirectionStatus(next, "direction-soft-rail", "eliminated", "real elimination rationale");
     const archive = createHumanReadableArchiveManifest(next); if (archive.status !== "ok") throw new Error("archive");

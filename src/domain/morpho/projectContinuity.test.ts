@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createInitialWorkspace, deleteObject, hideObject, archiveVisualBranch, restoreVisualBranch } from "./workspace";
+import { deleteObject, hideObject, archiveVisualBranch, restoreVisualBranch } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { MorphoWorkspace } from "./types";
 import {
   applyConversationSemanticPatch,
@@ -20,7 +21,7 @@ describe("project continuity runtime", () => {
   it("dedupes the exact branch occurrence replay but retains archive, restore, archive at the same timestamp", () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-09-30T00:00:00.000Z");
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const branch = Object.values(base.visualBranches)[0]!;
     const first = archiveVisualBranch(base, branch.id);
     if (first.status !== "updated") throw new Error(first.reason);
@@ -53,7 +54,7 @@ describe("project continuity runtime", () => {
   });
 
   it("records import events with structured current focus, typed source refs, and idempotent dedupe", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const updated = applyProjectContinuityEvent(workspace, {
       type: "inputImported",
       objectIds: ["file-course-brief", "file-path-references"],
@@ -95,7 +96,7 @@ describe("project continuity runtime", () => {
 
   it("writes conversation semantic patches as idempotent records without changing current focus", () => {
     const draft = "夜间识别感比造型复杂度更重要，后面不要做得太科技化。";
-    const workspace = withUserMessage(createInitialWorkspace(), "ai-user-semantic-1", draft, "2026-06-30T09:10:00.000Z");
+    const workspace = withUserMessage(createTestWorkspace(), "ai-user-semantic-1", draft, "2026-06-30T09:10:00.000Z");
     const originalFocus = workspace.projectContinuity.currentFocus;
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
@@ -193,7 +194,7 @@ describe("project continuity runtime", () => {
 
   it("uses centralized eligibility for manual state, validity, and source availability", () => {
     const draft = "夜间识别感比造型复杂度更重要，后面不要做得太科技化。";
-    const workspace = withUserMessage(createInitialWorkspace(), "ai-user-semantic-2", draft, "2026-06-30T09:11:00.000Z");
+    const workspace = withUserMessage(createTestWorkspace(), "ai-user-semantic-2", draft, "2026-06-30T09:11:00.000Z");
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
       draft,
@@ -247,7 +248,7 @@ describe("project continuity runtime", () => {
 
   it("keeps inactive semantic patches in history while excluding them from memory and context", () => {
     const draft = "夜间识别感比造型复杂度更重要，后面不要做得太科技化。";
-    const workspace = withUserMessage(createInitialWorkspace(), "ai-user-semantic-3", draft, "2026-06-30T09:12:00.000Z");
+    const workspace = withUserMessage(createTestWorkspace(), "ai-user-semantic-3", draft, "2026-06-30T09:12:00.000Z");
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
       draft,
@@ -294,7 +295,7 @@ describe("project continuity runtime", () => {
 
   it("updates manualState only for conversation semantic entries", () => {
     const draft = "Keep the night light warm and do not make it look medical.";
-    const workspace = withUserMessage(createInitialWorkspace(), "ai-user-manual-state", draft, "2026-06-30T10:00:00.000Z");
+    const workspace = withUserMessage(createTestWorkspace(), "ai-user-manual-state", draft, "2026-06-30T10:00:00.000Z");
     const authorization = buildSemanticPatchAuthorization({
       taskMode: "chatAnalysis",
       draft,
@@ -357,7 +358,7 @@ describe("project continuity runtime", () => {
   });
 
   it("keeps exploration empty unless an explicit exploration event exists", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const groups = getContinuityRecordGroups(workspace);
 
     expect(groups.exploration.entries).toEqual([]);
@@ -365,7 +366,7 @@ describe("project continuity runtime", () => {
   });
 
   it("keeps hidden sources current while marking them hidden and out of default context", () => {
-    const workspace = applyProjectContinuityEvent(createInitialWorkspace(), {
+    const workspace = applyProjectContinuityEvent(createTestWorkspace(), {
       type: "defaultReferenceChanged",
       imageObjectId: "image-soft-rail-v2",
       previousImageObjectId: "image-night-scenario",
@@ -397,7 +398,7 @@ describe("project continuity runtime", () => {
 
 
   it("clears hidden design-definition current memory without exposing its historical content", () => {
-    const hidden = resolveContinuityValidity(hideObject(createInitialWorkspace(), "definition-current"));
+    const hidden = resolveContinuityValidity(hideObject(createTestWorkspace(), "definition-current"));
     const views = deriveProjectMemoryViews(hidden);
     const designDefinitionItem = views.designDefinition.items[0];
     const context = buildProjectContinuityContext(hidden, {
@@ -412,7 +413,7 @@ describe("project continuity runtime", () => {
   });
 
   it("marks only entries tied to superseded design-definition revisions as superseded", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const withVisualRecord = applyProjectContinuityEvent(workspace, {
       type: "visualGenerationCompleted",
       operationId: "operation-image-old-definition",
@@ -469,7 +470,7 @@ describe("project continuity runtime", () => {
   });
 
   it("derives seven traceable memory views from current structured state", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const views = deriveProjectMemoryViews(workspace);
 
     expect(Object.keys(views)).toEqual([
@@ -491,7 +492,7 @@ describe("project continuity runtime", () => {
 
   it("builds deterministic task continuity context with relevance and validity rules", () => {
     const workspace = applyProjectContinuityEvent(
-      applyProjectContinuityEvent(createInitialWorkspace(), {
+      applyProjectContinuityEvent(createTestWorkspace(), {
         type: "researchApplied",
         operationId: "operation-research-current",
         researchObjectId: "research-night-path",
@@ -523,7 +524,7 @@ describe("project continuity runtime", () => {
   });
 
   it("includes superseded continuity records only for history-oriented context", () => {
-    const workspace = applyProjectContinuityEvent(createInitialWorkspace(), {
+    const workspace = applyProjectContinuityEvent(createTestWorkspace(), {
       type: "visualGenerationCompleted",
       operationId: "operation-image-old-default",
       resultObjectIds: ["image-night-scenario"],
@@ -566,7 +567,7 @@ describe("project continuity runtime", () => {
   });
 
   it("dedupes repeated visual branch and default reference continuity events", () => {
-    const branchWorkspace = createInitialWorkspace();
+    const branchWorkspace = createTestWorkspace();
     const withBranch = applyProjectContinuityEvent(branchWorkspace, {
       type: "visualBranchChanged",
       action: "created",
@@ -584,7 +585,7 @@ describe("project continuity runtime", () => {
 
     expect(replayedBranch.projectContinuity.recordEntries).toHaveLength(withBranch.projectContinuity.recordEntries.length);
 
-    const referenceWorkspace = createInitialWorkspace();
+    const referenceWorkspace = createTestWorkspace();
     const withReference = applyProjectContinuityEvent(referenceWorkspace, {
       type: "defaultReferenceChanged",
       imageObjectId: "image-soft-rail-v2",
@@ -604,7 +605,7 @@ describe("project continuity runtime", () => {
   });
 
   it("filters conversation semantic entries by scope before applying the provider context budget", () => {
-    let workspace = createInitialWorkspace();
+    let workspace = createTestWorkspace();
     for (let index = 0; index < 7; index += 1) {
       const draft = `方向 B 不要采用方向 A 的夜航灯带语言。项目级约束 ${index}。`;
       const messageId = `ai-user-scope-budget-${index}`;
@@ -656,7 +657,7 @@ describe("project continuity runtime", () => {
 
   it("applies the scope matrix for designDefinition, direction, visual, project, and deterministic records", () => {
     const workspace = applyProjectContinuityEvent(
-      withSemanticEntries(createInitialWorkspace(), [
+      withSemanticEntries(createTestWorkspace(), [
         {
           userMessageId: "ai-user-scope-project",
           draft: "项目整体要保持夜间识别感。",
@@ -757,9 +758,9 @@ describe("project continuity runtime", () => {
       taskMode: "chatAnalysis" as const
     };
     const workspaceWithMessage = {
-      ...createInitialWorkspace(),
+      ...createTestWorkspace(),
       ai: {
-        ...createInitialWorkspace().ai,
+        ...createTestWorkspace().ai,
         messages: [userMessage],
         comparisonAnalyses: {}
       }
@@ -803,7 +804,7 @@ describe("project continuity runtime", () => {
   });
 
   it("rejects semantic patches unless the authorized user message exists, is user-authored, and matches the draft", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const validMessage = {
       id: "ai-user-valid-write",
       role: "user" as const,
@@ -888,7 +889,7 @@ type SemanticEntrySeed = {
   item: Parameters<typeof applyConversationSemanticPatch>[2][number];
 };
 
-function withSemanticEntries(workspace: ReturnType<typeof createInitialWorkspace>, seeds: SemanticEntrySeed[]) {
+function withSemanticEntries(workspace: ReturnType<typeof createTestWorkspace>, seeds: SemanticEntrySeed[]) {
   return seeds.reduce((current, seed, index) => {
     const messageCreatedAt = `2026-06-30T12:${10 + index}:00.000Z`;
     const withMessage = withUserMessage(current, seed.userMessageId, seed.draft, messageCreatedAt);

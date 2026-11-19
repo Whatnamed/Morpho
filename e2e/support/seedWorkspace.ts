@@ -1,11 +1,11 @@
 import type { AssetId, ImageObject, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
 import {
   createBlankWorkspace,
-  createCurrentCaseStudyWorkspace,
-  serializeWorkspace,
   setDefaultReference
 } from "@/domain/morpho/workspace";
-import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudy";
+import { serializeWorkspace } from "@/domain/morpho/workspaceCodec";
+import { createCurrentCaseStudyWorkspace } from "@/domain/morpho/caseStudy/createCurrentCaseStudyWorkspace";
+import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudyConstants";
 import {
   CATALOG_STORAGE_KEY,
   createCatalog,

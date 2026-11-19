@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace, createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { recordDesignDefinitionProposal } from "@/domain/operations/operations";
 import { applyConversationSemanticPatch } from "@/domain/morpho/projectContinuity";
 import { buildSemanticPatchAuthorization } from "@/domain/morpho/conversationSemanticPatch";
@@ -12,7 +12,7 @@ import {
   executeAgentTool,
   type AgentToolExecutorInput
 } from "./agentToolExecutors";
-import { createAgentTurnHostFake } from "./agentTurnHostFake";
+import { createAgentTurnHostFake } from "@/test/agentTurnHostFake";
 import { createAgentTurnWorkLedger } from "./agentTurnMessages";
 import { createAgentTurnRuntimeState } from "./agentTurnRuntimeState";
 import { buildAgentVisualGenerationBatch } from "./agentVisualGenerationBatch";
@@ -28,7 +28,7 @@ describe("Agent tool executors", () => {
   it("reports an ownerless image-backed direction rule as retryable, then records the authorized owner revision", async () => {
     const fixture = createFixture();
     const draft = "后续必须保留紫色连接节点";
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const direction = base.objects["direction-soft-rail"];
     if (direction?.type !== "conceptDirection") throw new Error("Missing direction");
     const workspace = { ...base, ai: { ...base.ai, messages: [...base.ai.messages, { id: "message-user", role: "user" as const, body: draft, createdAt: fixture.input.userMessageCreatedAt }] } };
@@ -50,7 +50,7 @@ describe("Agent tool executors", () => {
   it("filters current Memory and Stage reads using the same scoped item qualification", async () => {
     const fixture = createFixture();
     const quote = "仅在柔光轨道保留紫色节点";
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const workspace = { ...base, ai: { ...base.ai, messages: [...base.ai.messages, { id: "scoped-user", role: "user" as const, body: quote, createdAt: fixture.input.userMessageCreatedAt }] } };
     const created = applyConversationSemanticPatch(workspace, buildSemanticPatchAuthorization({ taskMode: "chatAnalysis", draft: quote, userMessageId: "scoped-user", userMessageCreatedAt: fixture.input.userMessageCreatedAt, currentFocusArea: "directionAndVisual", objectIds: ["direction-soft-rail"], revisionIds: [], decisionIds: [] }), [{ kind: "preference", scope: "direction", evidenceQuote: quote, relatedObjectIds: ["direction-soft-rail"], relatedRevisionIds: [], relatedDecisionIds: [] }]);
     fixture.host.commitWorkspace(() => ({ workspace: created.workspace, value: undefined }));
@@ -301,7 +301,7 @@ describe("Agent tool executors", () => {
 
   it("replays a proposal revision by recognizing the already-applied final values", async () => {
     const fixture = createFixture();
-    const proposed = recordDesignDefinitionProposal(createInitialWorkspace(), {
+    const proposed = recordDesignDefinitionProposal(createTestWorkspace(), {
       proposalId: "proposal-replay-revision",
       operationId: "operation-replay-revision",
       workIntent: "createDesignDefinition",

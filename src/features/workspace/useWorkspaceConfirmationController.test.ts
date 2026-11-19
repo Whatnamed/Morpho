@@ -9,9 +9,9 @@ import {
   clearDefaultReference,
   collectDefaultReferenceReviewTargets,
   createBlankWorkspace,
-  createInitialWorkspace,
   setDefaultReference
 } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { recordDesignDefinitionProposal } from "@/domain/operations/operations";
 import type { PendingAiConfirmation } from "./workspaceConfirmation";
 import {
@@ -38,7 +38,7 @@ afterEach(async () => {
 
 describe("useWorkspaceConfirmationController", () => {
   it("accepts one confirmation, rejects every later origin, and preserves the slot on same-project rerenders", async () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const local = createDefaultReferenceConfirmation(workspace);
     const agent = createAgentConfirmation();
     const rendered = await renderSlot(workspace, true);
@@ -59,7 +59,7 @@ describe("useWorkspaceConfirmationController", () => {
   });
 
   it("clears a project-local slot and rejects stale callbacks across A to B to A", async () => {
-    const workspaceA = createInitialWorkspace();
+    const workspaceA = createTestWorkspace();
     const workspaceB = { ...workspaceA, project: { ...workspaceA.project, id: "project-b" } };
     const rendered = await renderSlot(workspaceA, true);
     const staleRequest = rendered.current.requestPendingConfirmation;
@@ -86,7 +86,7 @@ describe("useWorkspaceConfirmationController", () => {
 
 describe("useWorkspaceConfirmationExecutionController", () => {
   it("does not acknowledge local confirmation and creates exactly one undo entry", async () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const harness = createExecutionHarness(workspace, createDefaultReferenceConfirmation(workspace));
     const rendered = await renderExecution(harness);
 
@@ -99,7 +99,7 @@ describe("useWorkspaceConfirmationExecutionController", () => {
   });
 
   it("keeps a blocked confirmation visible and does not create undo before preflight passes", async () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const confirmation = createDefaultReferenceConfirmation(workspace);
     const harness = createExecutionHarness(workspace, confirmation);
     harness.workspace = {
@@ -122,7 +122,7 @@ describe("useWorkspaceConfirmationExecutionController", () => {
   });
 
   it("does not write or create undo when Agent acknowledgement fails", async () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const confirmation = createAgentConfirmation();
     const harness = createExecutionHarness(workspace, confirmation);
     harness.acknowledge.mockResolvedValue(false);
@@ -137,7 +137,7 @@ describe("useWorkspaceConfirmationExecutionController", () => {
   });
 
   it("removes a deleted confirmation target from selection and local editing", async () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const confirmation: Extract<PendingAiConfirmation, { kind: "deleteObject" }> = {
       kind: "deleteObject",
       targetObjectId: "image-night-scenario",
@@ -164,7 +164,7 @@ describe("useWorkspaceConfirmationExecutionController", () => {
   });
 
   it("acknowledges Agent only after preflight and applies the bound target once", async () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const confirmation = createAgentConfirmation();
     const harness = createExecutionHarness(workspace, confirmation);
     harness.acknowledge.mockImplementation(async () => {
@@ -187,7 +187,7 @@ describe("useWorkspaceConfirmationExecutionController", () => {
   });
 
   it("blocks Agent design-definition actions before acknowledgement when the proposal is no longer applicable", async () => {
-    const initial = createInitialWorkspace();
+    const initial = createTestWorkspace();
     const processed = recordDesignDefinitionProposal(initial, createDefinitionProposalInput({
       proposalId: "agent-processed-definition"
     }));
@@ -256,7 +256,7 @@ describe("useWorkspaceConfirmationExecutionController", () => {
   });
 
   it("blocks Agent default-reference actions when the previous default identity has changed", async () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const previous = getDefaultImage(workspace);
     const target = getActiveImage(workspace, previous.id);
     const replacement = getActiveImage(workspace, previous.id, target.id);
@@ -296,7 +296,7 @@ describe("useWorkspaceConfirmationExecutionController", () => {
   });
 
   it("blocks Agent direction actions when the bound status has changed", async () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const confirmation = createAgentConfirmation(workspace);
     const target = workspace.objects[confirmation.targetObjectId!];
     if (!target || target.type !== "conceptDirection") throw new Error("Expected a concept direction target");
@@ -474,7 +474,7 @@ function createDefaultReferenceConfirmation(workspace: MorphoWorkspace): Extract
 }
 
 function createAgentConfirmation(
-  workspace: MorphoWorkspace = createInitialWorkspace()
+  workspace: MorphoWorkspace = createTestWorkspace()
 ): Extract<PendingAiConfirmation, { kind: "agentRequestedAction" }> {
   const target = workspace.objects["direction-support-island"];
   const previousReferenceObjectId = Object.values(workspace.objects).find(

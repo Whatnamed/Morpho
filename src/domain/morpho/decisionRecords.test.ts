@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { classifyDecisionRecords } from "./decisionRecords";
-import { createInitialWorkspace as createLegacyFixture, setConceptDirectionStatus, setDefaultReference, setKeyConclusionCategory } from "./workspace";
+import { setConceptDirectionStatus, setDefaultReference, setKeyConclusionCategory } from "./workspace";
+import { createTestWorkspace as createLegacyFixture } from "@/test/createTestWorkspace";
 
 describe("decision record classification", () => {
   it("marks an earlier direction status as superseded after a later status change", () => {
     const primary = setConceptDirectionStatus(
-      createInitialWorkspace(),
+      createTestWorkspace(),
       "direction-soft-rail",
       "primary",
       "作为当前主方向"
@@ -28,7 +29,7 @@ describe("decision record classification", () => {
   });
 
   it("marks an old default reference as superseded when the project replaces it", () => {
-    const fixture = withAvailableImages(createInitialWorkspace());
+    const fixture = withAvailableImages(createTestWorkspace());
     const workspace = setDefaultReference(fixture, "image-soft-rail-v2", { reason: "选择第一张参考图" });
     const firstDefaultId = workspace.workingState.currentDefaultReferenceId;
     if (!firstDefaultId) {
@@ -48,7 +49,7 @@ describe("decision record classification", () => {
   });
 
   it("marks the first manual key-conclusion category assignment as current", () => {
-    const target = getUnknownKeyConclusion(createInitialWorkspace());
+    const target = getUnknownKeyConclusion(createTestWorkspace());
     const result = setKeyConclusionCategory(target.workspace, target.object.id, "finding", {
       reason: "用户补充类别。"
     });
@@ -63,7 +64,7 @@ describe("decision record classification", () => {
   });
 
   it("marks an earlier key-conclusion category assignment as superseded after a later change", () => {
-    const target = getUnknownKeyConclusion(createInitialWorkspace());
+    const target = getUnknownKeyConclusion(createTestWorkspace());
     const first = setKeyConclusionCategory(target.workspace, target.object.id, "finding");
     if (first.status !== "updated") {
       throw new Error(first.reason);
@@ -83,7 +84,7 @@ describe("decision record classification", () => {
   });
 
   it("does not call a decision current when its source object cannot be resolved", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const withMissingDecision = {
       ...workspace,
       decisionRecords: [
@@ -105,7 +106,7 @@ describe("decision record classification", () => {
   });
 });
 
-function withAvailableImages(workspace: ReturnType<typeof createInitialWorkspace>) {
+function withAvailableImages(workspace: ReturnType<typeof createTestWorkspace>) {
   const objects = { ...workspace.objects };
   for (const object of Object.values(objects)) {
     if (object.type === "image") {
@@ -115,7 +116,7 @@ function withAvailableImages(workspace: ReturnType<typeof createInitialWorkspace
   return { ...workspace, objects };
 }
 
-function getUnknownKeyConclusion(workspace: ReturnType<typeof createInitialWorkspace>) {
+function getUnknownKeyConclusion(workspace: ReturnType<typeof createTestWorkspace>) {
   const object = Object.values(workspace.objects).find((candidate) => candidate.type === "keyConclusion");
   if (!object || object.type !== "keyConclusion") {
     throw new Error("Expected a key conclusion fixture.");
@@ -133,7 +134,7 @@ function getUnknownKeyConclusion(workspace: ReturnType<typeof createInitialWorks
 }
 
 // Model newly created objects for authority tests; compatibility tests use raw legacy data.
-function createInitialWorkspace() {
+function createTestWorkspace() {
   const workspace = createLegacyFixture();
   for (const object of Object.values(workspace.objects)) object.incarnationId = `created-${object.id}`;
   return workspace;

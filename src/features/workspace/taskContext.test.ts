@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace, hideObject } from "../../domain/morpho/workspace";
+import { hideObject } from "../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { MorphoWorkspace } from "../../domain/morpho/types";
 import { recordDesignDefinitionProposal } from "../../domain/operations/operations";
 
@@ -10,7 +11,7 @@ import { buildDocumentFragmentDraft, createDocumentFragment, resolveDocumentFrag
 
 describe("workspace task context assembly", () => {
   it("builds direction preview context from selected directions, current definition, related conclusions, selected images and parsed files", () => {
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief");
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief");
     const context = buildTaskContext(workspace, {
       kind: "directionPreview",
       draft: "参考这份资料和这张图，分别为这几个方向生成预览图",
@@ -33,7 +34,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("includes default reference pixels only when explicitly requested and available", () => {
-    const context = buildTaskContext(createInitialWorkspace(), {
+    const context = buildTaskContext(createTestWorkspace(), {
       kind: "directionPreview",
       draft: "保持和默认参考一致，为方向生成预览",
       selectedObjectIds: ["direction-soft-rail"],
@@ -48,7 +49,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("does not include default reference pixels for non-visual tasks even when explicitly requested", () => {
-    const context = buildTaskContext(createInitialWorkspace(), {
+    const context = buildTaskContext(createTestWorkspace(), {
       kind: "research",
       draft: "请参考默认参考继续整理研究",
       selectedObjectIds: ["direction-soft-rail"],
@@ -60,7 +61,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("does not include a direction-bound default reference for another target direction", () => {
-    const context = buildTaskContext(createInitialWorkspace(), {
+    const context = buildTaskContext(createTestWorkspace(), {
       kind: "directionPreview",
       draft: "请参考默认参考，为方向 B 生成预览",
       selectedObjectIds: ["direction-support-island"],
@@ -73,7 +74,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("does not include a no-direction default reference for multi-direction preview", () => {
-    const workspace = withoutDefaultReferenceDirection(createInitialWorkspace());
+    const workspace = withoutDefaultReferenceDirection(createTestWorkspace());
     const context = buildTaskContext(workspace, {
       kind: "directionPreview",
       draft: "请参考默认参考，分别为两个方向生成预览",
@@ -87,7 +88,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("includes a no-direction default reference only for one clear visual target direction", () => {
-    const workspace = withoutDefaultReferenceDirection(createInitialWorkspace());
+    const workspace = withoutDefaultReferenceDirection(createTestWorkspace());
     const context = buildTaskContext(workspace, {
       kind: "directionPreview",
       draft: "请参考默认参考，为这个方向生成预览",
@@ -100,7 +101,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("exports bounded provider task context with semantic revisions and visual branches", () => {
-    const context = buildTaskContext(createInitialWorkspace(), {
+    const context = buildTaskContext(createTestWorkspace(), {
       kind: "visualDevelopment",
       draft: "继续发展这张图",
       selectedObjectIds: ["image-soft-rail-v2"]
@@ -133,7 +134,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("keeps comparison context limited to explicit selection and converts it through the comparison builder", () => {
-    const workspace = withParsedFile(createInitialWorkspace(), "file-course-brief");
+    const workspace = withParsedFile(createTestWorkspace(), "file-course-brief");
     const context = buildTaskContext(workspace, {
       kind: "comparison",
       draft: "比较这几个对象",
@@ -164,7 +165,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("includes document fragments only when explicitly selected and sends bounded fragment body, not source file text", () => {
-    const workspace = withDocumentFragment(withParsedFile(createInitialWorkspace(), "file-course-brief"));
+    const workspace = withDocumentFragment(withParsedFile(createTestWorkspace(), "file-course-brief"));
     const fragment = Object.values(workspace.objects).find((object) => object.type === "documentFragment");
     if (!fragment || fragment.type !== "documentFragment") {
       throw new Error("Expected document fragment fixture.");
@@ -198,7 +199,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("includes full editable fields for an explicitly selected proposal draft", () => {
-    const proposed = recordDesignDefinitionProposal(createInitialWorkspace(), {
+    const proposed = recordDesignDefinitionProposal(createTestWorkspace(), {
       proposalId: "proposal-definition-context",
       operationId: "operation-definition-context",
       workIntent: "createDesignDefinition",
@@ -236,7 +237,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("excludes hidden objects and reports predictable skip reasons", () => {
-    const hidden = hideObject(createInitialWorkspace(), "image-soft-rail-v2");
+    const hidden = hideObject(createTestWorkspace(), "image-soft-rail-v2");
     const context = buildTaskContext(hidden, {
       kind: "visualDevelopment",
       draft: "保留整体结构语言，生成夜间使用场景",
@@ -252,7 +253,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("builds visual development context with source image metadata, direction revision and visual branch", () => {
-    const context = buildTaskContext(createInitialWorkspace(), {
+    const context = buildTaskContext(createTestWorkspace(), {
       kind: "visualDevelopment",
       draft: "保留整体结构语言，生成夜间使用场景",
       selectedObjectIds: ["image-soft-rail-v2"]
@@ -266,7 +267,7 @@ describe("workspace task context assembly", () => {
   });
 
   it("applies stable object and document budgets with truncation metadata", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const selectedObjectIds = Object.keys(workspace.objects);
     const context = buildTaskContext(workspace, {
       kind: "general",

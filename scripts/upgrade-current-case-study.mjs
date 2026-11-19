@@ -13,9 +13,9 @@ const server = await createServer({
 });
 
 try {
-  const currentCase = await server.ssrLoadModule("/src/domain/morpho/caseStudy/currentCaseStudy.ts");
+  const currentCase = await server.ssrLoadModule("/src/domain/morpho/caseStudy/createCurrentCaseStudyWorkspace.ts");
   const fingerprint = await server.ssrLoadModule("/src/domain/morpho/caseStudy/caseStudyFingerprint.ts");
-  const loadedWorkspace = currentCase.currentCaseStudyWorkspace;
+  const loadedWorkspace = currentCase.createCurrentCaseStudyWorkspace();
   const workspace = {
     ...loadedWorkspace,
     operations: Object.fromEntries(

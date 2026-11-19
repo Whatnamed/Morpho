@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildSemanticPatchAuthorization } from "./conversationSemanticPatch";
 import { applyConversationSemanticPatch, buildProjectContinuityContext, deriveProjectMemoryViews, setConversationSemanticEntryManualState } from "./projectContinuity";
 import { buildAgentDefaultMemoryContext, getCurrentProjectMemoryRevision, getCurrentStageRecordRevision, getProjectMemoryHistory, reconcileProjectMemory } from "./projectMemory";
-import { createBlankWorkspace, createInitialWorkspace, hideObject, migrateWorkspaceToCurrentSchema, setConceptDirectionStatus } from "./workspace";
+import { createBlankWorkspace, hideObject, setConceptDirectionStatus } from "./workspace";
+import { migrateWorkspaceToCurrentSchema } from "./workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { recordDesignDefinitionProposal, applyDesignDefinitionProposal } from "../operations/operations";
 import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
 import { createEditableProjectBackupManifest, validateEditableProjectBackupManifest } from "./projectArchive";
@@ -19,7 +21,7 @@ const B = "direction-support-island";
 const preference = "只在柔光轨道方向保留紫色连接节点";
 
 function withPreference(): MorphoWorkspace {
-  const base = createInitialWorkspace();
+  const base = createTestWorkspace();
   const workspace = { ...base, ai: { ...base.ai, messages: [...base.ai.messages, { id: "scope-user", role: "user" as const, body: preference, createdAt: "2026-10-01T00:00:00.000Z" }] } };
   const authorization = buildSemanticPatchAuthorization({ taskMode: "chatAnalysis", draft: preference, userMessageId: "scope-user", userMessageCreatedAt: "2026-10-01T00:00:00.000Z", currentFocusArea: "directionAndVisual", objectIds: [A], revisionIds: [], decisionIds: [] });
   const applied = applyConversationSemanticPatch(workspace, authorization, [{ kind: "preference", scope: "direction", evidenceQuote: preference, relatedObjectIds: [A], relatedRevisionIds: [], relatedDecisionIds: [] }]);
@@ -40,7 +42,7 @@ describe("P1B-2 projection consumer convergence", () => {
     ["designDefinition", "image-soft-rail-v2"],
     ["direction", "image-soft-rail-v2"]
   ] as const)("rejects a %s fact whose only authorized source is incidental %s in the formal reply path", (scope, sourceId) => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const quote = "后续必须保留紫色连接节点";
     const createdAt = "2026-10-01T00:00:00.000Z";
     const workspace = { ...base, ai: { ...base.ai, messages: [...base.ai.messages, { id: "owner-write-user", role: "user" as const, body: quote, createdAt }] } };
@@ -56,7 +58,7 @@ describe("P1B-2 projection consumer convergence", () => {
   });
 
   it.each(["object", "revision"] as const)("keeps an explicitly %s-bound direction rule with incidental image evidence readable without selecting that image", (binding) => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const direction = base.objects[A];
     if (direction?.type !== "conceptDirection") throw new Error("Missing direction");
     const quote = "后续必须保留紫色连接节点";
@@ -83,7 +85,7 @@ describe("P1B-2 projection consumer convergence", () => {
   });
 
   it.each(["direction", "designDefinition"] as const)("rejects ambiguous or missing %s owners without changing prior facts", (scope) => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const quote = "后续必须保留紫色连接节点";
     const createdAt = "2026-10-01T00:00:00.000Z";
     const definition = base.objects["definition-current"];
@@ -244,7 +246,7 @@ describe("P1B-2 projection consumer convergence", () => {
   });
 
   it("keeps historical direction Decisions out of current Stage after elimination and restoration", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const eliminated = setConceptDirectionStatus(base, A, "eliminated", "测试淘汰");
     const restored = setConceptDirectionStatus(eliminated, A, "alternative", "测试恢复");
     const current = getCurrentStageRecordRevision(restored.projectMemory, "directionAndVisual")!;

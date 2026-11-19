@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { traceDesignChain } from "./designTrace";
 
 describe("design chain trace", () => {
   it("keeps recorded legacy versions without treating current ownership as a historical cause", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const trace = traceDesignChain(workspace, "image-night-scenario");
 
     expect(trace.objectIds).toEqual(
@@ -36,7 +36,7 @@ describe("design chain trace", () => {
   });
 
   it("is pure and bounded against cycles", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const cyclicWorkspace = {
       ...workspace,
       relations: [

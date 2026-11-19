@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   recordDesignDefinitionProposal,
   recordResearchAnalysisProposal,
@@ -11,7 +11,7 @@ import { applySelectedProposalDraftRevision } from "./proposalDraftRevision";
 
 describe("selected proposal draft revision", () => {
   it("updates the selected design-definition proposal in place without creating a new canvas object", () => {
-    const proposed = recordDesignDefinitionProposal(createInitialWorkspace(), {
+    const proposed = recordDesignDefinitionProposal(createTestWorkspace(), {
       proposalId: "proposal-definition-revise-in-place",
       operationId: "operation-definition-revise-in-place",
       workIntent: "createDesignDefinition",
@@ -70,7 +70,7 @@ describe("selected proposal draft revision", () => {
   });
 
   it("preserves research evidence while revising selected research draft text", () => {
-    const proposed = recordResearchAnalysisProposal(createInitialWorkspace(), {
+    const proposed = recordResearchAnalysisProposal(createTestWorkspace(), {
       proposalId: "proposal-research-revise-in-place",
       operationId: "operation-research-revise-in-place",
       title: "Original research",
@@ -122,7 +122,7 @@ describe("selected proposal draft revision", () => {
   });
 
   it("blocks revision unless exactly one pending proposal draft is selected and matched", () => {
-    const first = recordDesignDefinitionProposal(createInitialWorkspace(), {
+    const first = recordDesignDefinitionProposal(createTestWorkspace(), {
       proposalId: "proposal-definition-first",
       operationId: "operation-definition-first",
       workIntent: "createDesignDefinition",

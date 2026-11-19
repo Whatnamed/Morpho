@@ -4,13 +4,14 @@ import { act, useEffect, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createBlankWorkspace, createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   CATALOG_STORAGE_KEY,
   createCatalog,
   getProjectWorkspaceStorageKey,
   loadProjectWorkspace,
-  saveProjectWorkspace,
+  writeProjectWorkspace,
   summarizeProject,
   type LocalProjectCatalog
 } from "@/infrastructure/persistence/localProjectStore";
@@ -110,7 +111,7 @@ function triggerIntersections(updates: Array<{ projectId: string; isIntersecting
 }
 
 function buildImageWorkspace(projectId: string, title: string, assetId: string, storageKey: string) {
-  const base = createInitialWorkspace();
+  const base = createTestWorkspace();
   const previewImage = base.objects["image-soft-rail-preview"];
   if (!previewImage || previewImage.type !== "image") {
     throw new Error("Expected image object in initial workspace.");
@@ -258,7 +259,7 @@ describe("useProjectHomePreviews", () => {
       buildImageWorkspace("p4", "Offscreen 4", "a4", "blob:p4")
     ];
     for (const ws of workspaces) {
-      saveProjectWorkspace(window.localStorage, ws);
+      writeProjectWorkspace(window.localStorage, ws);
     }
     const catalog = createCatalog(
       workspaces.map((ws) => summarizeProject(ws)),
@@ -337,7 +338,7 @@ describe("useProjectHomePreviews", () => {
       buildImageWorkspace("p4", "Late Delete", "asset-late", "blob:late-delete")
     ];
     for (const ws of workspaces) {
-      saveProjectWorkspace(window.localStorage, ws);
+      writeProjectWorkspace(window.localStorage, ws);
     }
     const catalog = createCatalog(
       workspaces.map((ws) => summarizeProject(ws)),
@@ -408,7 +409,7 @@ describe("useProjectHomePreviews", () => {
     window.localStorage.setItem(getProjectWorkspaceStorageKey("p-corrupt"), "{not-json");
 
     const good = buildImageWorkspace("p-good", "Good", "asset-good", "blob:good");
-    saveProjectWorkspace(window.localStorage, good);
+    writeProjectWorkspace(window.localStorage, good);
 
     const catalog = createCatalog(
       [
@@ -506,7 +507,7 @@ describe("useProjectHomePreviews", () => {
 
   it("drops queued workspace reads before execution if deleted or unmounted", async () => {
     const p1 = buildImageWorkspace("p1", "One", "a1", "blob:p1");
-    saveProjectWorkspace(window.localStorage, p1);
+    writeProjectWorkspace(window.localStorage, p1);
     const catalog = createCatalog([summarizeProject(p1)], undefined);
     const reads: string[] = [];
 

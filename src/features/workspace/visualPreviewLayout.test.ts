@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { createBlankWorkspace, createInitialWorkspace } from "../../domain/morpho/workspace";
+import { createBlankWorkspace } from "../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 import { planDirectionPreviewPlacements, planVisualDevelopmentPlacements } from "./visualPreviewLayout";
 
 describe("direction preview layout planning", () => {
   it("places same-direction multi previews in a stable non-overlapping grid near the direction card", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const placements = planDirectionPreviewPlacements(workspace, [
       { id: "soft-1", targetDirectionId: "direction-soft-rail", width: 240, height: 180 },
       { id: "soft-2", targetDirectionId: "direction-soft-rail", width: 240, height: 180 },
@@ -21,7 +22,7 @@ describe("direction preview layout planning", () => {
   });
 
   it("starts a new round below existing same-direction images instead of covering them", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const placements = planDirectionPreviewPlacements(workspace, [
       { id: "soft-new-1", targetDirectionId: "direction-soft-rail", width: 240, height: 180 },
       { id: "soft-new-2", targetDirectionId: "direction-soft-rail", width: 240, height: 180 }
@@ -38,7 +39,7 @@ describe("direction preview layout planning", () => {
   });
 
   it("keeps a precomputed batch grid stable when generated previews are inserted sequentially", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const items = [
       { id: "soft-1", targetDirectionId: "direction-soft-rail", width: 240, height: 180 },
       { id: "soft-2", targetDirectionId: "direction-soft-rail", width: 240, height: 180 },
@@ -46,7 +47,7 @@ describe("direction preview layout planning", () => {
       { id: "soft-4", targetDirectionId: "direction-soft-rail", width: 240, height: 180 }
     ];
     const precomputed = planDirectionPreviewPlacements(workspace, items);
-    const sequentialWorkspace = precomputed.reduce<ReturnType<typeof createInitialWorkspace>>(
+    const sequentialWorkspace = precomputed.reduce<ReturnType<typeof createTestWorkspace>>(
       (current, placement) => ({
         ...current,
         objects: {

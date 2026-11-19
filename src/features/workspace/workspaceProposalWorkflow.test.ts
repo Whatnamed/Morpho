@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { createBlankWorkspace, createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   recordConceptDirectionProposal,
   recordDesignDefinitionProposal,
@@ -182,7 +183,7 @@ describe("workspace proposal workflow core", () => {
   });
 
   it("keeps superseded and unavailable bases blocked", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const definition = base.objects["definition-current"];
     if (definition?.type !== "designDefinition") {
       throw new Error("Expected the initial test definition.");

@@ -4,14 +4,17 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseWorkspace } from "../workspace";
+import { parseWorkspace } from "../workspaceCodec";
 import {
   CURRENT_CASE_STUDY_ID,
   CURRENT_CASE_STUDY_VERSION,
-  currentCaseStudyAssetManifest,
-  currentCaseStudyWorkspace
+  currentCaseStudyAssetManifest
 } from "./currentCaseStudy";
 import diagnostics from "./currentCaseDiagnostics.generated.json";
+
+import { createCurrentCaseStudyWorkspace } from "./createCurrentCaseStudyWorkspace";
+
+const currentCaseStudyWorkspace = createCurrentCaseStudyWorkspace();
 
 describe("current case study", () => {
   it("keeps the generated workspace parseable with its stable deployment id", () => {

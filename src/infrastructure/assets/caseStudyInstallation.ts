@@ -1,23 +1,6 @@
 import type { BlobStore } from "@/infrastructure/assets/localAssetWorkflow";
 
-import {
-  CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
-  CURRENT_CASE_STUDY_ID,
-  CURRENT_CASE_STUDY_VERSION,
-  currentCaseStudyAssetManifest,
-  currentCaseStudyWorkspace
-} from "./currentCaseStudy";
-import { fingerprintCaseStudyWorkspace } from "./caseStudyFingerprint";
-
-export const CASE_STUDY_INSTALLATION_STORAGE_KEY = "morpho.case-study.install.v1";
-
-export type CaseStudyInstallationMarker = {
-  assetManifestVersion: string;
-  installedVersion: string;
-  projectId: string;
-  workspaceFingerprint: string;
-  obsoleteStorageKeys?: string[];
-};
+import { currentCaseStudyAssetManifest } from "@/domain/morpho/caseStudy/currentCaseStudy";
 
 export type CaseStudyAssetInstallDiagnostic = {
   assetId: string;
@@ -36,11 +19,9 @@ export async function installCurrentCaseStudyAssets(
   blobStore: BlobStore,
   options: {
     fetchAsset?: (input: string) => Promise<Response>;
-    storage?: Storage;
   } = {}
 ): Promise<CaseStudyAssetInstallResult> {
   const fetchAsset = options.fetchAsset ?? ((input: string) => fetch(input));
-  const previousMarker = options.storage ? readCaseStudyInstallationMarker(options.storage) : null;
   const diagnostics: CaseStudyAssetInstallDiagnostic[] = [];
   const updatedStorageKeys: string[] = [];
   let installedCount = 0;
@@ -100,60 +81,7 @@ export async function installCurrentCaseStudyAssets(
     }
   }
 
-  if (diagnostics.length === 0 && options.storage) {
-    await Promise.all(
-      (previousMarker?.obsoleteStorageKeys ?? []).map(async (storageKey) => {
-        try {
-          await blobStore.delete(storageKey);
-        } catch {
-          // Legacy seed binaries are safe to leave behind if IndexedDB cleanup is unavailable.
-        }
-      })
-    );
-    writeCaseStudyInstallationMarker(options.storage, {
-      assetManifestVersion: CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
-      installedVersion: CURRENT_CASE_STUDY_VERSION,
-      projectId: CURRENT_CASE_STUDY_ID,
-      workspaceFingerprint: previousMarker?.workspaceFingerprint ?? fingerprintCaseStudyWorkspace(currentCaseStudyWorkspace)
-    });
-  }
-
   return { diagnostics, installedCount, repairedCount, skippedCount, updatedStorageKeys };
-}
-
-export function readCaseStudyInstallationMarker(storage: Storage): CaseStudyInstallationMarker | null {
-  const raw = storage.getItem(CASE_STUDY_INSTALLATION_STORAGE_KEY);
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const value = JSON.parse(raw) as unknown;
-    if (
-      !isRecord(value) ||
-      typeof value.installedVersion !== "string" ||
-      typeof value.projectId !== "string" ||
-      typeof value.workspaceFingerprint !== "string" ||
-      typeof value.assetManifestVersion !== "string"
-    ) {
-      return null;
-    }
-    return {
-      assetManifestVersion: value.assetManifestVersion,
-      installedVersion: value.installedVersion,
-      obsoleteStorageKeys: Array.isArray(value.obsoleteStorageKeys)
-        ? value.obsoleteStorageKeys.filter((storageKey): storageKey is string => typeof storageKey === "string")
-        : undefined,
-      projectId: value.projectId,
-      workspaceFingerprint: value.workspaceFingerprint
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function writeCaseStudyInstallationMarker(storage: Storage, marker: CaseStudyInstallationMarker): void {
-  storage.setItem(CASE_STUDY_INSTALLATION_STORAGE_KEY, JSON.stringify(marker));
 }
 
 async function verifyAssetBlob(
@@ -171,8 +99,4 @@ async function verifyAssetBlob(
 async function sha256Hex(value: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", value);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

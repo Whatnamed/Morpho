@@ -6,15 +6,12 @@ import {
   createAiDraftFromSuggestion,
   createBlankWorkspace,
   createDeliveryReference,
-  createInitialWorkspace,
   createVisualBranch,
   deleteObjects,
   deleteObject,
   getRenderableCanvasInstances,
   hideObjects,
   hideObject,
-  migrateWorkspaceToCurrentSchema,
-  parseWorkspace,
   archiveVisualBranch,
   assignImageToVisualBranch,
   removeImageFromVisualBranch,
@@ -29,6 +26,8 @@ import {
   reorderCanvasInstances,
   updateCanvasInstancePosition
 } from "./workspace";
+import { migrateWorkspaceToCurrentSchema, parseWorkspace } from "./workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { importAssetBackedObjects, importTextObject, importUrlObject } from "./imports";
 import {
   createArtifactProposalOperation,
@@ -48,7 +47,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("lets a recovered unknown conclusion be manually assigned to an allowed category", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const source = Object.values(workspace.objects).find((object) => object.type === "keyConclusion");
     if (!source || source.type !== "keyConclusion") {
       throw new Error("seed key conclusion missing");
@@ -77,7 +76,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("preserves unknown on a historical Compare candidate during workspace parsing", () => {
-    const workspace = structuredClone(createInitialWorkspace());
+    const workspace = structuredClone(createTestWorkspace());
     workspace.ai.comparisonAnalyses = {
       "comparison-history": {
         id: "comparison-history",
@@ -113,7 +112,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("drops legacy B proof fields while preserving product messages and compact diagnostics", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const legacy = structuredClone(workspace) as MorphoWorkspace;
     legacy.ai.messages = Array.from({ length: 100 }, (_, index) => ({
       id: `message-${index}`,
@@ -206,7 +205,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("initializes the seed continuity focus from real project sources", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
 
     expect(workspace.projectContinuity.currentFocus.area).toBe("directionAndVisual");
     expect(workspace.projectContinuity.currentFocus.sourceObjectIds).toEqual([
@@ -218,7 +217,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("moves a canvas instance without changing object type, status, or relations", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const instance = workspace.canvas.instances[0];
     const objectBefore = workspace.objects[instance.objectId];
 
@@ -236,7 +235,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("reorders canvas instances as visual layer only without changing semantic state", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const targetObjectId = workspace.canvas.instances[0].objectId;
     const objectsBefore = workspace.objects;
     const relationsBefore = workspace.relations;
@@ -251,7 +250,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("turns an AI suggestion into an editable draft without mutating project state", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const selectedObjectId = "image-soft-rail-v2";
 
     const result = createAiDraftFromSuggestion(workspace, {
@@ -310,7 +309,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("builds key conclusion drafts from exact research items and evidence bindings", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const research = workspace.objects["research-night-path"];
     if (!research || research.type !== "research") {
       throw new Error("Expected seed research object.");
@@ -371,7 +370,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("reconciles active key conclusions when their state changes", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
 
     const needsVerification = setKeyConclusionState(workspace, "insight-continuous-support", "needsVerification", {
       reason: "需要复核该结论是否仍然成立。"
@@ -419,7 +418,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("blocks superseded state changes when the replacement key conclusion is missing", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
 
     const result = setKeyConclusionState(workspace, "insight-continuous-support", "superseded");
 
@@ -432,7 +431,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("detects a pending revision proposal on the current design definition", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const currentDefinition =
       workspace.objects["definition-current"]?.type === "designDefinition"
         ? workspace.objects["definition-current"]
@@ -462,7 +461,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("does not treat create-definition proposals as revision drafts on the current definition", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const proposed = recordDesignDefinitionProposal(workspace, {
       proposalId: "proposal-definition-create-pending",
       title: "首版设计定义草案",
@@ -485,7 +484,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("reconciles multiple current effective design definitions deterministically", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const current = workspace.objects["definition-current"];
     if (!current || current.type !== "designDefinition") {
       throw new Error("Expected seed current design definition.");
@@ -526,7 +525,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("keeps a hidden current definition addressable without falling back to an older definition", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const hidden = hideObject(workspace, "definition-current");
 
     expect(hidden.workingState.currentDesignDefinitionId).toBe("definition-current");
@@ -535,7 +534,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("hides objects without deleting objects, relations, or creating decision records", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const hidden = hideObject(workspace, "image-soft-rail-v2");
 
     expect(hidden.objects["image-soft-rail-v2"]?.visibility).toBe("hidden");
@@ -547,7 +546,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("hides every selected object in a batch without deleting them", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const hidden = hideObjects(workspace, ["image-soft-rail-v2", "image-night-scenario"]);
 
     expect(hidden.objects["image-soft-rail-v2"]?.visibility).toBe("hidden");
@@ -560,7 +559,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("requires confirmation before deleting an object that still has active references", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = deleteObject(workspace, "image-soft-rail-v2");
 
     expect(result.status).toBe("requiresConfirmation");
@@ -572,7 +571,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("confirmed deletion removes live references without damaging delivery reference snapshots", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const deliveryReferenceBefore = workspace.deliveryReferences["delivery-ref-board-main"];
 
     const result = deleteObject(workspace, "image-soft-rail-v2", {
@@ -601,7 +600,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("keeps delivery reference snapshots stable after the source object changes or disappears", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const created = createDeliveryReference(workspace, {
       deliveryObjectId: "delivery-board-a1",
       sourceObjectId: "insight-continuous-support",
@@ -639,7 +638,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("sets exactly one active image as the default reference without touching delivery references", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const deliveryReferenceBefore = structuredClone(workspace.deliveryReferences);
 
     const updated = setDefaultReference(workspace, "image-night-scenario", {
@@ -656,7 +655,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("keeps exactly one primary direction when promoting another direction", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const alternativeDirection = Object.values(workspace.objects).find(
       (object) => object.type === "conceptDirection" && object.status === "alternative"
     );
@@ -695,7 +694,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("confirmed batch deletion removes every selected object and their canvas instances", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = deleteObjects(workspace, ["image-soft-rail-v2", "image-night-scenario"], {
       confirmed: true,
       reason: "User deleted selected objects."
@@ -714,7 +713,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("allows compare-confirmed primary direction without copying AI summary into reason", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const updated = setConceptDirectionStatus(
       workspace,
       "direction-support-island",
@@ -739,7 +738,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("clears default reference as a traceable decision with comparison metadata", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const updated = clearDefaultReference(workspace, "image-soft-rail-v2", {
       reason: "用户明确取消后续默认参考。",
       comparison: {
@@ -764,7 +763,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("changes an image role as a traceable visual-development decision without replacing references", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const source = workspace.objects["image-night-scenario"];
     if (!source || source.type !== "image") {
       throw new Error("Expected seed image.");
@@ -789,7 +788,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("creates, renames, archives, and restores a visual branch without creating canvas objects", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const initialObjectCount = Object.keys(workspace.objects).length;
 
     const created = createVisualBranch(workspace, {
@@ -832,7 +831,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("assigns images to visual branches only within the branch direction", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const seedImage = workspace.objects["image-rail-detail"];
     if (!seedImage || seedImage.type !== "image") {
       throw new Error("Expected seed image.");
@@ -1007,7 +1006,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("migrates v8 project continuity entries to v16 deterministic active entries without inventing semantic patches", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const v8Workspace = {
       ...workspace,
       schemaVersion: 8,
@@ -1066,7 +1065,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("migrates v11 workspaces to v17 without inventing document fragments or rewriting compare state", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const v11Workspace = {
       ...workspace,
       schemaVersion: 11,
@@ -1145,7 +1144,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("migrates v13 messages without fabricating or losing Agent trace data", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const v13Workspace = {
       ...workspace,
       schemaVersion: 13,
@@ -1212,7 +1211,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("migrates v9 workspaces to v16 by adding empty conversation checkpoints without rewriting messages or project continuity", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const v9Workspace = {
       ...workspace,
       schemaVersion: 9,
@@ -1259,7 +1258,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("marks only recognizable legacy compaction notices as UI-only during migration", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const legacyWorkspace = {
       ...workspace,
       ai: {
@@ -1307,7 +1306,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("repairs collided continuity IDs and remaps saved message references without losing either record", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const sharedPrefix = "conversationSemanticPatch:".padEnd(120, "x");
     const firstDedupeKey = `${sharedPrefix}:first-tail`;
     const secondDedupeKey = `${sharedPrefix}:second-tail`;
@@ -1507,7 +1506,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("migrates legacy key conclusion categories from source content, then old notes, without mutating the input", () => {
-    const legacyWorkspace = JSON.parse(JSON.stringify(createInitialWorkspace())) as Record<string, unknown>;
+    const legacyWorkspace = JSON.parse(JSON.stringify(createTestWorkspace())) as Record<string, unknown>;
     legacyWorkspace.schemaVersion = 15;
     const objects = legacyWorkspace.objects as Record<string, Record<string, unknown>>;
     const research = objects["research-night-path"];
@@ -1591,7 +1590,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("does not use legacy notes to normalize an already-current workspace", () => {
-    const currentWorkspace = JSON.parse(JSON.stringify(createInitialWorkspace())) as Record<string, unknown>;
+    const currentWorkspace = JSON.parse(JSON.stringify(createTestWorkspace())) as Record<string, unknown>;
     const objects = currentWorkspace.objects as Record<string, Record<string, unknown>>;
     currentWorkspace.schemaVersion = 18;
     objects["insight-continuous-support"] = {
@@ -1652,7 +1651,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("treats a key conclusion category change as a source semantic change even when its body is unchanged", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     workspace.objects["insight-continuous-support"].incarnationId = "created-conclusion";
     const created = createArtifactProposalOperation(workspace, {
       operationId: "operation-key-conclusion-category-fingerprint",
@@ -1676,7 +1675,7 @@ describe("Morpho workspace domain boundaries", () => {
   });
 
   it("normalizes schema v16 workspace state idempotently across persisted JSON", () => {
-    const first = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(createInitialWorkspace())));
+    const first = migrateWorkspaceToCurrentSchema(JSON.parse(JSON.stringify(createTestWorkspace())));
     expect(first.status).toBe("ok");
     if (first.status !== "ok") {
       throw new Error(first.reason);

@@ -1,4 +1,3 @@
-export { buildMorphoAgentStableSystemPrompt } from "@/shared/agentPromptRegistry";
 import { parseAgentReadTool } from "@/shared/agentReadTools";
 import type { VisualIntentItem } from "@/domain/operations/types";
 import {

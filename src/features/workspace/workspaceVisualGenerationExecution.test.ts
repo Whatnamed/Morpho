@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AssetRecord, MorphoObject, MorphoWorkspace } from "@/domain/morpho/types";
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { VisualGenerationPlan } from "@/domain/operations/types";
 import { validateVisualGenerationPlan } from "@/domain/operations/visualGenerationPlan";
 import {

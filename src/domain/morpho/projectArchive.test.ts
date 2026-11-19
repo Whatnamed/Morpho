@@ -9,7 +9,8 @@ import {
 } from "./projectArchive";
 import type { EditableBackupOptions } from "./projectArchive";
 import type { AssetRecord, MorphoWorkspace } from "./types";
-import { createBlankWorkspace, createInitialWorkspace } from "./workspace";
+import { createBlankWorkspace } from "./workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 const NOW = "2026-07-02T10:00:00.000Z";
 const editableBackupChatScopeFull: EditableBackupOptions["chat"] = "full";
@@ -21,7 +22,7 @@ void invalidEditableBackupChatScope;
 describe("M7-A project archive and backup manifests", () => {
   test("creates distinct human-readable archive and editable backup manifests from current workspaces", () => {
     const blank = createBlankWorkspace("project-blank");
-    const seeded = createInitialWorkspace();
+    const seeded = createTestWorkspace();
 
     const archive = createHumanReadableArchiveManifest(blank, { createdAt: NOW });
     const backup = createEditableProjectBackupManifest(seeded, { createdAt: NOW });

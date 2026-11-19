@@ -13,7 +13,9 @@ import {
   buildAgentDefaultMemoryContext,
   type AgentDefaultMemoryContext
 } from "@/domain/morpho/projectMemory";
-import { createBlankWorkspace, createInitialWorkspace, migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { estimateProviderSerializedTokens } from "@/shared/providerInputBudget";
 import {
   appendAgentProviderContextFrames,
@@ -77,7 +79,7 @@ describe("Provider Context Frames", () => {
     expect(projectFrame(deleted.workspace)?.renderedText).toContain("当前没有已应用设计定义");
   });
   it("keeps task strategy policy out of the untrusted turn context frame", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const context = buildTaskContext(workspace, {
       kind: "research",
       draft: "调研海洋浮标",
@@ -109,7 +111,7 @@ describe("Provider Context Frames", () => {
   });
 
   it("includes the formal key conclusion category in the selected turn context", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const context = buildTaskContext(workspace, {
       kind: "general",
       draft: "继续讨论当前关键结论",
@@ -134,7 +136,7 @@ describe("Provider Context Frames", () => {
   });
 
   it("adds provider frames without changing conversation messages or compaction state", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const context = buildTaskContext(workspace, {
       kind: "general",
       draft: "继续讨论",

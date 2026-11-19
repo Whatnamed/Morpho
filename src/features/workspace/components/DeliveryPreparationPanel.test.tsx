@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { addObjectsToDeliverySection } from "@/domain/morpho/deliveryPreparation";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { DeliveryPreparationPanel } from "./DeliveryPreparationPanel";
 
@@ -92,7 +92,7 @@ describe("DeliveryPreparationPanel", () => {
   });
 
   it("routes a selected section to the draft action and disables it without references or while streaming", async () => {
-    const workspace = addReferenceToActiveSection(createInitialWorkspace());
+    const workspace = addReferenceToActiveSection(createTestWorkspace());
     const onRequestSectionDraft = vi.fn();
     const { container } = await renderPanel(
       buildProps({
@@ -112,7 +112,7 @@ describe("DeliveryPreparationPanel", () => {
       sectionId: "section-delivery-ppt-six-1"
     });
 
-    const emptyWorkspace = createInitialWorkspace();
+    const emptyWorkspace = createTestWorkspace();
     const emptyRender = await renderPanel(
       buildProps({
         workspace: emptyWorkspace
@@ -152,7 +152,7 @@ describe("DeliveryPreparationPanel", () => {
 
 function buildProps(overrides: Partial<PanelProps> = {}): PanelProps {
   return {
-    workspace: createInitialWorkspace(),
+    workspace: createTestWorkspace(),
     assetUrls: {},
     selectedObjects: [],
     activeDeliveryObjectId: "delivery-ppt-six",

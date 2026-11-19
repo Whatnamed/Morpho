@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { archiveVisualBranch, createBlankWorkspace, createInitialWorkspace, createVisualBranch, restoreVisualBranch, setConceptDirectionStatus, setDefaultReference } from "@/domain/morpho/workspace";
+import { archiveVisualBranch, createBlankWorkspace, createVisualBranch, restoreVisualBranch, setConceptDirectionStatus, setDefaultReference } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { importTextObject } from "@/domain/morpho/imports";
 import { addObjectsToDeliverySection, createDeliveryPreparation, createDeliverySection, updateDeliveryReferenceEditorial } from "@/domain/morpho/deliveryPreparation";
 import { classifyDecisionRecords } from "@/domain/morpho/decisionRecords";
@@ -41,7 +42,7 @@ function withdrawn(workspace: MorphoWorkspace, original: ContinuityRecordEntry) 
   expect(context.relevantStageRecords.map((entry) => entry.id)).not.toContain(original.id);
 }
 function branchFixture() {
-  const created = createVisualBranch(createInitialWorkspace(), { branchId: "manual-branch-a", directionId: "direction-soft-rail", label: "manual branch A" });
+  const created = createVisualBranch(createTestWorkspace(), { branchId: "manual-branch-a", directionId: "direction-soft-rail", label: "manual branch A" });
   if (created.status !== "updated") throw new Error(created.reason);
   tick(); return created.workspace;
 }
@@ -174,7 +175,7 @@ describe("manual deterministic Continuity and Focus compensation", () => {
   });
 
   it("Direction Decision compensation preserves independent Focus and withdraws its own inverse event on the next flip", () => {
-    const before = createInitialWorkspace(); tick();
+    const before = createTestWorkspace(); tick();
     const after = setConceptDirectionStatus(before, "direction-soft-rail", "alternative", "manual status"); tick();
     const later = importTextObject(after, { text: "independent B", position: { x: 900, y: 0 } }).workspace, [b] = added(after, later);
     const undo = restored(undoManualHistory(history(before, after), later)), inverseEntries = added(later, undo.workspace);
@@ -188,7 +189,7 @@ describe("manual deterministic Continuity and Focus compensation", () => {
   });
 
   it("Default Reference compensation retains identity-bound current Decisions and owned Focus", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     // Demo visuals lack assetId; P1B's current reference Decision requires an
     // asset-backed image. Supply local metadata, without any Provider execution.
     const before = { ...base, assets: { ...base.assets }, objects: { ...base.objects } };
@@ -210,7 +211,7 @@ describe("manual deterministic Continuity and Focus compensation", () => {
   });
 
   it("editorial-only edits add no Continuity event or Focus effect", () => {
-    const delivery = createDeliveryPreparation(createInitialWorkspace(), { title: "editorial", format: "board", position: { x: 0, y: 0 } });
+    const delivery = createDeliveryPreparation(createTestWorkspace(), { title: "editorial", format: "board", position: { x: 0, y: 0 } });
     if (delivery.status !== "updated") throw new Error(delivery.reason);
     const object = delivery.workspace.objects[delivery.deliveryObjectId]; if (object.type !== "delivery") throw new Error("delivery");
     const reference = addObjectsToDeliverySection(delivery.workspace, { deliveryObjectId: object.id, sectionId: object.sections[0].id, sourceObjectIds: ["image-soft-rail-v2"] });

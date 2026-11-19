@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { TurnTaskContract } from "@/shared/turnTaskContract";
 import { readAgentWorkspaceSource, requirementCovered } from "./agentSourceReads";
 

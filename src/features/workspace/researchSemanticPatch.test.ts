@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createResearchOperation } from "../../domain/operations/operations";
-import { createInitialWorkspace } from "../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 import { buildTaskContext } from "./taskContext";
 import { applyResearchProposalWithSemanticPatch } from "./researchSemanticPatch";
@@ -12,9 +12,9 @@ describe("research success semantic patch", () => {
     const userMessageId = "ai-user-research-semantic-success";
     const userMessageCreatedAt = "2026-06-30T13:00:00.000Z";
     const workspaceWithMessage = {
-      ...createInitialWorkspace(),
+      ...createTestWorkspace(),
       ai: {
-        ...createInitialWorkspace().ai,
+        ...createTestWorkspace().ai,
         messages: [
           {
             id: userMessageId,

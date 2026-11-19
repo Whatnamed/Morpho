@@ -1,22 +1,12 @@
 import type { ComponentProps } from "react";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
-import type { AiConversationPanel } from "./AiConversationPanel";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
+import type { AiConversationPanel } from "@/features/workspace/components/AiConversationPanel";
 
-/**
- * Default props for rendering `AiConversationPanel` outside the app.
- *
- * Shared by `AiConversationPanel.test.ts` and the render-cost targets in
- * `performanceBenchmarks.ts`. Kept in one place so the panel's 40-odd required props
- * are satisfied once: when a prop is added, `tsc --noEmit` fails here rather than in
- * two copies that drift.
- *
- * Every callback is a no-op. This builds a renderable panel, not a working one.
- */
 export function buildAiConversationPanelProps(
   overrides: Partial<ComponentProps<typeof AiConversationPanel>> = {}
 ): ComponentProps<typeof AiConversationPanel> {
-  const workspace = createInitialWorkspace();
+  const workspace = createTestWorkspace();
   return {
     workspace,
     selectedObjects: [],

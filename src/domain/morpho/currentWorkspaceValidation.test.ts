@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { createBlankWorkspace, createInitialWorkspace, migrateWorkspaceToCurrentSchema } from "./workspace";
+import { createBlankWorkspace } from "./workspace";
+import { migrateWorkspaceToCurrentSchema } from "./workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
 import type { MorphoObject, MorphoWorkspace } from "./types";
 
 describe("current workspace deep validation", () => {
   it("accepts canonical blank and initial workspaces", () => {
     const blank = validateCurrentMorphoWorkspace(createBlankWorkspace("project-validation"));
-    const initial = validateCurrentMorphoWorkspace(createInitialWorkspace());
+    const initial = validateCurrentMorphoWorkspace(createTestWorkspace());
 
     expect(blank).toMatchObject({ status: "ok" });
     if (initial.status === "failed") {
@@ -17,14 +19,14 @@ describe("current workspace deep validation", () => {
   });
 
   it("rejects malformed nested object containers and record key/id mismatches", () => {
-    const malformed = structuredClone(createInitialWorkspace()) as unknown as Record<string, unknown>;
+    const malformed = structuredClone(createTestWorkspace()) as unknown as Record<string, unknown>;
     malformed.objects = [];
     expect(validateCurrentMorphoWorkspace(malformed)).toMatchObject({
       status: "failed",
       issues: expect.arrayContaining([expect.objectContaining({ path: "objects" })])
     });
 
-    const mismatched = structuredClone(createInitialWorkspace());
+    const mismatched = structuredClone(createTestWorkspace());
     const [objectId, object] = Object.entries(mismatched.objects)[0] ?? [];
     if (!objectId || !object) throw new Error("Expected an initial object fixture.");
     mismatched.objects[objectId] = { ...object, id: "different-object-id" };
@@ -35,7 +37,7 @@ describe("current workspace deep validation", () => {
   });
 
   it("rejects dangling critical references and non-finite infinite-canvas geometry", () => {
-    const dangling = structuredClone(createInitialWorkspace());
+    const dangling = structuredClone(createTestWorkspace());
     dangling.canvas.instances.push({
       id: "canvas-missing",
       objectId: "missing-object",
@@ -49,21 +51,21 @@ describe("current workspace deep validation", () => {
       })])
     });
 
-    const invalidGeometry = structuredClone(createInitialWorkspace());
+    const invalidGeometry = structuredClone(createTestWorkspace());
     invalidGeometry.canvas.view.x = Number.POSITIVE_INFINITY;
     expect(validateCurrentMorphoWorkspace(invalidGeometry)).toMatchObject({
       status: "failed",
       issues: expect.arrayContaining([expect.objectContaining({ path: "canvas.view.x" })])
     });
 
-    const largeCoordinates = structuredClone(createInitialWorkspace());
+    const largeCoordinates = structuredClone(createTestWorkspace());
     largeCoordinates.canvas.view.x = 1e100;
     largeCoordinates.canvas.view.y = -1e100;
     expect(validateCurrentMorphoWorkspace(largeCoordinates)).toMatchObject({ status: "ok" });
   });
 
   it("rejects missing current revisions but preserves stable delivery snapshots with missing sources", () => {
-    const missingRevision = structuredClone(createInitialWorkspace());
+    const missingRevision = structuredClone(createTestWorkspace());
     const definition = Object.values(missingRevision.objects).find((object) => object.type === "designDefinition");
     if (!definition || definition.type !== "designDefinition") throw new Error("Expected a design definition fixture.");
     definition.currentRevisionId = "missing-definition-revision";
@@ -107,7 +109,7 @@ describe("current workspace deep validation", () => {
   });
 
   it("rejects inconsistent current availability and default-reference projections", () => {
-    const workspace = structuredClone(createInitialWorkspace());
+    const workspace = structuredClone(createTestWorkspace());
     const definition = Object.values(workspace.objects).find((object) => object.type === "designDefinition");
     if (!definition || definition.type !== "designDefinition") throw new Error("Expected a design definition fixture.");
     definition.visibility = "hidden";
@@ -116,7 +118,7 @@ describe("current workspace deep validation", () => {
       issues: expect.arrayContaining([expect.objectContaining({ path: "workingState.currentDesignDefinitionAvailability" })])
     });
 
-    const defaults = structuredClone(createInitialWorkspace());
+    const defaults = structuredClone(createTestWorkspace());
     const defaultImage = Object.values(defaults.objects).find((object) => object.type === "image" && object.isDefaultReference);
     if (!defaultImage || defaultImage.type !== "image") throw new Error("Expected a default-reference fixture.");
     defaults.objects["duplicate-default"] = {

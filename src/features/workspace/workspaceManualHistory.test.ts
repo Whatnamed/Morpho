@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createBlankWorkspace, createInitialWorkspace, hideObjects, restoreObject, deleteObjects, setConceptDirectionStatus, setKeyConclusionCategory, createKeyConclusion } from "@/domain/morpho/workspace";
+import { createBlankWorkspace, hideObjects, restoreObject, deleteObjects, setConceptDirectionStatus, setKeyConclusionCategory, createKeyConclusion } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { ensureStageRegions } from "@/domain/morpho/stageRegions";
 import { importTextObject } from "@/domain/morpho/imports";
 import { addObjectsToDeliverySection, createDeliveryPreparation, moveDeliveryReference, removeDeliveryReference, updateDeliveryReferenceEditorial, updateDeliverySection } from "@/domain/morpho/deliveryPreparation";
@@ -9,7 +10,7 @@ import { applyConversationSemanticPatch, setConversationSemanticEntryManualState
 import { classifyDecisionRecords } from "@/domain/morpho/decisionRecords";
 import { validateCurrentMorphoWorkspace } from "@/domain/morpho/currentWorkspaceValidation";
 import { createEditableProjectBackupManifest, validateEditableProjectBackupManifest } from "@/domain/morpho/projectArchive";
-import { migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
+import { migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspaceCodec";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
 import { captureManualHistory, absorbCanvasMeasurements, createManualHistory, pushManualHistory, undoManualHistory, redoManualHistory, type ManualHistory, type ManualHistoryResult } from "./workspaceManualHistory";
 
@@ -52,7 +53,7 @@ describe("operation-owned manual history", () => {
     expect(JSON.stringify(entry)).not.toContain("conversationCompaction");
   });
   it.each(["image-soft-rail-v2", "research-night-travel", "direction-soft-rail"])("hide/restore %s preserves later AI object, messages, assets and authority history", (id) => {
-    const before = createInitialWorkspace();
+    const before = createTestWorkspace();
     // Seed names are explicit domain fixtures, not browser mock state.
     const target = before.objects[id] ? id : Object.values(before.objects).find((o) => o.type === "research")!.id;
     const after = hideObjects(before, [target]); const current = independent(after);
@@ -69,7 +70,7 @@ describe("operation-owned manual history", () => {
     expect(second.undo.workspace.objects[target].visibility).toBe("hidden"); expect(second.redo.workspace.objects[target].visibility).toBe("active");
   });
   it("preserves a later generated image, bytes identity, metadata, messages and same-ID runtime changes", () => {
-    const before = createInitialWorkspace(), after = hideObjects(before, ["direction-soft-rail"]);
+    const before = createTestWorkspace(), after = hideObjects(before, ["direction-soft-rail"]);
     const generated = createGeneratedImageFromAsset(after, {
       asset: { id: "p6h-ai-asset", fileName: "B.png", mimeType: "image/png", size: 42, createdAt: "2026-10-03T00:00:00Z", storageKey: "B-bytes", sourceType: "aiGeneratedImage" },
       generation: { modelId: "gpt-image-2", modelLabel: "GPT Image 2", prompt: "independent B", aspectRatio: "1:1", createdAt: "2026-10-03T00:00:00Z", referenceObjectIds: [] }, sourceObjectIds: [], position: { x: 1000, y: 100 }
@@ -93,7 +94,7 @@ describe("operation-owned manual history", () => {
     expect(undoManualHistory(history(before, after), third).status).toBe("blocked");
   });
   it("allows unrelated edits on the same object, but detects owned field and incarnation conflicts atomically", () => {
-    const before = createInitialWorkspace(); const id = "direction-soft-rail"; const after = hideObjects(before, [id]);
+    const before = createTestWorkspace(); const id = "direction-soft-rail"; const after = hideObjects(before, [id]);
     const renamed = { ...after, objects: { ...after.objects, [id]: { ...after.objects[id], title: "independent rename" } } };
     const undone = restored(undoManualHistory(history(before, after), renamed)); expect(undone.workspace.objects[id].title).toBe("independent rename");
     for (const current of [restoreObject(after, id), { ...after, objects: { ...after.objects, [id]: { ...after.objects[id], incarnationId: "recreated" } } }]) {
@@ -103,7 +104,7 @@ describe("operation-owned manual history", () => {
     }
   });
   it("blocks redo after an independent same-field edit and keeps its entry", () => {
-    const before = createInitialWorkspace(), after = hideObjects(before, ["direction-soft-rail"]);
+    const before = createTestWorkspace(), after = hideObjects(before, ["direction-soft-rail"]);
     const undo = restored(undoManualHistory(history(before, after), after));
     const third = hideObjects(undo.workspace, ["direction-soft-rail"]);
     expect(redoManualHistory(undo.history, third)).toMatchObject({ status: "blocked", history: undo.history });
@@ -118,7 +119,7 @@ describe("operation-owned manual history", () => {
     const again = restored(undoManualHistory(redo.history, redo.workspace)); expect(again.workspace.objects[id]).toBeUndefined();
   });
   it.each(["direction-soft-rail", "image-soft-rail-v2"])("delete/restore %s preserves relationships, old revisions and later history", (id) => {
-    const before = createInitialWorkspace(), after = deleteObjects(before, [id], { confirmed: true, reason: "manual delete" }).workspace;
+    const before = createTestWorkspace(), after = deleteObjects(before, [id], { confirmed: true, reason: "manual delete" }).workspace;
     const current = independent(after), json = JSON.stringify(current);
     const { undo, redo } = roundTrip(before, after, current);
     expect(undo.workspace.objects[id]).toEqual(before.objects[id]); expect(redo.workspace.objects[id]).toBeUndefined();
@@ -138,7 +139,7 @@ describe("operation-owned manual history", () => {
     expect(undoManualHistory(absorbCanvasMeasurements(stack, changedObject, { ...measured, objects: changedObject.objects }), { ...measured, objects: changedObject.objects }).status).toBe("blocked");
   });
   it("layout history binds the instance to its original object and incarnation", () => {
-    const before = createInitialWorkspace(), instance = before.canvas.instances[0], after = { ...before, canvas: { ...before.canvas, instances: before.canvas.instances.map((i) => i.id === instance.id ? { ...i, position: { ...i.position, x: i.position.x + 50 } } : i) } };
+    const before = createTestWorkspace(), instance = before.canvas.instances[0], after = { ...before, canvas: { ...before.canvas, instances: before.canvas.instances.map((i) => i.id === instance.id ? { ...i, position: { ...i.position, x: i.position.x + 50 } } : i) } };
     const stack = history(before, after);
     const other = Object.keys(before.objects).find((id) => id !== instance.objectId)!;
     const retargeted = { ...after, canvas: { ...after.canvas, instances: after.canvas.instances.map((i) => i.id === instance.id ? { ...i, objectId: other } : i) } };
@@ -147,7 +148,7 @@ describe("operation-owned manual history", () => {
     expect(undoManualHistory(stack, recreated).status).toBe("blocked");
   });
   it("a Region/member layout commit is one atomic delta and retains both parts on conflict", () => {
-    const before = ensureStageRegions(createInitialWorkspace()), instance = before.canvas.instances[0], region = before.canvas.stageRegions![0];
+    const before = ensureStageRegions(createTestWorkspace()), instance = before.canvas.instances[0], region = before.canvas.stageRegions![0];
     const after = { ...before, canvas: { ...before.canvas,
       instances: before.canvas.instances.map((i) => i.id === instance.id ? { ...i, position: { ...i.position, x: i.position.x + 30 } } : i),
       stageRegions: before.canvas.stageRegions!.map((r) => r.id === region.id ? { ...r, x: r.x + 30 } : r)
@@ -182,7 +183,7 @@ describe("operation-owned manual history", () => {
     expect(undoManualHistory(history(before, created.workspace), current).status).toBe("blocked");
   });
   it("status Undo/Redo preserves Decision history with compensating identity-bound effects and projections", () => {
-    const before = createInitialWorkspace(), id = "direction-soft-rail";
+    const before = createTestWorkspace(), id = "direction-soft-rail";
     const after = setConceptDirectionStatus(before, id, "eliminated", "manual eliminate");
     const { undo, redo } = roundTrip(before, after, independent(after));
     expect(undo.workspace.objects[id]).toMatchObject({ status: "primary" }); expect(redo.workspace.objects[id]).toMatchObject({ status: "eliminated" });
@@ -193,7 +194,7 @@ describe("operation-owned manual history", () => {
     expect(classifyDecisionRecords(redo.workspace).filter((r) => r.state === "current" && r.record.effect?.kind === "setDirectionStatus").at(-1)?.record.effect).toMatchObject({ status: "eliminated" });
   });
   it("detects an independent primary slot owner and changed immutable revision payload before reconciliation", () => {
-    const before = createInitialWorkspace(), after = setConceptDirectionStatus(before, "direction-soft-rail", "eliminated", "manual");
+    const before = createTestWorkspace(), after = setConceptDirectionStatus(before, "direction-soft-rail", "eliminated", "manual");
     const other = Object.values(after.objects).find((o) => o.type === "conceptDirection" && o.id !== "direction-soft-rail")!;
     const current = setConceptDirectionStatus(after, other.id, "primary", "independent");
     expect(undoManualHistory(history(before, after), current)).toMatchObject({ status: "blocked", conflicts: ["primaryDirection"] });
@@ -203,7 +204,7 @@ describe("operation-owned manual history", () => {
     expect(undoManualHistory(history(before, after), changed).status).toBe("blocked");
   });
   it("Research-owned key conclusion creation/category edits are symmetric without rerunning the source", () => {
-    const before = createInitialWorkspace(), sourceId = Object.values(before.objects).find((o) => o.type === "research")!.id;
+    const before = createTestWorkspace(), sourceId = Object.values(before.objects).find((o) => o.type === "research")!.id;
     const created = createKeyConclusion(before, { title: "manual retained", body: "candidate claim", sourceObjectIds: [sourceId], category: "finding", confidence: "needsVerification", position: { x: 0, y: 0 } });
     const id = created.keyConclusion.id, { undo, redo } = roundTrip(before, created.workspace, independent(created.workspace));
     expect(undo.workspace.objects[id]).toBeUndefined(); expect(redo.workspace.objects[id]).toEqual(created.workspace.objects[id]);
@@ -224,7 +225,7 @@ describe("operation-owned manual history", () => {
 
 describe("Delivery manual history", () => {
   function deliveryFixture() {
-    const result = createDeliveryPreparation(createInitialWorkspace(), { title: "manual delivery", format: "board", position: { x: 0, y: 0 } });
+    const result = createDeliveryPreparation(createTestWorkspace(), { title: "manual delivery", format: "board", position: { x: 0, y: 0 } });
     if (result.status !== "updated") throw new Error(result.reason);
     const delivery = result.workspace.objects[result.deliveryObjectId]; if (delivery.type !== "delivery") throw new Error("delivery");
     return { before: result.workspace, deliveryObjectId: delivery.id, sectionId: delivery.sections[0].id, secondSectionId: delivery.sections[1].id };

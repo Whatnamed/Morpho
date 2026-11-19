@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { classifyVisualGenerationIntent, resolveVisualGenerationTarget } from "./visualGenerationRouting";
 
 describe("visual generation routing", () => {
   it("classifies selected concept directions plus preview wording as direction preview generation", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const direction = workspace.objects["direction-soft-rail"];
     if (!direction) {
       throw new Error("Expected seed direction.");
@@ -15,7 +15,7 @@ describe("visual generation routing", () => {
   });
 
   it("classifies selected images plus iteration wording as visual development", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-soft-rail-v2"];
     if (!image) {
       throw new Error("Expected seed image.");
@@ -25,7 +25,7 @@ describe("visual generation routing", () => {
   });
 
   it("inherits direction and visual branch from a selected source image", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const source = workspace.objects["image-rail-detail"];
     if (!source) {
       throw new Error("Expected seed image.");
@@ -41,7 +41,7 @@ describe("visual generation routing", () => {
   });
 
   it("blocks multiple source images from different directions instead of guessing primary direction", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const imageA = workspace.objects["image-soft-rail-v2"];
     const imageB = workspace.objects["image-support-island-preview"];
     if (!imageA || !imageB) {
@@ -62,7 +62,7 @@ describe("visual generation routing", () => {
   });
 
   it("does not inject the primary direction when no visual target is explicit", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
 
     const target = resolveVisualGenerationTarget(workspace, [], []);
 

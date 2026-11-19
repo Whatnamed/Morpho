@@ -8,7 +8,7 @@ import { getTurnAllowedTools } from "@/shared/turnTaskContract";
 import { buildAPlusAgentProviderContract, parseAPlusAgentProviderRequest } from "@/server/ai/agentTurnProviderRequest";
 import type { ImageObject } from "@/domain/morpho/types";
 
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { captureDeliveryGenerationBaseline, inspectDeliveryDraft } from "@/domain/morpho/deliveryInspection";
 import { applyDeliverySectionDraft, updateDeliverySection } from "@/domain/morpho/deliveryPreparation";
 import type {
@@ -25,7 +25,7 @@ import {
   createAgentTurnHostSessionDetachedError,
   type AgentTurnHost
 } from "./agentTurnHost";
-import { createAgentTurnHostFake } from "./agentTurnHostFake";
+import { createAgentTurnHostFake } from "@/test/agentTurnHostFake";
 import {
   detachMorphoAgentTurnForPageUnload,
   cancelMorphoAgentTurn,

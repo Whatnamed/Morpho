@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { completeImageGenerationOperation, createImageGenerationOperation } from "@/domain/operations/operations";
-import { hideObject, createInitialWorkspace } from "@/domain/morpho/workspace";
+import { hideObject } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { AssetRecord, ImageGenerationMetadata } from "@/domain/morpho/types";
 import { applyImageGenerationResultCommit } from "./imageGenerationResultCommit";
 
@@ -66,7 +67,7 @@ function generation(operationId: string, title: string): ImageGenerationMetadata
 describe("image generation result commits", () => {
   it("commits duplicate observations of the same client execution once against the latest Workspace", () => {
     const operationId = "operation-deduplicate-observation";
-    const created = createImageGenerationOperation(createInitialWorkspace(), {
+    const created = createImageGenerationOperation(createTestWorkspace(), {
       operationId, clientRequestId: "stable-request", prompt: "图像", selectedObjectIds: [], imagePixels: false,
       modelId: "nano-banana-fast", modelLabel: "nano-banana-fast", aspectRatio: "16:9", referenceObjectIds: []
     });
@@ -85,7 +86,7 @@ describe("image generation result commits", () => {
   });
   it("keeps external workspace changes while reverse-settled images retain their planned frames", () => {
     const operationId = "operation-image-commit-race";
-    const created = createImageGenerationOperation(createInitialWorkspace(), {
+    const created = createImageGenerationOperation(createTestWorkspace(), {
       operationId,
       clientRequestId: "client-image-commit-race",
       prompt: "生成两张概念图",
@@ -158,7 +159,7 @@ describe("image generation result commits", () => {
 
   it("records an item failure without rolling back an earlier successful result", () => {
     const operationId = "operation-image-commit-failure";
-    const created = createImageGenerationOperation(createInitialWorkspace(), {
+    const created = createImageGenerationOperation(createTestWorkspace(), {
       operationId,
       clientRequestId: "client-image-commit-failure",
       prompt: "生成两张概念图",

@@ -5,6 +5,9 @@ export default defineConfig([
   ...nextVitals,
   globalIgnores([
     ".next/**",
+    ".open-next/**",
+    ".wrangler/**",
+    "worker-configuration.d.ts",
     "temp/**",
     "output/**",
     "e2e/.artifacts/**",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createBlankWorkspace, createCurrentCaseStudyWorkspace } from "@/domain/morpho/workspace";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { createCurrentCaseStudyWorkspace } from "@/domain/morpho/caseStudy/createCurrentCaseStudyWorkspace";
 import {
   diffFootprints,
   localStorageEntryBytes,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { AiTaskMode, AiWorkIntent, MorphoObject } from "@/domain/morpho/types";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { buildAgentPolicyBlocks, MORPHO_AGENT_PROMPT_CONTRACT_VERSION } from "@/shared/agentPromptRegistry";
 import {
   advanceRequiredAgentReadState,
@@ -19,7 +19,7 @@ import {
 } from "./agentTaskStrategy";
 
 describe("Agent task strategy and prompt registry", () => {
-  const workspace = createInitialWorkspace();
+  const workspace = createTestWorkspace();
 
   it.each([
     ["historyAndMemory", "你还记得最早的对话吗？", "chatAnalysis", "discussion", []],

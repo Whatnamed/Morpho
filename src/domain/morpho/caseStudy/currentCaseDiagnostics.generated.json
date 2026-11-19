@@ -28,16 +28,16 @@
     "sourceId": "project-afaa9f29-d0b7-4dd7-a745-360d069cc2df",
     "subtitle": "从一句话、图片、文件或链接开始。",
     "title": "测试",
-    "workspaceSchemaVersion": 17
+    "workspaceSchemaVersion": 18
   },
   "referenceOnlyAssetCount": 0,
   "resourceBytes": 40880166,
   "sizeMismatchCount": 0,
-  "workspaceFingerprint": "16c6e408",
+  "workspaceFingerprint": "d8433f44",
   "projectMemory": {
-    "currentDocumentCount": 5,
+    "currentDocumentCount": 4,
     "currentStageRecordCount": 5,
-    "revisionCount": 9,
-    "stageRevisionCount": 7
+    "revisionCount": 13,
+    "stageRevisionCount": 12
   }
 }

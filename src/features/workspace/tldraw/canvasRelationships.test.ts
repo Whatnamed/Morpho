@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { collectDirectCanvasEdges, collectRequestedCanvasEdges } from "./canvasRelationships";
 
 describe("collectDirectCanvasEdges", () => {
   it("aggregates direct semantic relationships without recursively expanding a trace", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
 
     const edges = collectDirectCanvasEdges(workspace);
 
@@ -40,7 +40,7 @@ describe("collectDirectCanvasEdges", () => {
   });
 
   it("keeps legacy references secondary because their order does not prove a parent", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-night-scenario"];
     if (image?.type !== "image") {
       throw new Error("Expected seeded image object.");
@@ -79,7 +79,7 @@ describe("collectDirectCanvasEdges", () => {
   });
 
   it("deduplicates the same direct relationship by object pair while retaining the strongest semantic kind", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const edges = collectDirectCanvasEdges({
       ...workspace,
       relations: [
@@ -103,7 +103,7 @@ describe("collectDirectCanvasEdges", () => {
 });
 
 it("keeps relationships hidden by default and limits requested source/version edges to one hop", () => {
-  const workspace = createInitialWorkspace(), before = structuredClone(workspace);
+  const workspace = createTestWorkspace(), before = structuredClone(workspace);
   expect(collectRequestedCanvasEdges(workspace)).toEqual([]);
   const source = collectRequestedCanvasEdges(workspace, { objectId: "definition-current", tab: "来源" });
   expect(source.length).toBeGreaterThan(0); expect(source.every((edge) => edge.toObjectId === "definition-current")).toBe(true);

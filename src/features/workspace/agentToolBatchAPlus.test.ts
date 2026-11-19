@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createTestWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { AgentTurnJournalSnapshot, APlusToolCall } from "@/shared/agentTurnJournalProtocol";
 import { executeAgentToolBatchAPlus } from "./agentToolBatchAPlus";
 import {
@@ -9,7 +9,7 @@ import {
   type AgentTurnCoordinatorRecoverySnapshot
 } from "./agentTurnCoordinator";
 import type { AgentTurnHost } from "./agentTurnHost";
-import { createAgentTurnHostFake } from "./agentTurnHostFake";
+import { createAgentTurnHostFake } from "@/test/agentTurnHostFake";
 import {
   createAgentTurnLifecycleState,
   reduceAgentTurnLifecycle,

@@ -2,7 +2,7 @@ import { createObjectIncarnationId } from "./objectIdentity";
 import { applyProjectContinuityEvent } from "./projectContinuity";
 import { reconcileWorkspaceDerivedState } from "./derivedState";
 import { captureSourceSnapshot } from "./sourceResolution";
-import { captureDeliveryProvenance, inspectDeliveryDraft, inspectDeliveryReference } from "./deliveryInspection";
+import { createDeliverySourceFingerprint, captureDeliveryProvenance, inspectDeliveryDraft, inspectDeliveryReference } from "./deliveryInspection";
 import type {
   AssetId,
   CanvasPoint,
@@ -368,6 +368,10 @@ export function removeDeliverySection(
     "sectionChanged",
     { sectionId: section.id, now }
   );
+}
+
+export function makeDeliveryReferenceId(deliveryObjectId: MorphoObjectId, sourceObjectId: MorphoObjectId): DeliveryReferenceId {
+  return `delivery-ref-${deliveryObjectId}-${sourceObjectId}`;
 }
 
 export function addObjectsToDeliverySection(
@@ -1193,73 +1197,6 @@ function createDeliveryContentSnapshot(workspace: MorphoWorkspace, source: Morph
   }
 }
 
-export function createDeliverySourceFingerprint(workspace: MorphoWorkspace, source: MorphoObject): string {
-  switch (source.type) {
-    case "image":
-      return stableStringify({
-        type: source.type,
-        assetId: source.assetId,
-        role: source.role,
-        title: source.title,
-        summary: source.summary,
-        directionId: source.directionId,
-        visualBranchId: source.visualBranchId,
-        pendingReview: source.pendingReview,
-        provenance: captureDeliveryProvenance(workspace, source)
-      });
-    case "documentFragment":
-      return stableStringify({
-        type: source.type,
-        title: source.title,
-        summary: source.summary,
-        body: source.body,
-        sourceFileObjectId: source.source.fileObjectId,
-        sourceExtractAssetId: source.source.sourceExtractAssetId,
-        startOffset: source.source.startOffset,
-        endOffset: source.source.endOffset
-      });
-    case "keyConclusion":
-      return stableStringify({
-        type: source.type,
-        title: source.title,
-        summary: source.summary,
-        body: source.body,
-        state: source.state,
-        confidence: source.confidence
-      });
-    case "research":
-      return stableStringify({
-        type: source.type,
-        title: source.title,
-        summary: source.summary,
-        findings: source.findings,
-        opportunities: source.opportunities,
-        constraints: source.constraints,
-        openQuestions: source.openQuestions
-      });
-    case "designDefinition": {
-      const revision = workspace.designDefinitionRevisions[source.currentRevisionId];
-      return stableStringify({ type: source.type, revisionId: source.currentRevisionId, revisionNumber: revision?.revisionNumber, revision });
-    }
-    case "conceptDirection": {
-      const revision = workspace.directionRevisions[source.currentRevisionId];
-      return stableStringify({ type: source.type, revisionId: source.currentRevisionId, revisionNumber: revision?.revisionNumber, status: source.status, revision });
-    }
-    case "file":
-      return stableStringify({ type: source.type, title: source.title, summary: source.summary, assetId: source.assetId, extractedAssetId: source.extractedAssetId, parseStatus: source.parseStatus });
-    case "link":
-      return stableStringify({ type: source.type, title: source.editableTitle ?? source.title, summary: source.summary, url: source.url, description: source.description, assetId: source.assetId });
-    case "text":
-      return stableStringify({ type: source.type, title: source.title, summary: source.summary, body: source.body });
-    case "imageCollection":
-      return stableStringify({ type: source.type, title: source.title, summary: source.summary, memberObjectIds: source.memberObjectIds });
-    case "proposalDraft":
-      return stableStringify({ type: source.type, title: source.title, summary: source.summary, proposalId: source.proposalId });
-    case "delivery":
-      return stableStringify({ type: source.type, title: source.title });
-  }
-}
-
 function defaultSections(format: DeliveryObject["format"], deliveryObjectId: string, now: string): DeliverySection[] {
   const titles = format === "board" ? BOARD_DEFAULT_SECTIONS : PRESENTATION_DEFAULT_SECTIONS;
   return titles.map((title, index) => ({
@@ -1443,10 +1380,6 @@ function normalizedOptional(value: string | undefined): string | undefined {
 
 function uniqueStrings(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))];
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(value);
 }
 
 function omitRecordKey<T>(record: Record<string, T>, key: string): Record<string, T> {

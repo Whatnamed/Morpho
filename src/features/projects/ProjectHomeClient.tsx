@@ -20,11 +20,10 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudy";
+import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudyConstants";
 import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import {
   getProjectWorkspaceStorageKey,
-  initializeBrowserProjectCatalog,
   loadLocalProjectCatalogSnapshot,
   loadProjectWorkspace,
   persistProjectSummary,
@@ -32,6 +31,7 @@ import {
   type LocalProjectCatalog,
   type LocalProjectSummary
 } from "@/infrastructure/persistence/localProjectStore";
+import { initializeBrowserProjectCatalog } from "@/infrastructure/persistence/projectCatalogInitialization";
 import { acquireProjectWriteLease, withProjectCatalogLock } from "@/infrastructure/persistence/projectWriteLock";
 import {
   estimateOriginStorage,

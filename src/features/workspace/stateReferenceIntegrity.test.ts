@@ -10,14 +10,16 @@ import { createEditableProjectBackupManifest, validateEditableProjectBackupManif
 import { reconcileProjectMemory } from "@/domain/morpho/projectMemory";
 import { searchWorkspace } from "@/domain/morpho/queries";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { createInitialWorkspace, deleteObject, migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspace";
+import { deleteObject } from "@/domain/morpho/workspace";
+import { migrateWorkspaceToCurrentSchema } from "@/domain/morpho/workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { applyConceptDirectionProposal, recordConceptDirectionProposal } from "@/domain/operations/operations";
 import { createDocumentFragmentWithContinuity, resolveDocumentFragmentSourceAvailability } from "./documentFragments";
 
 /** Legal cross-module trajectories, including restore gates rather than only local mutation results. */
 describe("P1A state and reference integrity acceptance", () => {
   it("keeps pending Proposal snapshots restorable but blocks applying to a deleted target", () => {
-    const before = createInitialWorkspace();
+    const before = createTestWorkspace();
     const direction = before.objects["direction-soft-rail"];
     if (direction.type !== "conceptDirection") throw new Error("Expected direction.");
     const revision = before.directionRevisions[direction.currentRevisionId];
@@ -35,7 +37,7 @@ describe("P1A state and reference integrity acceptance", () => {
     expect(restored.artifactProposals[pending.proposal.id].sourceSnapshots).toEqual(pending.proposal.sourceSnapshots);
   });
   it("deletes a direction root without deleting its images, generation metadata, child lineage or historical revisions", () => {
-    const seeded = createInitialWorkspace();
+    const seeded = createTestWorkspace();
     seeded.objects["direction-soft-rail"].incarnationId = "created-soft-rail";
     const generatedImage = seeded.objects["image-soft-rail-v2"];
     if (generatedImage.type !== "image") throw new Error("Expected generated image.");
@@ -110,7 +112,7 @@ describe("P1A state and reference integrity acceptance", () => {
   });
 
   it("keeps extracted Fragment content readable but reports its deleted source File as missing", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const file = base.objects["file-course-brief"];
     if (file.type !== "file") throw new Error("Expected source file.");
     const assetId = "p1a-document-extract";
@@ -145,7 +147,7 @@ describe("P1A state and reference integrity acceptance", () => {
   });
 
   it("clears deleted images from collections, Stage Regions, selection and live branch roots", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const branch = Object.values(base.visualBranches).find((item) => item.rootObjectId)!;
     expect(branch).toBeDefined();
     const imageId = branch.rootObjectId!;
@@ -213,7 +215,7 @@ function assertRestorable(workspace: MorphoWorkspace): MorphoWorkspace {
 }
 
 function deliveryFixture() {
-  const created = createDeliveryPreparation(createInitialWorkspace(), { title: "P1A Delivery", format: "board", position: { x: 0, y: 0 } });
+  const created = createDeliveryPreparation(createTestWorkspace(), { title: "P1A Delivery", format: "board", position: { x: 0, y: 0 } });
   if (created.status !== "updated") throw new Error(created.reason);
   const delivery = created.workspace.objects[created.deliveryObjectId];
   if (delivery.type !== "delivery") throw new Error("Expected delivery.");

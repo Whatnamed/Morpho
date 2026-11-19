@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { recordDesignDefinitionProposal } from "../../../domain/operations/operations";
 import type { CanvasInstance, KeyConclusionObject, MorphoObjectType, ResearchObject } from "../../../domain/morpho/types";
-import { createInitialWorkspace } from "../../../domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 import {
   getAdaptiveMorphoShapeSize,
@@ -36,7 +36,7 @@ describe("MorphoShapeUtil", () => {
   });
 
   it("keeps image canvas props focused on the visual without persistent title or summary details", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-soft-rail-v2"];
     const instance = workspace.canvas.instances.find((item) => item.objectId === "image-soft-rail-v2");
 
@@ -62,7 +62,7 @@ describe("MorphoShapeUtil", () => {
   });
 
   it("marks an object referenced from the detail bar for a local canvas highlight", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const image = workspace.objects["image-soft-rail-v2"];
     const instance = workspace.canvas.instances.find((item) => item.objectId === "image-soft-rail-v2");
 
@@ -76,7 +76,7 @@ describe("MorphoShapeUtil", () => {
   });
 
   it("marks design definition cards when a pending revision draft exists", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const instance = workspace.canvas.instances.find((item) => item.objectId === "definition-current");
     const currentDefinition =
       workspace.objects["definition-current"]?.type === "designDefinition"
@@ -114,7 +114,7 @@ describe("MorphoShapeUtil", () => {
   });
 
   it("does not mark design definition cards for create-definition proposals", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const instance = workspace.canvas.instances.find((item) => item.objectId === "definition-current");
     const currentDefinition =
       workspace.objects["definition-current"]?.type === "designDefinition"
@@ -149,7 +149,7 @@ describe("MorphoShapeUtil", () => {
   });
 
   it("keeps design definition canvas cards to title and full summary, not full structured fields", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const definition = workspace.objects["definition-current"];
     const instance = workspace.canvas.instances.find((item) => item.objectId === "definition-current");
 
@@ -166,7 +166,7 @@ describe("MorphoShapeUtil", () => {
   });
 
   it("renders concept direction keywords with the correct user-facing label", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const direction = workspace.objects["direction-soft-rail"];
     const instance = workspace.canvas.instances.find((item) => item.objectId === "direction-soft-rail");
 
@@ -181,7 +181,7 @@ describe("MorphoShapeUtil", () => {
   });
 
   it("marks non-current design definitions without removing them from the canvas", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const definition = workspace.objects["definition-current"];
     const instance = workspace.canvas.instances.find((item) => item.objectId === "definition-current");
 
@@ -202,7 +202,7 @@ describe("MorphoShapeUtil", () => {
   });
 
   it("includes non-current status chips in the adaptive design-definition height", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const definition = workspace.objects["definition-current"];
     const instance = workspace.canvas.instances.find((item) => item.objectId === "definition-current");
 
@@ -274,7 +274,7 @@ describe("MorphoShapeUtil", () => {
   });
 
   it("keeps research detail sections out of the canvas card", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const research = workspace.objects["research-night-path"];
     const instance = workspace.canvas.instances.find((item) => item.objectId === "research-night-path");
 

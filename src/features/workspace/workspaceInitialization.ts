@@ -1,11 +1,10 @@
+import { initializeBrowserProjectCatalog } from "@/infrastructure/persistence/projectCatalogInitialization";
 import type { MorphoWorkspace } from "@/domain/morpho/types";
-import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudy";
-import { createBlankWorkspace, createCurrentCaseStudyWorkspace } from "@/domain/morpho/workspace";
+import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudyConstants";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
 import { interruptActiveOperations } from "@/domain/operations/operations";
 import { ensureCurrentCaseStudyAssets } from "@/infrastructure/assets/currentCaseStudyAssetInstaller";
 import {
-  initializeBrowserProjectCatalog,
-  initializeLocalProjectCatalog,
   loadProjectWorkspace,
   type LocalProjectStoreMode
 } from "@/infrastructure/persistence/localProjectStore";
@@ -46,11 +45,7 @@ export async function loadWorkspace(
     return { workspace: createBlankWorkspace(projectId) };
   }
 
-  const catalog = mode === "readOnly"
-    ? initializeLocalProjectCatalog(storage, { mode })
-    : await initializeBrowserProjectCatalog(storage, { ownedProjectId: projectId, isCancelled: options.isCancelled }).catch(() => ({
-        status: "failed" as const, reason: "浏览器无法初始化本地项目列表。"
-      }));
+  const catalog = await initializeBrowserProjectCatalog(storage, { mode, ownedProjectId: projectId, isCancelled: options.isCancelled });
   if (catalog.status === "failed") {
     return {
       workspace: createBlankWorkspace(projectId),
@@ -71,13 +66,6 @@ export async function loadWorkspace(
 
   if (catalog.migratedWorkspace?.project.id === projectId) {
     return { workspace: interruptActiveOperations(catalog.migratedWorkspace, "browserReload") };
-  }
-
-  // A read-only tab may arrive while the writer is still seeding the built-in
-  // project. Keep the view usable from the same deterministic fixture without
-  // materializing its catalog, workspace, or binary assets in shared storage.
-  if (mode === "readOnly" && projectId === CURRENT_CASE_STUDY_ID && loaded.status === "missing") {
-    return { workspace: createCurrentCaseStudyWorkspace() };
   }
 
   return {

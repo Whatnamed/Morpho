@@ -1140,8 +1140,10 @@ export type ProjectWorkingState = {
   lastReconciledAt: string;
 };
 
+export const CURRENT_SCHEMA_VERSION = 18;
+
 export type MorphoWorkspace = {
-  schemaVersion: 18;
+  schemaVersion: typeof CURRENT_SCHEMA_VERSION;
   project: {
     id: string;
     title: string;

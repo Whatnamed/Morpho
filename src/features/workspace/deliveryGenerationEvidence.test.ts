@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { captureDeliveryGenerationBaseline } from "@/domain/morpho/deliveryInspection";
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { hashProductValue } from "@/shared/agentProductHash";
 import { buildDeliverySectionContext } from "./deliveryPreparationUi";
 import { readAgentWorkspaceSource } from "./agentSourceReads";
@@ -13,7 +13,7 @@ import { createAgentTurnWorkLedger } from "./agentTurnMessages";
 
 describe("Delivery generation evidence consumes P2B coverage", () => {
   it("requires complete delivered ranges of one content version, survives Recovery, and never samples current B", async () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const delivery = Object.values(workspace.objects).find((object) => object.type === "delivery")!;
     if (delivery.type !== "delivery") throw new Error("delivery");
     const section = delivery.sections.find((item) => item.referenceIds.length)!;

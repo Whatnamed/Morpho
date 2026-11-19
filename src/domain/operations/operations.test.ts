@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { createBlankWorkspace, createInitialWorkspace as createLegacyFixture, migrateWorkspaceToCurrentSchema } from "../morpho/workspace";
+import { createBlankWorkspace } from "../morpho/workspace";
+import { migrateWorkspaceToCurrentSchema } from "../morpho/workspaceCodec";
+import { createTestWorkspace as createLegacyFixture } from "@/test/createTestWorkspace";
 import { validateCurrentMorphoWorkspace } from "../morpho/currentWorkspaceValidation";
 import { createEditableProjectBackupManifest } from "../morpho/projectArchive";
 import type { MorphoWorkspace } from "../morpho/types";
@@ -255,7 +257,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("can directly place explicit concept direction drafts as separate canvas directions", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const result = recordAndApplyConceptDirectionProposal(workspace, {
       operationId: undefined,
       workIntent: "createConceptDirections",
@@ -798,7 +800,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("completes design-definition proposal operations after placing the draft on canvas", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const operationCreated = createArtifactProposalOperation(workspace, {
       operationId: "operation-definition-create",
       type: "designDefinition",
@@ -842,7 +844,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("keeps completed proposal operations completed when the canvas draft is rejected", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const operationCreated = createArtifactProposalOperation(workspace, {
       operationId: "operation-direction-create",
       type: "conceptDirection",
@@ -1020,7 +1022,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("applies a design definition proposal as a new revision on the current definition object", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const currentDefinition =
       workspace.objects["definition-current"]?.type === "designDefinition"
         ? workspace.objects["definition-current"]
@@ -1186,7 +1188,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("can restore a previous definition as current without moving either definition", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const original = workspace.objects["definition-current"];
     if (!original || original.type !== "designDefinition") {
       throw new Error("Expected a current design definition.");
@@ -1379,7 +1381,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("blocks a design definition proposal when its base revision has been superseded", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const currentDefinition =
       workspace.objects["definition-current"]?.type === "designDefinition"
         ? workspace.objects["definition-current"]
@@ -1433,7 +1435,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("applies a create concept direction proposal as pending-preview directions without lineage", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const basedOnRevisionId =
       workspace.objects["definition-current"]?.type === "designDefinition"
         ? workspace.objects["definition-current"].currentRevisionId
@@ -1496,7 +1498,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("revises a concept direction in place without creating a new direction or lineage", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const target = workspace.objects["direction-soft-rail"];
     if (!target || target.type !== "conceptDirection") {
       throw new Error("Expected seed direction.");
@@ -1570,7 +1572,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("splits one concept direction into child directions without eliminating the parent", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const parent = workspace.objects["direction-soft-rail"];
     if (!parent || parent.type !== "conceptDirection") {
       throw new Error("Expected seed direction.");
@@ -1635,7 +1637,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("merges multiple concept directions into one new direction with all parent lineage preserved", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const parentIds = ["direction-soft-rail", "direction-support-island"];
     const proposed = recordConceptDirectionProposal(workspace, {
       proposalId: "proposal-direction-merge",
@@ -1690,7 +1692,7 @@ describe("Morpho Operation Runtime", () => {
   });
 
   it("blocks a concept direction proposal when a source object has been hidden", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const basedOnRevisionId =
       workspace.objects["definition-current"]?.type === "designDefinition"
         ? workspace.objects["definition-current"].currentRevisionId
@@ -1761,7 +1763,7 @@ function assertRevisionRoundTrip(workspace: MorphoWorkspace): MorphoWorkspace {
 }
 
 // Model newly created objects for authority tests; compatibility tests use raw legacy data.
-function createInitialWorkspace() {
+function createTestWorkspace() {
   const workspace = createLegacyFixture();
   for (const object of Object.values(workspace.objects)) object.incarnationId = `created-${object.id}`;
   return workspace;

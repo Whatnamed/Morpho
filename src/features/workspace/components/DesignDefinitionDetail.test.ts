@@ -2,13 +2,13 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 
 import { DesignDefinitionDetail } from "./DesignDefinitionDetail";
 
 describe("DesignDefinitionDetail", () => {
   it("renders the full current revision instead of only the canvas summary", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const object = workspace.objects["definition-current"];
     if (!object || object.type !== "designDefinition") {
       throw new Error("Expected current design definition.");

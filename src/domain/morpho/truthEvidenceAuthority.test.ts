@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createBlankWorkspace, createKeyConclusion, buildKeyConclusionDraftFromResearchSource, deleteObject, hideObject, migrateWorkspaceToCurrentSchema, parseWorkspace, serializeWorkspace, setConceptDirectionStatus } from "./workspace";
+import { createBlankWorkspace, createKeyConclusion, buildKeyConclusionDraftFromResearchSource, deleteObject, hideObject, setConceptDirectionStatus } from "./workspace";
+import { migrateWorkspaceToCurrentSchema, parseWorkspace, serializeWorkspace } from "./workspaceCodec";
 import { applyConversationSemanticPatch, getContinuityEntryEligibility, setConversationSemanticEntryManualState } from "./projectContinuity";
 import { buildSemanticPatchAuthorization, type ParsedConversationSemanticPatchItem } from "./conversationSemanticPatch";
 import { classifyDecisionRecords } from "./decisionRecords";

@@ -4,19 +4,15 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
-  CURRENT_CASE_STUDY_FINGERPRINT,
-  CURRENT_CASE_STUDY_ID,
-  CURRENT_CASE_STUDY_VERSION
-} from "@/domain/morpho/caseStudy/currentCaseStudy";
-import { writeCaseStudyInstallationMarker } from "@/domain/morpho/caseStudy/caseStudyInstallation";
-import { createBlankWorkspace, createCurrentCaseStudyWorkspace, createInitialWorkspace } from "@/domain/morpho/workspace";
+import { CURRENT_CASE_STUDY_ID } from "@/domain/morpho/caseStudy/currentCaseStudyConstants";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { createCurrentCaseStudyWorkspace } from "@/domain/morpho/caseStudy/createCurrentCaseStudyWorkspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   CATALOG_STORAGE_KEY,
   createCatalog,
   getProjectWorkspaceStorageKey,
-  saveProjectWorkspace,
+  writeProjectWorkspace,
   summarizeProject
 } from "@/infrastructure/persistence/localProjectStore";
 import { createMemoryStorage } from "@/infrastructure/persistence/memoryStorage";
@@ -103,7 +99,7 @@ let originalRevokeObjectURL: typeof URL.revokeObjectURL;
 let originalIntersectionObserver: typeof window.IntersectionObserver | undefined;
 
 function buildSampleImageProject(projectId: string, title: string, updatedAt: string) {
-  const base = createInitialWorkspace();
+  const base = createTestWorkspace();
   const img = base.objects["image-soft-rail-preview"];
   if (!img || img.type !== "image") {
     throw new Error("Expected image object");
@@ -244,8 +240,8 @@ describe("ProjectHomeClient on-demand previews", () => {
     vi.spyOn(window, "localStorage", "get").mockReturnValue(storage);
     const target = buildSampleImageProject("p-delete", "删除失败测试", "2026-10-10T10:00:00.000Z");
     const other = createBlankWorkspace("p-keep");
-    saveProjectWorkspace(window.localStorage, target);
-    saveProjectWorkspace(window.localStorage, other);
+    writeProjectWorkspace(window.localStorage, target);
+    writeProjectWorkspace(window.localStorage, other);
     const rawCatalog = JSON.stringify(createCatalog([summarizeProject(target), summarizeProject(other)], target.project.id));
     const key = getProjectWorkspaceStorageKey(target.project.id);
     window.localStorage.setItem(CATALOG_STORAGE_KEY, rawCatalog);
@@ -300,8 +296,8 @@ describe("ProjectHomeClient on-demand previews", () => {
     offscreen.project.title = "未滚入视口";
     const legacyRaw = JSON.stringify({ ...offscreen, schemaVersion: offscreen.schemaVersion - 1 });
 
-    saveProjectWorkspace(window.localStorage, hero);
-    saveProjectWorkspace(window.localStorage, visible);
+    writeProjectWorkspace(window.localStorage, hero);
+    writeProjectWorkspace(window.localStorage, visible);
     window.localStorage.setItem(getProjectWorkspaceStorageKey("p-off"), legacyRaw);
 
     const catalog = createCatalog(
@@ -364,17 +360,10 @@ describe("ProjectHomeClient on-demand previews", () => {
     expect(previewKeys.length).toBeGreaterThanOrEqual(2);
     const [repairedKey, missingKey, ...stableKeys] = previewKeys as [string, string, ...string[]];
 
-    saveProjectWorkspace(window.localStorage, caseWs);
+    writeProjectWorkspace(window.localStorage, caseWs);
     const storedBefore = window.localStorage.getItem(getProjectWorkspaceStorageKey(CURRENT_CASE_STUDY_ID));
     const catalog = createCatalog([summarizeProject(caseWs)], CURRENT_CASE_STUDY_ID);
     window.localStorage.setItem(CATALOG_STORAGE_KEY, JSON.stringify(catalog));
-    writeCaseStudyInstallationMarker(window.localStorage, {
-      assetManifestVersion: CURRENT_CASE_STUDY_ASSET_MANIFEST_VERSION,
-      installedVersion: CURRENT_CASE_STUDY_VERSION,
-      projectId: CURRENT_CASE_STUDY_ID,
-      workspaceFingerprint: CURRENT_CASE_STUDY_FINGERPRINT
-    });
-
     const idbUrls = new Map<string, string | null>([
       [repairedKey, "blob:corrupt-initial"],
       [missingKey, null],
@@ -440,8 +429,8 @@ describe("ProjectHomeClient on-demand previews", () => {
     const grid = buildSampleImageProject("p-grid", "列表项目", "2026-10-09T10:00:00.000Z");
 
     const seedBoth = () => {
-      saveProjectWorkspace(window.localStorage, hero);
-      saveProjectWorkspace(window.localStorage, grid);
+      writeProjectWorkspace(window.localStorage, hero);
+      writeProjectWorkspace(window.localStorage, grid);
       window.localStorage.setItem(
         CATALOG_STORAGE_KEY,
         JSON.stringify(createCatalog([summarizeProject(hero), summarizeProject(grid)], "p-hero"))
@@ -505,7 +494,7 @@ describe("ProjectHomeClient on-demand previews", () => {
   it("separates local text pressure from origin image storage, ignores unknown readings, and coalesces refresh events", async () => {
     const heavy = createBlankWorkspace("p-heavy");
     heavy.project.title = "大型文本项目";
-    saveProjectWorkspace(window.localStorage, heavy);
+    writeProjectWorkspace(window.localStorage, heavy);
     window.localStorage.setItem(
       CATALOG_STORAGE_KEY,
       JSON.stringify(createCatalog([summarizeProject(heavy)], heavy.project.id))
@@ -593,7 +582,7 @@ describe("ProjectHomeClient on-demand previews", () => {
 
   it("cancels deferred initial storage scan if unmounted before the idle timer fires", async () => {
     const sample = createBlankWorkspace("p-unmount");
-    saveProjectWorkspace(window.localStorage, sample);
+    writeProjectWorkspace(window.localStorage, sample);
     window.localStorage.setItem(
       CATALOG_STORAGE_KEY,
       JSON.stringify(createCatalog([summarizeProject(sample)], sample.project.id))
@@ -626,9 +615,9 @@ describe("ProjectHomeClient on-demand previews", () => {
     const brokenImg = buildSampleImageProject("p-img-exp", "缺图项目", "2026-10-08T10:00:00.000Z");
     brokenImg.project.lastOpenedAt = "2026-10-08T10:00:00.000Z";
 
-    saveProjectWorkspace(window.localStorage, hero);
-    saveProjectWorkspace(window.localStorage, offscreen);
-    saveProjectWorkspace(window.localStorage, brokenImg);
+    writeProjectWorkspace(window.localStorage, hero);
+    writeProjectWorkspace(window.localStorage, offscreen);
+    writeProjectWorkspace(window.localStorage, brokenImg);
     const rawCatalog = JSON.stringify(
       createCatalog([summarizeProject(hero), summarizeProject(offscreen), summarizeProject(brokenImg)], hero.project.id)
     );

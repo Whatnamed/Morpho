@@ -4,7 +4,8 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createBlankWorkspace, createTestWorkspace } from "@/domain/morpho/workspace";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { AssetRecord, MorphoWorkspace } from "@/domain/morpho/types";
 import { resolveGenerationSettings } from "./imageGenerationSettings";
 import type {

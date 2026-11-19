@@ -1,4 +1,5 @@
-import { createBlankWorkspace, serializeWorkspace } from "@/domain/morpho/workspace";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { serializeWorkspace } from "@/domain/morpho/workspaceCodec";
 import { addDeliveryGap, addObjectsToDeliverySection, createDeliveryPreparation, createDeliverySectionDraft, refreshDeliveryReferenceSnapshot, updateDeliveryReferenceEditorial } from "@/domain/morpho/deliveryPreparation";
 import { captureDeliveryGenerationBaseline } from "@/domain/morpho/deliveryInspection";
 import { CATALOG_STORAGE_KEY, createCatalog, getProjectWorkspaceStorageKey, summarizeProject } from "@/infrastructure/persistence/localProjectStore";

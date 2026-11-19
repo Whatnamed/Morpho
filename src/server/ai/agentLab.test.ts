@@ -4,7 +4,8 @@ import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { importAssetBackedObjects, importTextObject } from "@/domain/morpho/imports";
-import { attachDocumentExtractToFileObject, parseWorkspace } from "@/domain/morpho/workspace";
+import { attachDocumentExtractToFileObject } from "@/domain/morpho/workspace";
+import { parseWorkspace } from "@/domain/morpho/workspaceCodec";
 import { parseMorphoAgentToolArguments } from "@/features/workspace/morphoAgent";
 import { buildMorphoAgentTools } from "@/shared/agentToolContract";
 import { runAgentLab } from "../../../scripts/agent-lab/run";

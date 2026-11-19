@@ -9,7 +9,7 @@ import {
   type ProjectArchiveDiagnosticSeverity
 } from "./projectArchive";
 import type { AssetId, AssetRecord, KeyConclusionCategory, MorphoWorkspace } from "./types";
-import { migrateWorkspaceToCurrentSchema } from "./workspace";
+import { migrateWorkspaceToCurrentSchema } from "./workspaceCodec";
 import { validateCurrentMorphoWorkspace } from "./currentWorkspaceValidation";
 import { canonicalizeEditableBackupWorkspaceCompatibility } from "./editableBackupCompatibility";
 

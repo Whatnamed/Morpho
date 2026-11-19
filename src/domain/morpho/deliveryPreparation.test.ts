@@ -17,7 +17,9 @@ import {
   updateDeliveryReferenceEditorial,
   updateDeliverySection
 } from "./deliveryPreparation";
-import { createBlankWorkspace, createInitialWorkspace, hideObject, migrateWorkspaceToCurrentSchema } from "./workspace";
+import { createBlankWorkspace, hideObject } from "./workspace";
+import { migrateWorkspaceToCurrentSchema } from "./workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import type { DeliveryObject, MorphoWorkspace } from "./types";
 
 describe("delivery preparation domain operations", () => {
@@ -145,7 +147,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("adds stable references to one section, blocks duplicates there, and allows the same source in another section", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
     const firstSectionId = delivery.sections[0]?.id ?? "";
     const secondSectionId = delivery.sections[1]?.id ?? "";
@@ -208,7 +210,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("blocks hidden, missing, and delivery objects as new reference sources", () => {
-    const hidden = hideObject(createInitialWorkspace(), "research-night-path");
+    const hidden = hideObject(createTestWorkspace(), "research-night-path");
     const delivery = hidden.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections[0]?.id ?? "";
 
@@ -238,7 +240,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("detects updated, hidden, missing, and asset-missing source states while preserving old snapshots", () => {
-    const initial = createInitialWorkspace();
+    const initial = createTestWorkspace();
     const base: MorphoWorkspace = { ...initial, assets: { ...initial.assets, "p5-test-image": { id: "p5-test-image", fileName: "p5.png", mimeType: "image/png", size: 1, createdAt: "2026-10-03", storageKey: "p5-test-image", sourceType: "originalImage" } }, objects: { ...initial.objects, "image-soft-rail-v2": { ...(initial.objects["image-soft-rail-v2"] as import("./types").ImageObject), assetId: "p5-test-image" } } };
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections[0]?.id ?? "";
@@ -390,7 +392,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("tracks document fragment source file deletion, extract changes, and missing extract assets", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections[0]?.id ?? "";
     const added = addObjectsToDeliverySection(base, {
@@ -450,7 +452,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("blocks overlong stable snapshots without throwing or writing partial delivery state", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections[0]?.id ?? "";
     const fragment = base.objects["fragment-course-goal"];
@@ -485,7 +487,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("explicitly refreshes one reference snapshot without changing the source or editorial notes", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections[0]?.id ?? "";
     const added = addObjectsToDeliverySection(base, {
@@ -545,7 +547,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("derives structural signals without writing permanent gaps", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const delivery = workspace.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections.find((section) => section.referenceIds.length === 0)?.id ?? "";
 
@@ -557,7 +559,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("creates, applies, discards, and prevents duplicate application of delivery section drafts", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections[0]?.id ?? "";
     const added = addObjectsToDeliverySection(base, {
@@ -656,7 +658,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("allocates unique, deterministic gap IDs when draft contains repeated labels and collides with existing gaps", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
     const sectionId = delivery.sections[0]?.id ?? "";
     const added = addObjectsToDeliverySection(base, {
@@ -732,7 +734,7 @@ describe("delivery preparation domain operations", () => {
   });
 
   it("removes references without deleting source objects", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const delivery = base.objects["delivery-board-a1"] as DeliveryObject;
     const referenceId = delivery.references[0] ?? "";
     const sourceId = base.deliveryReferences[referenceId]?.sourceObjectId ?? "";
@@ -769,7 +771,7 @@ describe("delivery preparation schema migration", () => {
   });
 
   it("adds a deterministic migration section to legacy delivery objects and keeps existing references", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const legacyDelivery = workspace.objects["delivery-board-a1"] as DeliveryObject;
     const legacy: MorphoWorkspace = {
       ...workspace,

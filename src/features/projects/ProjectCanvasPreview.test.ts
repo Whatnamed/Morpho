@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createInitialWorkspace } from "@/domain/morpho/workspace";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import {
   extractProjectPreviewSnapshot,
   getProjectCanvasPreviewNodes,
@@ -9,7 +9,7 @@ import {
 
 describe("project canvas preview", () => {
   it("keeps the active canvas layout and image asset storageKey references without loading a canvas editor", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const nodes = getProjectCanvasPreviewNodes(workspace);
 
     expect(nodes).toEqual(
@@ -22,7 +22,7 @@ describe("project canvas preview", () => {
   });
 
   it("collects only image assets represented in the preview keyed by storageKey", () => {
-    const workspace = createInitialWorkspace();
+    const workspace = createTestWorkspace();
     const previewImage = workspace.objects["image-soft-rail-preview"];
     if (!previewImage || previewImage.type !== "image") {
       throw new Error("Expected seeded preview image.");
@@ -54,7 +54,7 @@ describe("project canvas preview", () => {
   });
 
   it("keeps distinct preview binaries isolated across projects even when assetId collides", () => {
-    const base = createInitialWorkspace();
+    const base = createTestWorkspace();
     const previewImage = base.objects["image-soft-rail-preview"];
     if (!previewImage || previewImage.type !== "image") {
       throw new Error("Expected seeded preview image.");

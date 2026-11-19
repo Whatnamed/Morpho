@@ -1,4 +1,6 @@
-import { createBlankWorkspace, createTestWorkspace, serializeWorkspace } from "@/domain/morpho/workspace";
+import { createBlankWorkspace } from "@/domain/morpho/workspace";
+import { serializeWorkspace } from "@/domain/morpho/workspaceCodec";
+import { createTestWorkspace } from "@/test/createTestWorkspace";
 import { recordDesignDefinitionProposal } from "@/domain/operations/operations";
 import { importTextObject } from "@/domain/morpho/imports";
 import { ensureStageRegions } from "@/domain/morpho/stageRegions";
