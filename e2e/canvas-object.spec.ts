@@ -14,11 +14,15 @@ test.describe("画布对象操作", () => {
     await expect(page.locator(shapeSelector(seed.objectIds.keyConclusion))).toBeVisible();
     await expect(toolbar).toBeHidden();
 
+    const overlay = await page.locator(".canvas-relationship-overlay").evaluateHandle(node => node);
     await selectObject(page, seed.objectIds.keyConclusion);
     await expect(toolbar).toBeVisible();
     await expect
       .poll(async () => (await readStoredWorkspace(page)).ui.lastSelectionIds)
       .toEqual([seed.objectIds.keyConclusion]);
+
+    expect(await overlay.evaluate(node => node === document.querySelector(".canvas-relationship-overlay"))).toBe(true);
+    await overlay.dispose();
 
     await clickEmptyCanvas(page);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
+import { createContext, useContext, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Tldraw, Vec, track, useEditor, type Editor, type TLShape, type TLShapeId, type TLShapePartial } from "tldraw";
 
@@ -146,6 +146,13 @@ export function resolveCanvasContextMenuKind(request: Pick<CanvasContextMenuRequ
   return "empty";
 }
 
+// tldraw mounts these component types. Context updates their inputs without remounting their state.
+const CanvasLayers = createContext<{ relationships: ReactNode; toolbar: ReactNode } | null>(null);
+const canvasComponents = {
+  OnTheCanvas: function Relationships() { return useContext(CanvasLayers)?.relationships ?? null; },
+  InFrontOfTheCanvas: function Toolbar() { return useContext(CanvasLayers)?.toolbar ?? null; }
+};
+
 const shapeUtils = [MorphoShapeUtil, StageRegionShapeUtil, PendingImageShapeUtil];
 export const MORPHO_EDITOR_SYNC_RUN_OPTIONS = { history: "ignore" } as const;
 const MIN_WHEEL_ZOOM = DEFAULT_MIN_CANVAS_ZOOM;
@@ -241,7 +248,6 @@ export function MorphoCanvas({
   const lastContextMenuOpenAtRef = useRef(0);
   const latestWorkspaceRef = useRef(workspace);
   const onLiveViewChangeRef = useRef(onLiveViewChange);
-  const onReferenceIntentRef = useRef(onReferenceIntent);
   const didSendStagesToBackRef = useRef(false);
   const lastAppliedEditorSyncInputsRef = useRef<CanvasEditorSyncInputs | null>(null);
   const stageOpacityPreviewRef = useRef<string | null>(null);
@@ -269,51 +275,28 @@ export function MorphoCanvas({
   }, [editorSyncInputs, workspace]);
   useLayoutEffect(() => {
     onLiveViewChangeRef.current = onLiveViewChange;
-    onReferenceIntentRef.current = onReferenceIntent;
-  }, [onLiveViewChange, onReferenceIntent]);
-  const canvasComponents = useMemo(
-    () => ({
-      OnTheCanvas: () => (
-        <CanvasRelationshipOverlay
-          workspace={workspace}
-          relationshipView={relationshipView}
-          emphasizedObjectId={highlightedObjectId}
-          isChainTraceActive={isChainTraceActive}
-          traceEdgeKeys={traceEdgeKeySet}
-          secondaryTraceEdgeKeys={secondaryTraceEdgeKeys}
-          secondaryTraceObjectIds={secondaryTraceObjectIds}
-        />
-      ),
-      InFrontOfTheCanvas: () => (
-        <CanvasSelectionToolbar
-          workspace={workspace}
-          readOnly={readOnly}
-          floatingChromeKey={floatingChromeKey}
-          canvasOverlayHost={canvasOverlayHost}
-          renderToolbar={renderSelectionToolbar}
-          onReferenceIntent={(objectIds) => onReferenceIntentRef.current(objectIds)}
-          onStageRegionsChange={onStageRegionsChange}
-          onStageOpacityPreviewChange={(stageId) => {
-            stageOpacityPreviewRef.current = stageId;
-          }}
-        />
-      )
-    }),
-    [
-      floatingChromeKey,
-      highlightedObjectId,
-      isChainTraceActive,
-      renderSelectionToolbar,
-      secondaryTraceEdgeKeys,
-      secondaryTraceObjectIds,
-      relationshipView,
-      traceEdgeKeySet,
-      workspace,
-      canvasOverlayHost,
-      readOnly,
-      onStageRegionsChange
-    ]
-  );
+  }, [onLiveViewChange]);
+  const layers = {
+    relationships: <CanvasRelationshipOverlay
+      workspace={workspace}
+      relationshipView={relationshipView}
+      emphasizedObjectId={highlightedObjectId}
+      isChainTraceActive={isChainTraceActive}
+      traceEdgeKeys={traceEdgeKeySet}
+      secondaryTraceEdgeKeys={secondaryTraceEdgeKeys}
+      secondaryTraceObjectIds={secondaryTraceObjectIds}
+    />,
+    toolbar: <CanvasSelectionToolbar
+      workspace={workspace}
+      readOnly={readOnly}
+      floatingChromeKey={floatingChromeKey}
+      canvasOverlayHost={canvasOverlayHost}
+      renderToolbar={renderSelectionToolbar}
+      onReferenceIntent={onReferenceIntent}
+      onStageRegionsChange={onStageRegionsChange}
+      onStageOpacityPreviewChange={(stageId) => { stageOpacityPreviewRef.current = stageId; }}
+    />
+  };
   // Ephemeral loading cards live in page space inside tldraw (not a DOM overlay).
   useEffect(() => {
     const editor = editorRef.current;
@@ -1128,86 +1111,88 @@ export function MorphoCanvas({
       onDropCapture={handleDropCapture}
       onPasteCapture={handlePasteCapture}
     >
-      <Tldraw
-        components={canvasComponents}
-        hideUi
-        shapeUtils={shapeUtils}
-        colorScheme="light"
-        licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY || undefined}
-        onMount={(editor) => {
-          editorRef.current = editor;
-          setEditorReadyEpoch((current) => current + 1);
-          editor.user.updateUserPreferences({ isSnapMode: true });
-          // World-space dot grid that pans/zooms with the camera (replaces CSS screen grid).
-          editor.updateInstanceState({ isGridMode: true });
-          syncWorkspaceToEditor(editor);
-          editor.updateInstanceState({ isReadonly: readOnly });
-          latestViewRef.current = workspace.canvas.view;
-          lastPersistedViewKeyRef.current = getCanvasViewKey(workspace.canvas.view);
-          editor.setCamera({ x: workspace.canvas.view.x, y: workspace.canvas.view.y, z: workspace.canvas.view.zoom });
-          latestViewRef.current = workspace.canvas.view;
-          onLiveViewChangeRef.current?.(workspace.canvas.view);
+      <CanvasLayers.Provider value={layers}>
+        <Tldraw
+          components={canvasComponents}
+          hideUi
+          shapeUtils={shapeUtils}
+          colorScheme="light"
+          licenseKey={process.env.NEXT_PUBLIC_TLDRAW_LICENSE_KEY || undefined}
+          onMount={(editor) => {
+            editorRef.current = editor;
+            setEditorReadyEpoch((current) => current + 1);
+            editor.user.updateUserPreferences({ isSnapMode: true });
+            // World-space dot grid that pans/zooms with the camera (replaces CSS screen grid).
+            editor.updateInstanceState({ isGridMode: true });
+            syncWorkspaceToEditor(editor);
+            editor.updateInstanceState({ isReadonly: readOnly });
+            latestViewRef.current = workspace.canvas.view;
+            lastPersistedViewKeyRef.current = getCanvasViewKey(workspace.canvas.view);
+            editor.setCamera({ x: workspace.canvas.view.x, y: workspace.canvas.view.y, z: workspace.canvas.view.zoom });
+            latestViewRef.current = workspace.canvas.view;
+            onLiveViewChangeRef.current?.(workspace.canvas.view);
 
-          const selectionKind = (shapeId: string): CanvasSelectableKind => {
-            const shape = editor.getShape(shapeId as TLShapeId);
-            if (shape && isMorphoShape(shape)) return "morpho";
-            if (shape && isStageRegionShape(shape)) return "stage";
-            if (shape && isPendingImageShape(shape)) return "other";
-            return "other";
-          };
-          const cleanupBeforeSelection = editor.sideEffects.registerBeforeChangeHandler("instance_page_state", (previous, next) => {
-            const normalizedIds = normalizeCanvasSelectionIds(previous.selectedShapeIds, next.selectedShapeIds, selectionKind, (stageId, ids) => {
-              const stage = editor.getShape(stageId as TLShapeId);
-              if (!stage || !isStageRegionShape(stage) || stage.props.locked) return false;
-              const members = editor.getCurrentPageShapes().filter(isMorphoShape).filter((shape) => stage.props.memberObjectIds.includes(shape.props.objectId));
-              return members.length > 0 && members.length === ids.length && members.every((shape) => ids.includes(shape.id));
+            const selectionKind = (shapeId: string): CanvasSelectableKind => {
+              const shape = editor.getShape(shapeId as TLShapeId);
+              if (shape && isMorphoShape(shape)) return "morpho";
+              if (shape && isStageRegionShape(shape)) return "stage";
+              if (shape && isPendingImageShape(shape)) return "other";
+              return "other";
+            };
+            const cleanupBeforeSelection = editor.sideEffects.registerBeforeChangeHandler("instance_page_state", (previous, next) => {
+              const normalizedIds = normalizeCanvasSelectionIds(previous.selectedShapeIds, next.selectedShapeIds, selectionKind, (stageId, ids) => {
+                const stage = editor.getShape(stageId as TLShapeId);
+                if (!stage || !isStageRegionShape(stage) || stage.props.locked) return false;
+                const members = editor.getCurrentPageShapes().filter(isMorphoShape).filter((shape) => stage.props.memberObjectIds.includes(shape.props.objectId));
+                return members.length > 0 && members.length === ids.length && members.every((shape) => ids.includes(shape.id));
+              });
+              return areSelectionIdsEqual(next.selectedShapeIds, normalizedIds) ? next : { ...next, selectedShapeIds: normalizedIds as TLShapeId[] };
             });
-            return areSelectionIdsEqual(next.selectedShapeIds, normalizedIds) ? next : { ...next, selectedShapeIds: normalizedIds as TLShapeId[] };
-          });
-          const cleanupAfterSelection = editor.sideEffects.registerAfterChangeHandler("instance_page_state", (_previous, next) => {
-            if (next.pageId === editor.getCurrentPageId()) {
-              syncSelectionFromEditor(editor);
-            }
-          });
-
-          const cleanup = editor.store.listen((entry) => {
-            const previousShapes = new Map<string, MorphoShape | StageRegionShape>();
-            for (const [before] of Object.values(entry.changes.updated)) {
-              if ("type" in before && (isMorphoShape(before as TLShape) || isStageRegionShape(before as TLShape))) previousShapes.set(before.id, before as MorphoShape | StageRegionShape);
-            }
-            const changedShapes = [
-              ...Object.values(entry.changes.added),
-              ...Object.values(entry.changes.updated).map(([, after]) => after)
-            ].filter(
-              (record): record is MorphoShape | StageRegionShape =>
-                "type" in record && (isMorphoShape(record as TLShape) || isStageRegionShape(record as TLShape))
-            );
-            const geometryShapes = changedShapes.filter((shape) => {
-              const previous = previousShapes.get(shape.id);
-              return !previous || previous.x !== shape.x || previous.y !== shape.y || previous.props.w !== shape.props.w || previous.props.h !== shape.props.h ||
-                (isStageRegionShape(shape) && JSON.stringify(previous.props) !== JSON.stringify(shape.props));
+            const cleanupAfterSelection = editor.sideEffects.registerAfterChangeHandler("instance_page_state", (_previous, next) => {
+              if (next.pageId === editor.getCurrentPageId()) {
+                syncSelectionFromEditor(editor);
+              }
             });
-            if (geometryShapes.length > 0) {
-              syncShapesFromEditor(editor, geometryShapes, entry.source === "user", previousShapes);
-            }
 
-            const changedRecords = [
-              ...Object.values(entry.changes.added),
-              ...Object.values(entry.changes.updated).map(([, after]) => after)
-            ];
-            if (changedRecords.some((record) => record.typeName === "camera")) {
-              syncCameraFromEditor(editor);
-            }
-          });
+            const cleanup = editor.store.listen((entry) => {
+              const previousShapes = new Map<string, MorphoShape | StageRegionShape>();
+              for (const [before] of Object.values(entry.changes.updated)) {
+                if ("type" in before && (isMorphoShape(before as TLShape) || isStageRegionShape(before as TLShape))) previousShapes.set(before.id, before as MorphoShape | StageRegionShape);
+              }
+              const changedShapes = [
+                ...Object.values(entry.changes.added),
+                ...Object.values(entry.changes.updated).map(([, after]) => after)
+              ].filter(
+                (record): record is MorphoShape | StageRegionShape =>
+                  "type" in record && (isMorphoShape(record as TLShape) || isStageRegionShape(record as TLShape))
+              );
+              const geometryShapes = changedShapes.filter((shape) => {
+                const previous = previousShapes.get(shape.id);
+                return !previous || previous.x !== shape.x || previous.y !== shape.y || previous.props.w !== shape.props.w || previous.props.h !== shape.props.h ||
+                  (isStageRegionShape(shape) && JSON.stringify(previous.props) !== JSON.stringify(shape.props));
+              });
+              if (geometryShapes.length > 0) {
+                syncShapesFromEditor(editor, geometryShapes, entry.source === "user", previousShapes);
+              }
 
-          return () => {
-            cleanup();
-            cleanupAfterSelection();
-            cleanupBeforeSelection();
-            editorRef.current = null;
-          };
-        }}
-      />
+              const changedRecords = [
+                ...Object.values(entry.changes.added),
+                ...Object.values(entry.changes.updated).map(([, after]) => after)
+              ];
+              if (changedRecords.some((record) => record.typeName === "camera")) {
+                syncCameraFromEditor(editor);
+              }
+            });
+
+            return () => {
+              cleanup();
+              cleanupAfterSelection();
+              cleanupBeforeSelection();
+              editorRef.current = null;
+            };
+          }}
+        />
+      </CanvasLayers.Provider>
       <div ref={setCanvasOverlayHostRef} className="workspace-canvas-overlay" />
     </div>
   );
