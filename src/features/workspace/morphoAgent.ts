@@ -1,4 +1,5 @@
 export { buildMorphoAgentStableSystemPrompt } from "@/shared/agentPromptRegistry";
+import { parseAgentReadTool } from "@/shared/agentReadTools";
 import type { VisualIntentItem } from "@/domain/operations/types";
 import {
   MorphoAgentTurnMode,
@@ -8,9 +9,6 @@ import {
   CreateConceptDirectionProposalArgs,
   ReviseSelectedProposalDraftArgs,
   GenerateVisualsArgs,
-  ReadProjectMemoryArgs,
-  ReadStageRecordArgs,
-  SearchProjectConversationArgs,
   SubmitMemoryUpdateArgs,
   PrepareDeliverySectionDraftArgs,
   CreateComparisonAnalysisArgs,
@@ -27,9 +25,7 @@ import type {
   ConversationSummaryRevision,
   ImageRole,
   MorphoObject,
-  MorphoWorkspace,
-  ProjectMemoryKey,
-  StageRecordKey
+  MorphoWorkspace
 } from "@/domain/morpho/types";
 import type {
   ProviderCitation,
@@ -495,28 +491,10 @@ function normalizeTerminalToolResult(result: unknown): Record<string, unknown> {
 export function parseMorphoAgentToolArguments(call: AgentFunctionCall): MorphoAgentToolArguments {
   const parsed = parseToolArgumentsJson(call);
 
+  const read = parseAgentReadTool(call.name, parsed);
+  if (read) return read;
+
   switch (call.name) {
-    case "read_workspace_source": {
-      const record = requireExactObject(call.name, parsed, ["kind", "objectId"], ["revisionId", "sectionId", "start", "length"]);
-      requireEnum(call.name, record, "kind", ["object", "document", "image", "delivery"]);
-      requireString(call.name, record, "objectId");
-      requireOptionalString(call.name, record, "revisionId");
-      requireOptionalString(call.name, record, "sectionId");
-      for (const key of ["start", "length"]) if (record[key] !== undefined && (typeof record[key] !== "number" || !Number.isSafeInteger(record[key]) || Number(record[key]) < (key === "start" ? 0 : 1) || (key === "length" && Number(record[key]) > 8000))) throw new Error(`${key} 超出有界读取范围。`);
-      return { name: call.name, args: record as unknown as import("@/shared/agentToolContract").ReadWorkspaceSourceArgs };
-    }
-    case "read_selected_context":
-      requireExactObject(call.name, parsed, []);
-      return { name: call.name, args: {} };
-    case "read_project_memory":
-      validateReadProjectMemoryArgs(call.name, parsed);
-      return { name: call.name, args: parsed };
-    case "read_stage_record":
-      validateReadStageRecordArgs(call.name, parsed);
-      return { name: call.name, args: parsed };
-    case "search_project_conversation":
-      validateSearchProjectConversationArgs(call.name, parsed);
-      return { name: call.name, args: parsed };
     case "search_web_evidence":
       validateSearchWebEvidenceArgs(call.name, parsed);
       return { name: call.name, args: parsed };
@@ -731,59 +709,6 @@ export function buildMorphoAgentToolArgumentRepairReminder(
 function toolArgumentErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : "Agent 工具参数未通过校验。";
   return message.slice(0, 800);
-}
-
-function validateReadProjectMemoryArgs(toolName: string, value: unknown): asserts value is ReadProjectMemoryArgs {
-  const record = requireExactObject(toolName, value, [], ["keys", "includeHistory"]);
-  requireOptionalEnumArray(toolName, record, "keys", [
-    "projectOverview",
-    "designBrief",
-    "userPreferences",
-    "decisionLog",
-    "rejectedDirections",
-    "openQuestions",
-    "outputPlan"
-  ]);
-  requireOptionalBoolean(toolName, record, "includeHistory");
-}
-
-function validateReadStageRecordArgs(toolName: string, value: unknown): asserts value is ReadStageRecordArgs {
-  const record = requireExactObject(toolName, value, [], ["stages", "includeHistory"]);
-  requireOptionalEnumArray(toolName, record, "stages", [
-    "startAndInput",
-    "exploration",
-    "research",
-    "designDefinition",
-    "directionAndVisual",
-    "deliveryPreparation"
-  ]);
-  requireOptionalBoolean(toolName, record, "includeHistory");
-}
-
-function validateSearchProjectConversationArgs(
-  toolName: string,
-  value: unknown
-): asserts value is SearchProjectConversationArgs {
-  const record = requireExactObject(toolName, value, ["mode"], [
-    "keyword",
-    "role",
-    "from",
-    "to",
-    "limit",
-    "neighborCount",
-    "includeDiagnostics"
-  ]);
-  const mode = requireEnum(toolName, record, "mode", ["earliest", "latest", "keyword"]);
-  requireOptionalString(toolName, record, "keyword");
-  requireOptionalEnum(toolName, record, "role", ["any", "user", "assistant"]);
-  requireOptionalString(toolName, record, "from");
-  requireOptionalString(toolName, record, "to");
-  requireOptionalInteger(toolName, record, "limit", 1, 20);
-  requireOptionalInteger(toolName, record, "neighborCount", 0, 3);
-  requireOptionalBoolean(toolName, record, "includeDiagnostics");
-  if (mode === "keyword" && typeof record.keyword !== "string") {
-    throw new Error(`Agent 工具 ${toolName} 在 keyword 模式下必须提供 keyword。`);
-  }
 }
 
 function truncateAgentContextText(value: string, maxChars: number): string {
@@ -1278,22 +1203,6 @@ function requireOptionalEnum<T extends string>(
   return requireEnum(toolName, record, key, values);
 }
 
-function requireOptionalEnumArray<T extends string>(
-  toolName: string,
-  record: Record<string, unknown>,
-  key: string,
-  values: readonly T[]
-): T[] | undefined {
-  if (record[key] === undefined) {
-    return undefined;
-  }
-  const items = requireArray(toolName, record, key);
-  if (!items.every((item) => typeof item === "string" && values.includes(item as T))) {
-    throw new Error(`Agent 工具 ${toolName} 的参数 ${key} 包含不允许的值。`);
-  }
-  return items as T[];
-}
-
 function requireOptionalBoolean(
   toolName: string,
   record: Record<string, unknown>,
@@ -1306,22 +1215,6 @@ function requireOptionalBoolean(
     throw new Error(`Agent 工具 ${toolName} 的参数 ${key} 必须是布尔值。`);
   }
   return record[key];
-}
-
-function requireOptionalInteger(
-  toolName: string,
-  record: Record<string, unknown>,
-  key: string,
-  minimum: number,
-  maximum: number
-): number | undefined {
-  if (record[key] === undefined) {
-    return undefined;
-  }
-  if (!Number.isInteger(record[key]) || (record[key] as number) < minimum || (record[key] as number) > maximum) {
-    throw new Error(`Agent 工具 ${toolName} 的参数 ${key} 必须是 ${minimum} 到 ${maximum} 之间的整数。`);
-  }
-  return record[key] as number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

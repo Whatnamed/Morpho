@@ -1,6 +1,6 @@
 // Neutral Agent tool DTOs, schemas and effects. Client and Server share this registry.
 import type { ConceptDirectionProposal, VisualIntentItem } from "@/domain/operations/types";
-import type { ProjectMemoryKey, StageRecordKey } from "@/domain/morpho/types";
+import { agentReadToolNames, agentReadTools, type AgentReadToolCall } from "./agentReadTools";
 import type { ResponseFunctionTool, ResponseTool } from "@/server/ai/openaiCompatibleProvider";
 
 export type MorphoAgentTurnMode = "auto" | "confirm";
@@ -41,15 +41,6 @@ export type CreateDesignDefinitionProposalArgs = DesignDefinitionDraftArgs & {
   alternatives?: DesignDefinitionDraftArgs[];
 };
 
-export type ReadWorkspaceSourceArgs = {
-  kind: "object" | "document" | "image" | "delivery";
-  objectId: string;
-  revisionId?: string;
-  sectionId?: string;
-  start?: number;
-  length?: number;
-};
-
 export type CreateConceptDirectionProposalArgs = {
   applicationMode?: "create" | "revise" | "split" | "merge";
   targetDirectionId?: string;
@@ -86,27 +77,6 @@ export type ReviseSelectedProposalDraftArgs =
 export type GenerateVisualsArgs = {
   kind: "directionPreview" | "visualDevelopment";
   items: VisualIntentItem[];
-};
-
-export type ReadProjectMemoryArgs = {
-  keys?: ProjectMemoryKey[];
-  includeHistory?: boolean;
-};
-
-export type ReadStageRecordArgs = {
-  stages?: StageRecordKey[];
-  includeHistory?: boolean;
-};
-
-export type SearchProjectConversationArgs = {
-  mode: "earliest" | "latest" | "keyword";
-  keyword?: string;
-  role?: "any" | "user" | "assistant";
-  from?: string;
-  to?: string;
-  limit?: number;
-  neighborCount?: number;
-  includeDiagnostics?: boolean;
 };
 
 export type SubmitMemoryUpdateArgs = {
@@ -164,12 +134,10 @@ export type RequestConfirmationArgs = {
   visualPlan?: GenerateVisualsArgs;
 };
 
+export type ReadWorkspaceSourceArgs = Extract<AgentReadToolCall, { name: "read_workspace_source" }>["args"];
+
 export type MorphoAgentToolArguments =
-  | { name: "read_workspace_source"; args: ReadWorkspaceSourceArgs }
-  | { name: "read_selected_context"; args: Record<string, never> }
-  | { name: "read_project_memory"; args: ReadProjectMemoryArgs }
-  | { name: "read_stage_record"; args: ReadStageRecordArgs }
-  | { name: "search_project_conversation"; args: SearchProjectConversationArgs }
+  | AgentReadToolCall
   | { name: "search_web_evidence"; args: SearchWebEvidenceArgs }
   | { name: "create_research_analysis"; args: CreateResearchAnalysisArgs }
   | { name: "create_design_definition_proposal"; args: CreateDesignDefinitionProposalArgs }
@@ -194,11 +162,8 @@ export type ToolEffect = {
 };
 
 export const MORPHO_AGENT_TOOL_EFFECT_MATRIX = {
-  read_workspace_source: toolEffect({ readOnly: true }),
-  read_selected_context: toolEffect({ readOnly: true }),
-  read_project_memory: toolEffect({ readOnly: true }),
-  read_stage_record: toolEffect({ readOnly: true }),
-  search_project_conversation: toolEffect({ readOnly: true }),
+  ...Object.fromEntries(agentReadToolNames.map((name) => [name, toolEffect({ readOnly: true })])) as
+    Record<AgentReadToolCall["name"], ToolEffect>,
   search_web_evidence: toolEffect({ readOnly: true, externalEvidence: true }),
   create_research_analysis: toolEffect({ reversibleWorkspaceWrite: true }),
   create_design_definition_proposal: toolEffect({
@@ -257,9 +222,9 @@ export function buildMorphoAgentTools(
 ): ResponseTool[] {
   const tools: ResponseTool[] = [
     readSelectedContextTool(boundedReads),
-    readProjectMemoryTool(),
-    readStageRecordTool(),
-    searchProjectConversationTool(),
+    functionTool(agentReadTools.projectMemory),
+    functionTool(agentReadTools.stageRecord),
+    functionTool(agentReadTools.conversation),
     functionTool({
       name: "revise_selected_proposal_draft",
       description:
@@ -659,7 +624,7 @@ export function buildMorphoAgentTools(
     );
   }
 
-  if (boundedReads) tools.push(functionTool({ name: "read_workspace_source", description: "有界读取本轮 scope 内当前对象或指定 revision、文档 UTF-16 range、交付章节稳定引用，或实际图片像素。start/length 使用半开区间；最多 8000 字。新生成图片只有本轮明确要求观察结果时可读；读取不授予生成或采用权限。", parameters: { type: "object", additionalProperties: false, required: ["kind", "objectId"], properties: { kind: { type: "string", enum: ["object", "document", "image", "delivery"] }, objectId: { type: "string" }, revisionId: { type: "string" }, sectionId: { type: "string" }, start: { type: "integer", minimum: 0 }, length: { type: "integer", minimum: 1, maximum: 8000 } } } }));
+  if (boundedReads) tools.push(functionTool(agentReadTools.workspaceSource));
 
   return tools.map(withAgentToolEffectDescription);
 }
@@ -716,14 +681,12 @@ function functionTool(input: {
 }
 
 function readSelectedContextTool(boundedReads = false): ResponseFunctionTool {
+  const tool = agentReadTools.selectedContext;
   return functionTool({
-    name: "read_selected_context",
-    description: boundedReads ? "读取 preparation 时保存的摘要快照，不表示当前对象全文或实际像素。深入读取使用 read_workspace_source。" : "读取当前显式选择对象及其直接相关语境，用于判断当前资料是否足够执行。",
-    parameters: {
-      type: "object",
-      additionalProperties: false,
-      properties: {}
-    }
+    ...tool,
+    description: boundedReads
+      ? "读取 preparation 时保存的摘要快照，不表示当前对象全文或实际像素。深入读取使用 read_workspace_source。"
+      : tool.description
   });
 }
 
@@ -734,85 +697,6 @@ function stringArraySchema(): Record<string, unknown> {
       type: "string"
     }
   };
-}
-
-function readProjectMemoryTool(): ResponseFunctionTool {
-  return functionTool({
-    name: "read_project_memory",
-    description: "读取七类当前项目记忆的当前修订、来源摘要、待复核状态；可按 key 选择，并可请求有限历史修订。",
-    parameters: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        keys: {
-          type: "array",
-          items: {
-            type: "string",
-            enum: [
-              "projectOverview",
-              "designBrief",
-              "userPreferences",
-              "decisionLog",
-              "rejectedDirections",
-              "openQuestions",
-              "outputPlan"
-            ]
-          }
-        },
-        includeHistory: { type: "boolean" }
-      }
-    }
-  });
-}
-
-function readStageRecordTool(): ResponseFunctionTool {
-  return functionTool({
-    name: "read_stage_record",
-    description: "读取已发生阶段的当前有效记录、来源、待复核状态；可按阶段选择，并可请求有限历史修订。",
-    parameters: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        stages: {
-          type: "array",
-          items: {
-            type: "string",
-            enum: [
-              "startAndInput",
-              "exploration",
-              "research",
-              "designDefinition",
-              "directionAndVisual",
-              "deliveryPreparation"
-            ]
-          }
-        },
-        includeHistory: { type: "boolean" }
-      }
-    }
-  });
-}
-
-function searchProjectConversationTool(): ResponseFunctionTool {
-  return functionTool({
-    name: "search_project_conversation",
-    description: "确定性查询项目原始聊天。用于最早/最近消息、关键词、角色和时间范围查询，返回 messageId、时间与有限相邻上下文。",
-    parameters: {
-      type: "object",
-      additionalProperties: false,
-      required: ["mode"],
-      properties: {
-        mode: { type: "string", enum: ["earliest", "latest", "keyword"] },
-        keyword: { type: "string" },
-        role: { type: "string", enum: ["any", "user", "assistant"] },
-        from: { type: "string" },
-        to: { type: "string" },
-        limit: { type: "integer", minimum: 1, maximum: 20 },
-        neighborCount: { type: "integer", minimum: 0, maximum: 3 },
-        includeDiagnostics: { type: "boolean" }
-      }
-    }
-  });
 }
 
 export function visualIntentItemSchema(): Record<string, unknown> {
