@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import { createServer } from "vite";
+import { fileURLToPath } from "node:url";
+
+const server = await createServer({
+  configLoader: "native",
+  configFile: "vitest.config.ts",
+  server: { middlewareMode: true, watch: null, ws: false },
+  appType: "custom"
+});
+try {
+  const { createMemoryStorage } = await server.ssrLoadModule("/src/infrastructure/persistence/memoryStorage.ts");
+  const { createBlankWorkspace } = await server.ssrLoadModule("/src/domain/morpho/workspace.ts");
+  const store = await server.ssrLoadModule("/src/infrastructure/persistence/localProjectStore.ts");
+  const memory = createMemoryStorage();
+  const visible = createBlankWorkspace("review-project-a");
+  const invisible = createBlankWorkspace("review-project-b");
+  assert.equal(store.persistProjectWorkspaceAndSummary(memory, visible).status, "ok");
+  let rejectCatalog = true;
+  const storage = {
+    ...memory,
+    get length() { return memory.length; },
+    setItem(key, value) {
+      if (rejectCatalog && key === store.CATALOG_STORAGE_KEY) throw new Error("fixture catalog write failure");
+      memory.setItem(key, value);
+    }
+  };
+  const partial = store.persistProjectWorkspaceAndSummary(storage, invisible);
+  rejectCatalog = false;
+  const catalog = await store.initializeBrowserProjectCatalog(storage);
+  const projectIds = catalog.catalog.projects.map(({ id }) => id);
+  const loaded = store.loadProjectWorkspace(storage, invisible.project.id, { mode: "readOnly" });
+  assert.equal(partial.status, "failed");
+  assert.equal(partial.stage, "catalog");
+  assert.deepEqual(projectIds, [visible.project.id]);
+  assert.equal(loaded.status, "ok");
+  console.log(JSON.stringify({ check: "catalog restart after a partial project write", failureStage: partial.stage, projectIds, directLoad: loaded.status }));
+
+} finally {
+  await server.close();
+}

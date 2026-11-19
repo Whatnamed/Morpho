@@ -1,0 +1,11 @@
+import base from "../../../../vitest.config.ts";
+
+export default {
+  ...base,
+  test: {
+    ...base.test,
+    include: ["scripts/agent-lab/run.lab.ts"],
+    cache: false,
+    testTimeout: 20_000
+  }
+};
